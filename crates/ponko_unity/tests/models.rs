@@ -713,3 +713,31 @@ fn standalone_clip_paths_resolve_from_the_animators_object() {
     assert!((targets[1].1[1] - 2.0).abs() < 1e-5, "{targets:?}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn fbx_submeshes_follow_first_material_usage_like_unity() {
+    let bytes = import_glb(
+        "material_order",
+        include_bytes!("fixtures/material_order.fbx"),
+        "    useFileScale: 1\n",
+    );
+    let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let doc: Json = serde_json::from_slice(&bytes[20..20 + len]).unwrap();
+    let bin = &bytes[28 + len..];
+    let primitives = doc["meshes"][0]["primitives"].as_array().unwrap();
+    assert_eq!(primitives.len(), 3);
+    for (primitive, expected_x) in primitives.iter().zip([-10.0f32, -20.0, -30.0]) {
+        let index_accessor = &doc["accessors"][primitive["indices"].as_u64().unwrap() as usize];
+        let index_view = &doc["bufferViews"][index_accessor["bufferView"].as_u64().unwrap() as usize];
+        let offset = index_view["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let index = u32::from_le_bytes(bin[offset..offset + 4].try_into().unwrap()) as usize;
+        let accessor = &doc["accessors"][primitive["attributes"]["POSITION"].as_u64().unwrap() as usize];
+        let view = &doc["bufferViews"][accessor["bufferView"].as_u64().unwrap() as usize];
+        let offset = view["byteOffset"].as_u64().unwrap_or(0) as usize + index * 12;
+        let x = f32::from_le_bytes(bin[offset..offset + 4].try_into().unwrap());
+        assert_eq!(
+            x, expected_x,
+            "renderer slots must follow first face usage, not FBX slot number"
+        );
+    }
+}
