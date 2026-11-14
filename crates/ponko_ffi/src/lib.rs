@@ -107,9 +107,12 @@ mod ui_immediate;
 mod text_shaping;
 // Bindings of 0.3.
 mod motion;
+// IME composition (#410).
+mod ime;
 pub use access::*;
 pub use actions::*;
 pub use animator::*;
+pub use ime::*;
 /// Counts the library's heap allocations while profiling is on (one atomic
 /// load per allocation otherwise), so a C or C++ game's reports show how many
 /// the engine makes. A Rust program that links this crate as a library and

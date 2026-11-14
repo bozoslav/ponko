@@ -3348,8 +3348,35 @@ static ponko::instance_batch forest(ponko::ctx& ctx, const std::vector<ponko::lo
 }
 // ANCHOR_END: lod_forest
 
+// ANCHOR: ime_own_widget
+// A chat box drawn by the game itself: it asks for IME while it is open,
+// tells the window where its caret is, and shows the composition there.
+struct Chat {
+    bool open = false;
+    std::string text;
+};
+static void chat_box(ponko::ctx& ctx, Chat& chat) {
+    ctx.set_ime_allowed(chat.open);
+    if (!chat.open) return;
+    const float caret_x = 20 + ctx.measure_text(chat.text.c_str(), 18).x;
+    ctx.set_ime_cursor_area(ponko::rect{{caret_x, 400}, {caret_x + 1, 418}});
+    chat.text += ctx.typed_text();          // committed text, IME or not
+    const std::string composing = ctx.preedit(); // shown after the text, underlined
+    ctx.draw_text((chat.text + composing).c_str(), {20, 400}, 18, ponko::colors::white);
+}
+// ANCHOR_END: ime_own_widget
+
 int main() {
     builder_setup_runs_headless();
+    ponko::game("ime guide", 1, 1).run_headless(0, [](ponko::ctx& ctx) {
+        Chat chat{true, "Hi "};
+        ctx.feed_ime(ponko::ime_preedit("にほ", 6, 6));
+        chat_box(ctx, chat);
+        if (!ctx.ime_allowed() || ctx.preedit() != "にほ" || !ctx.ime_cursor_area()) std::abort();
+        ctx.feed_ime(ponko::ime_commit("日本"));
+        chat_box(ctx, chat);
+        if (chat.text != "Hi 日本") { std::fprintf(stderr, "chat: %s\n", chat.text.c_str()); std::abort(); }
+    });
     sprite_looks_run();
     action_ids_run();
     jump_once();
