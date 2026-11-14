@@ -131,10 +131,18 @@ every browser call (reading the state, a click, a key, a screenshot) has a
 30 s deadline, a page whose content process crashes fails at once
 (`browser-crash`), and the whole run has `--run-timeout`. A hang fails as
 `browser-hang` with the step it was on and the last lines of `browser.log`.
-A hung run is not retried: so far every hang has been a real bug (WebKit on
-Linux once hung at the first click, when the game opened its audio), and a
-retry would hide the next one. CI also gives each browser step a
-`timeout-minutes` of a few minutes.
+A hung run is not retried: so far every hang has been a real, repeatable
+failure, and a retry would hide the next one. CI also gives each browser step
+a `timeout-minutes` of a few minutes.
+
+WebKit on Linux needs a sound server. It opens its audio output through
+GStreamer, and without a sound server its content process crashes as soon as
+a page opens an AudioContext, which every game does at its first click (the
+log shows GStreamer's PulseAudio device provider failing to connect, then
+"double free or corruption"). CI starts PulseAudio with a null sink before
+the WebKit runs; do the same on a headless Linux machine
+(`pulseaudio --daemonize=yes --exit-idle-time=-1`, then
+`pactl load-module module-null-sink`).
 
 Each run writes to its `--out` folder:
 

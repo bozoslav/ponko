@@ -1087,6 +1087,22 @@ jobs:
         timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser firefox --backend webgpu --allow-unsupported
+      # WebKit on Linux opens its audio output through GStreamer, which looks
+      # for a sound server. Without one (as on a bare runner) WebKit's
+      # content process crashes ("double free or corruption", after
+      # GStreamer's PulseAudio device provider fails to connect) as soon as
+      # a page opens an AudioContext, which every game does at its first
+      # click (src/audio/unlock.rs). A PulseAudio server with a null sink is
+      # the runner's sound card, so the fixtures' music plays in WebKit too.
+      - name: A sound server for WebKit (PulseAudio with a null sink)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: |
+          bash scripts/ci-retry.sh sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils
+          pulseaudio --check || pulseaudio --daemonize=yes --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci_null
+          pactl set-default-sink ci_null
+          pactl info
       - name: WebKit, WebGL2 (2D and 3D fixtures)
         # WebKit on Linux plays Web Audio and media through GStreamer: its
         # warnings land in the browser's output (browser.log in the report).
