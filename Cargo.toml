@@ -213,6 +213,20 @@ naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 objc2 = "0.5.2"
 objc2-foundation = { version = "0.2.2", features = ["NSArray", "NSString", "NSValue"] }
 
+# The Windows accessibility test (tests/ui_access_platforms.rs) is a UI
+# Automation client of the adapter, on a window that is never shown: the
+# `windows` release AccessKit's adapter and wgpu already use.
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_UI_Accessibility", "Win32_UI_WindowsAndMessaging"] }
+
+# The Linux accessibility test (tests/ui_access_platforms.rs) reads the
+# adapter over the AT-SPI bus like a screen reader: the same proxies, zbus
+# and async-io the adapter itself uses.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+atspi-proxies = { version = "0.13.0", default-features = false }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+async-io = "2.6.0"
+
 # The browser smoke fixture (examples/web_smoke.rs) reports its state to
 # the page; the engine already depends on web-sys there.
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

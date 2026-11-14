@@ -51,7 +51,14 @@ fn window(tree: &UiAccessTree, title: &str, scale_factor: f64) -> Node {
 fn node(n: &UiAccessNode) -> Node {
     let mut node = Node::new(role(n.role));
     if !n.name.is_empty() {
-        node.set_label(n.name.as_str());
+        if n.role == UiRole::Label {
+            // AccessKit reads static text from a label's value: UI
+            // Automation and AT-SPI name a `Label` node by it alone (macOS
+            // falls back to the label, so it read them either way).
+            node.set_value(n.name.as_str());
+        } else {
+            node.set_label(n.name.as_str());
+        }
     }
     if !n.description.is_empty() {
         node.set_description(n.description.as_str());
@@ -256,7 +263,11 @@ mod tests {
         );
 
         let title = find(&update, node_id(m.title));
-        assert_eq!((title.role(), title.label()), (Role::Label, Some("Settings")));
+        assert_eq!(
+            (title.role(), title.value(), title.label()),
+            (Role::Label, Some("Settings"), None),
+            "static text is in the value, where every adapter reads it"
+        );
         assert!(!title.supports_action(Action::Focus), "a label is read, not operated");
 
         let play = find(&update, node_id(m.play));

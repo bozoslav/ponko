@@ -715,12 +715,19 @@ mod tests {
             self.updates.push(update);
         }
 
-        /// Every node reachable from the window, as `role label` lines in
-        /// tree order: what a screen reader can walk.
+        /// Every node reachable from the window, as `role name` lines in
+        /// tree order: what a screen reader can walk. The name is what UI
+        /// Automation and AT-SPI give: a label's value, any other node's
+        /// label.
         fn walk(&self) -> Vec<String> {
             fn visit(nodes: &HashMap<NodeId, accesskit::Node>, id: NodeId, out: &mut Vec<String>) {
                 let node = &nodes[&id];
-                out.push(format!("{:?} {}", node.role(), node.label().unwrap_or_default()));
+                let name = if node.role() == Role::Label {
+                    node.value()
+                } else {
+                    node.label()
+                };
+                out.push(format!("{:?} {}", node.role(), name.unwrap_or_default()));
                 for &child in node.children() {
                     visit(nodes, child, out);
                 }
