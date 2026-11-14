@@ -542,6 +542,8 @@ pub struct Physics3D {
     dominance: bool,
     gravity: Vec3,
     step: u64,
+    /// From `set_paused`: the built-in step does nothing while set.
+    paused: bool,
     /// The world's load count when `links` were made (see `forget_bodies`).
     world_loads: u64,
     collector: Collector,
@@ -616,6 +618,7 @@ impl Physics3D {
             dominance: false,
             gravity,
             step: 0,
+            paused: false,
             world_loads: 0,
             collector: Collector::default(),
             events: Vec::new(),
@@ -659,6 +662,50 @@ impl Physics3D {
     /// Changes the pull on every dynamic body and character.
     pub fn set_gravity(&mut self, gravity: Vec3) {
         self.gravity = gravity;
+    }
+
+    /// Holds the 3D physics step (`true`) or lets it run again (`false`),
+    /// while every other simulation system keeps running: a pause screen
+    /// whose own sim systems read the "resume" press. The same call as the
+    /// 2D `ctx.physics.set_paused`, on the 3D world. Unlike [`Time::pause`](crate::time::Time::pause), the tick
+    /// counter goes on.
+    ///
+    /// While paused, [`step_physics3d`] does nothing: bodies keep their
+    /// [`d3::Transform`](crate::d3::Transform) and [`Velocity3D`],
+    /// characters and vehicles don't move (a [`Character3D`]'s velocity is
+    /// kept, so a jump goes on where it stopped), joints and ragdolls hold,
+    /// no [`CollisionStarted`] or [`CollisionStopped`] events are sent and no
+    /// contact hook runs, and ray, shape and overlap queries see the bodies
+    /// where the last step left them. Bodies spawned, changed or despawned
+    /// meanwhile are picked up by the first step after the pause. In a
+    /// window, [`interpolate_physics3d`] draws bodies at their last pose
+    /// instead of blending. Headless runs honour it like windowed ones. The
+    /// flag belongs to this service, not the world: saves don't keep it and
+    /// loading one doesn't clear it.
+    ///
+    /// ```
+    /// use ponko::prelude::*;
+    ///
+    /// fn pause_menu(ctx: &mut Ctx) {
+    ///     if ctx.input.key_pressed(Key::Escape) {
+    ///         let held = ctx.physics3d.is_paused();
+    ///         ctx.physics3d.set_paused(!held);
+    ///     }
+    /// }
+    ///
+    /// let game = Game::new("Pause", 800, 600)
+    ///     .physics3d(vec3(0.0, -9.81, 0.0))
+    ///     .sim_system(pause_menu);
+    /// # let _ = game;
+    /// ```
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    /// `true` while [`set_paused`](Self::set_paused) holds the step.
+    #[must_use]
+    pub fn is_paused(&self) -> bool {
+        self.paused
     }
 
     /// How many bodies are simulated (characters included).
@@ -1075,7 +1122,13 @@ pub(crate) fn start(ctx: &mut Ctx, gravity: Vec3) {
 /// velocities back, and sends [`CollisionStarted`] / [`CollisionStopped`]
 /// events. Added by [`Game::physics3d`](crate::game::Game::physics3d); remove or
 /// reorder it like any other system.
+///
+/// Does nothing while [`ctx.physics3d.set_paused(true)`](Physics3D::set_paused)
+/// holds it.
 pub fn step_physics3d(ctx: &mut Ctx) {
+    if ctx.physics3d.paused {
+        return;
+    }
     let dt = ctx.time.dt();
     step(&mut ctx.physics3d, &mut ctx.world, &mut ctx.events, dt);
 }
@@ -1201,12 +1254,18 @@ fn step(physics: &mut Physics3D, world: &mut World, events: &mut Events, dt: f32
 /// frame system by [`Game::physics3d`](crate::game::Game::physics3d), so camera
 /// code sees the blended pose too. Does nothing in headless runs, where
 /// frames and ticks line up. Transforms you changed since the last step are
-/// left alone (they teleport the body at the next step).
+/// left alone (they teleport the body at the next step). While
+/// [`set_paused`](Physics3D::set_paused) holds the step, bodies are drawn
+/// where the last step left them, so they don't sway between two poses.
 pub fn interpolate_physics3d(ctx: &mut Ctx) {
     if ctx.headless {
         return;
     }
-    let alpha = ctx.time.fixed_alpha().clamp(0.0, 1.0);
+    let alpha = if ctx.physics3d.paused {
+        1.0
+    } else {
+        ctx.time.fixed_alpha().clamp(0.0, 1.0)
+    };
     let physics = &mut ctx.physics3d;
     if physics.links.is_empty() {
         return;

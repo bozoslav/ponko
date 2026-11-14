@@ -2150,7 +2150,8 @@ impl Game {
     /// a game that pauses behind a menu still sees the scenario input that
     /// closes it. To hold only physics (a pause screen whose sim systems keep
     /// running, in a window and headless alike), use
-    /// [`Physics::set_paused`](crate::d2::Physics::set_paused). Textures
+    /// [`Physics::set_paused`](crate::d2::Physics::set_paused) (2D) or
+    /// `ctx.physics3d.set_paused` (3D, feature `physics3d`). Textures
     /// still load (for their sizes), but nothing is uploaded to a GPU.
     ///
     /// ```
