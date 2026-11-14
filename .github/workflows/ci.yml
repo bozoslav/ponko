@@ -1091,9 +1091,10 @@ jobs:
       # for a sound server. Without one (as on a bare runner) WebKit's
       # content process crashes ("double free or corruption", after
       # GStreamer's PulseAudio device provider fails to connect) as soon as
-      # a page opens an AudioContext, which every game does at its first
-      # click (src/audio/unlock.rs). A PulseAudio server with a null sink is
-      # the runner's sound card, so the fixtures' music plays in WebKit too.
+      # a page asks an AudioContext for its output channels, which the
+      # engine does when it opens its audio at a game's first click
+      # (src/audio/unlock.rs). A PulseAudio server with a null sink is the
+      # runner's sound card, so the fixtures' music plays in WebKit too.
       - name: A sound server for WebKit (PulseAudio with a null sink)
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -1106,8 +1107,14 @@ jobs:
       - name: WebKit, WebGL2 (2D and 3D fixtures)
         # WebKit on Linux plays Web Audio and media through GStreamer: its
         # warnings land in the browser's output (browser.log in the report).
+        # WebKit reads an AudioContext's output channels from GStreamer's
+        # list of audio devices, and on the runner that list comes back
+        # empty (it is read before the device providers have started), so
+        # maxChannelCount is 0 and the engine's audio output refuses to open
+        # (0 buffers played). The null sink is stereo: say so.
         env:
           GST_DEBUG: "2"
+          WEBKIT_GST_MAX_NUMBER_OF_AUDIO_OUTPUT_CHANNELS: "2"
         timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
@@ -1119,8 +1126,14 @@ jobs:
       - name: WebKit, WebGPU
         # WebKit on Linux plays Web Audio and media through GStreamer: its
         # warnings land in the browser's output (browser.log in the report).
+        # WebKit reads an AudioContext's output channels from GStreamer's
+        # list of audio devices, and on the runner that list comes back
+        # empty (it is read before the device providers have started), so
+        # maxChannelCount is 0 and the engine's audio output refuses to open
+        # (0 buffers played). The null sink is stereo: say so.
         env:
           GST_DEBUG: "2"
+          WEBKIT_GST_MAX_NUMBER_OF_AUDIO_OUTPUT_CHANNELS: "2"
         timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser webkit --backend webgpu --allow-unsupported

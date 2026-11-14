@@ -135,12 +135,18 @@ A hung run is not retried: so far every hang has been a real, repeatable
 failure, and a retry would hide the next one. CI also gives each browser step
 a `timeout-minutes` of a few minutes.
 
-WebKit on Linux needs a sound server. It opens its audio output through
-GStreamer, and without a sound server its content process crashes as soon as
-a page opens an AudioContext, which every game does at its first click (the
-log shows GStreamer's PulseAudio device provider failing to connect, then
-"double free or corruption"). CI starts PulseAudio with a null sink before
-the WebKit runs; do the same on a headless Linux machine
+WebKit on Linux needs a sound server and a channel count. It opens its audio
+output through GStreamer and reads an AudioContext's output channels
+(`destination.maxChannelCount`) from GStreamer's list of audio devices.
+Without a sound server its content process crashes when a page asks, which
+the engine does when it opens its audio at a game's first click (the log
+shows GStreamer's PulseAudio device provider failing to connect, then
+"double free or corruption"). With one, the list can still come back empty,
+the count is 0, and the engine's audio output refuses to open (the report's
+`audio` shows a running context with 0 output channels and 0 buffers). CI
+starts PulseAudio with a null sink and sets
+`WEBKIT_GST_MAX_NUMBER_OF_AUDIO_OUTPUT_CHANNELS=2` for the WebKit runs; do
+the same on a headless Linux machine
 (`pulseaudio --daemonize=yes --exit-idle-time=-1`, then
 `pactl load-module module-null-sink`).
 

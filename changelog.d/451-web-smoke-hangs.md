@@ -3,8 +3,10 @@
   WebKit on Linux crashed its content process when a game opened its audio at
   the first click, because the runner had no sound server, and the runner
   waited for the crashed page forever. CI now starts a PulseAudio server with a
-  null sink before the WebKit runs, so the fixtures' music plays there too
-  (`web/smoke/README.md` says how to do the same on a headless Linux machine).
+  null sink before the WebKit runs and tells WebKit the output is stereo (its
+  device scan reported 0 output channels there, so the engine's audio could
+  not open), so the fixtures' music plays there too. `web/smoke/README.md`
+  says how to do the same on a headless Linux machine.
 
 ### Changed
 - The web smoke runner can no longer hang. Once the page is open every browser
