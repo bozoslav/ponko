@@ -164,7 +164,7 @@ pub(crate) fn load(
     have: &dyn Fn(&str) -> bool,
 ) -> Result<Loaded, String> {
     let gltf = gltf::Gltf::from_slice(bytes).map_err(|e| format!("{name}: not a glTF file: {e}"))?;
-    let folder = name.rfind('/').map_or("", |i| &name[..=i]);
+    let folder = folder_of(name);
     let mut buffers = Vec::new();
     for buffer in gltf.buffers() {
         let data = match buffer.source() {
@@ -853,6 +853,13 @@ fn fetch(uri: &str, folder: &str, read: &mut dyn FnMut(&str) -> Result<Vec<u8>, 
     read(&format!("{folder}{file}"))
 }
 
+/// The folder part of asset name `name`, with its trailing separator: what
+/// relative URIs in it are joined to. `\\` counts too, for a file loaded by an
+/// absolute Windows path.
+fn folder_of(name: &str) -> &str {
+    name.rfind(['/', '\\']).map_or("", |i| &name[..=i])
+}
+
 /// `%20` and friends in file names.
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
@@ -913,6 +920,14 @@ mod tests {
         assert_eq!(base64("AAEC").unwrap(), [0, 1, 2]);
         assert!(base64("a$").is_err());
         assert_eq!(percent_decode("my%20tree.bin"), "my tree.bin");
+    }
+
+    #[test]
+    fn buffers_are_looked_up_next_to_the_file_with_either_separator() {
+        assert_eq!(folder_of("models/tree.gltf"), "models/");
+        assert_eq!(folder_of(r"C:\Temp\x\tree.gltf"), r"C:\Temp\x\");
+        assert_eq!(folder_of(r"D:\a\crate/../tree.gltf"), r"D:\a\crate/../");
+        assert_eq!(folder_of("tree.gltf"), "");
     }
 
     fn to_base64(bytes: &[u8]) -> String {

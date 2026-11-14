@@ -122,9 +122,17 @@ fn a_write_the_disk_refuses_leaves_the_old_file() {
     std::fs::create_dir_all(dir.join("b.json")).unwrap();
     assert_eq!(files.write("b.json", b"new").unwrap_err().kind(), ErrorKind::Io);
     assert!(!dir.join("b.json.tmp").exists(), "the temporary file is cleaned up");
-    // A folder in the way of the storage folder itself.
-    let blocked = Storage::in_folder(dir.join("a.json").join("below"));
+    // A file where the storage folder should be.
+    let blocked = Storage::in_folder(dir.join("a.json"));
     assert_eq!(blocked.list().unwrap_err().kind(), ErrorKind::Io);
+    // A file in the way of the storage folder's path. Windows reports that
+    // path as not found (a folder not made yet, so no files), Unix as "not a
+    // directory".
+    #[cfg(unix)]
+    {
+        let below = Storage::in_folder(dir.join("a.json").join("below"));
+        assert_eq!(below.list().unwrap_err().kind(), ErrorKind::Io);
+    }
     assert_eq!(files.read("a.json").unwrap(), b"old");
     let _ = std::fs::remove_dir_all(dir);
 }

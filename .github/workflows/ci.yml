@@ -519,7 +519,7 @@ jobs:
             echo "no render test opened a device on the forced tier" && exit 1
           fi
           echo "render tests run: $(grep -c 'render test ran \[' tier.log), skipped with a reason: $(grep -c 'render test SKIPPED \[' tier.log)"
-          exit $status
+          exit "$status"
       # Every image comparison's measured difference, passed or failed
       # (target/render-test-output/comparisons.log): the margins on this
       # runner's adapter.
@@ -830,15 +830,27 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     runs-on: ubuntu-latest
     # Miri interprets every instruction; tests shrink their sizes under
-    # cfg(miri). The timeout catches a regression instead of hanging CI.
-    timeout-minutes: 20
+    # cfg(miri). The timeout catches a hang instead of blocking CI. The
+    # stacked-borrows run is split three ways (about 25 minutes in one job on
+    # a hosted runner), each part well under the timeout.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Our unsafe code under the strict model, without rayon.
-          - name: ECS, stacked borrows
-            args: --tests --no-default-features --features derive
+          # Our unsafe code under the strict model, without rayon, in three
+          # parts run side by side (see the step below for what each holds).
+          - name: ECS, stacked borrows, 1/3
+            shard: 1
+            args: --no-default-features --features derive
+            flags: ""
+          - name: ECS, stacked borrows, 2/3
+            shard: 2
+            args: --no-default-features --features derive
+            flags: ""
+          - name: ECS, stacked borrows, 3/3
+            shard: 3
+            args: --no-default-features --features derive
             flags: ""
           # The parallel path. rayon's dependency crossbeam-epoch trips Stacked
           # Borrows (not our code), and its global pool outlives main.
@@ -857,7 +869,34 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - run: cargo miri test -p ponko_ecs --no-fail-fast ${{ matrix.args }}
+      # Parts 1 and 2 take the slowest test files under Miri, by hand;
+      # part 3 the library's unit tests and every other file in tests/, so
+      # a new file is never left out. A file named here that's gone fails
+      # the step.
+      - name: cargo miri test
+        env:
+          SHARD: ${{ matrix.shard }}
+          ARGS: ${{ matrix.args }}
+        run: |
+          part1="archetype_alloc borrows_alloc differential views_alloc"
+          part2="queries changes query_cache_differential commands_alloc"
+          targets=()
+          case "$SHARD" in
+            1) for t in $part1; do targets+=(--test "$t"); done ;;
+            2) for t in $part2; do targets+=(--test "$t"); done ;;
+            3)
+              targets+=(--lib)
+              for f in crates/ponko_ecs/tests/*.rs; do
+                t=$(basename "$f" .rs)
+                case " $part1 $part2 " in
+                  *" $t "*) ;;
+                  *) targets+=(--test "$t") ;;
+                esac
+              done
+              ;;
+          esac
+          # shellcheck disable=SC2086 # ARGS holds several flags
+          cargo miri test -p ponko_ecs --no-fail-fast $ARGS "${targets[@]}"
 
   native:
     name: C and C++ (${{ matrix.os }})
@@ -1027,10 +1066,17 @@ jobs:
           web/build.sh --features 3d web_smoke_3d
           web/build.sh coin_dash
           web/build.sh --features physics ember_hop
+      # Each browser step has its own deadline (a few minutes per run; a run
+      # takes seconds), on top of the runner's own (a deadline on every
+      # browser call and --run-timeout per run, failing as "browser-hang"
+      # with the browser's last output): a browser that stops answering
+      # fails its step instead of using up the job's hour.
       # Chromium, WebGL2 (WebGPU hidden, the fallback path).
       - name: Chromium, WebGL2, 2D fixture
+        timeout-minutes: 5
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend webgl2 --chrome-trace
       - name: Chromium, WebGL2, 3D fixture
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke_3d --browser chromium --backend webgl2
       # The complete-game reference (examples/coin_dash): its coin picture is
@@ -1039,15 +1085,18 @@ jobs:
       # screen, Escape closing it again; see fixtures.json). The web build
       # keeps no progress yet (no files in a browser).
       - name: Chromium, WebGL2, coin_dash (assets, a click, keys, screens)
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture coin_dash --browser chromium --backend webgl2
       # WebGPU: the headless shell, then the full browser's new headless mode
       # with software Vulkan (a WebGPU canvas is presented through its
       # compositor). Each passes only if it draws or is reported unsupported.
       - name: Chromium, WebGPU, headless shell
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend webgpu --allow-unsupported
       - name: Chromium, WebGPU, new headless mode (2D and 3D fixtures)
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1057,6 +1106,7 @@ jobs:
           done
           exit $status
       - name: Chromium, whatever the engine picks
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend auto --allow-unsupported
       # WebKit: WebGL2 must pass; WebGPU is reported. Firefox: both are
@@ -1064,6 +1114,7 @@ jobs:
       # (also with Mesa's software GL installed), so "unsupported" passes
       # here with its reason; anything else it does wrong still fails.
       - name: Firefox, WebGL2 (2D and 3D fixtures; reported where it has no WebGL2)
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1072,9 +1123,38 @@ jobs:
           done
           exit $status
       - name: Firefox, WebGPU
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser firefox --backend webgpu --allow-unsupported
+      # WebKit on Linux opens its audio output through GStreamer, which looks
+      # for a sound server. Without one (as on a bare runner) WebKit's
+      # content process crashes ("double free or corruption", after
+      # GStreamer's PulseAudio device provider fails to connect) as soon as
+      # a page asks an AudioContext for its output channels, which the
+      # engine does when it opens its audio at a game's first click
+      # (src/audio/unlock.rs). A PulseAudio server with a null sink is the
+      # runner's sound card, so the fixtures' music plays in WebKit too.
+      - name: A sound server for WebKit (PulseAudio with a null sink)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: |
+          bash scripts/ci-retry.sh sudo apt-get install -y --no-install-recommends pulseaudio pulseaudio-utils
+          pulseaudio --check || pulseaudio --daemonize=yes --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci_null
+          pactl set-default-sink ci_null
+          pactl info
       - name: WebKit, WebGL2 (2D and 3D fixtures)
+        # WebKit on Linux plays Web Audio and media through GStreamer: its
+        # warnings land in the browser's output (browser.log in the report).
+        # WebKit reads an AudioContext's output channels from GStreamer's
+        # list of audio devices, and on the runner that list comes back
+        # empty (it is read before the device providers have started), so
+        # maxChannelCount is 0 and the engine's audio output refuses to open
+        # (0 buffers played). The null sink is stereo: say so.
+        env:
+          GST_DEBUG: "2"
+          WEBKIT_GST_MAX_NUMBER_OF_AUDIO_OUTPUT_CHANNELS: "2"
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1083,10 +1163,22 @@ jobs:
           done
           exit $status
       - name: WebKit, WebGPU
+        # WebKit on Linux plays Web Audio and media through GStreamer: its
+        # warnings land in the browser's output (browser.log in the report).
+        # WebKit reads an AudioContext's output channels from GStreamer's
+        # list of audio devices, and on the runner that list comes back
+        # empty (it is read before the device providers have started), so
+        # maxChannelCount is 0 and the engine's audio output refuses to open
+        # (0 buffers played). The null sink is stereo: say so.
+        env:
+          GST_DEBUG: "2"
+          WEBKIT_GST_MAX_NUMBER_OF_AUDIO_OUTPUT_CHANNELS: "2"
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser webkit --backend webgpu --allow-unsupported
       # The runner itself: each broken build must be caught as that failure.
       - name: Self-tests (missing asset, startup panic, stalled simulation)
+        timeout-minutes: 10
         if: ${{ !cancelled() }}
         run: |
           for case in missing-asset panic stall; do
@@ -1099,6 +1191,7 @@ jobs:
       # effects) and a texture array's mipmaps, which need the renderer's
       # WebGL2 paths for them.
       - name: Web gallery pages (Chromium, WebGL2)
+        timeout-minutes: 15
         if: ${{ !cancelled() }}
         run: |
           node web/gallery/build.mjs --only sprites,3d,compute,terrain,shaders,target_effect

@@ -1,8 +1,10 @@
 //! Levels from Tiled and LDtk, parallax, animated and flipped tiles,
 //! autotiling and tile colliders through the C API. The levels are the
 //! engine's test fixtures (`tests/fixtures/tilemaps`).
+mod common;
+use common::{last_error, run_game};
 use ponko_ffi::*;
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::{CStr, CString, c_char};
 use std::ptr::{null, null_mut};
 
 use PonkoStatus::*;
@@ -24,9 +26,11 @@ struct Run {
     status: Option<PonkoStatus>,
 }
 
-unsafe extern "C" fn spawn(ctx: *mut PonkoCtx, user: *mut c_void) {
+/// Spawns `run`'s level in `ctx`, keeping its status, root and entities.
+/// Called through [`run_game`], so a failed assertion here is an ordinary
+/// test failure, not a panic across the C boundary.
+unsafe fn spawn(ctx: *mut PonkoCtx, run: &mut Run) {
     unsafe {
-        let run = &mut *user.cast::<Run>();
         let options = run.options.as_ref().map_or(null(), |o| o as *const _);
         let at = PonkoVec2 { x: 0.0, y: 0.0 };
         let status = ponko_ctx_spawn_level(ctx, run.path.as_ref().unwrap().as_ptr(), at, options, &mut run.root);
@@ -50,13 +54,7 @@ fn spawn_level(run: &mut Run) -> *mut PonkoWorld {
     unsafe {
         let game = ponko_game_new(c"levels".as_ptr(), 64, 64);
         assert_eq!(ponko_game_physics(game, PonkoVec2 { x: 0.0, y: 0.0 }), PONKO_OK);
-        let mut world = null_mut();
-        let user = (run as *mut Run).cast();
-        assert_eq!(
-            ponko_game_run_headless(game, 0, Some(spawn), user, &mut world),
-            PONKO_OK
-        );
-        world
+        run_game(game, 0, |ctx| spawn(ctx, run))
     }
 }
 
@@ -173,15 +171,6 @@ fn ldtk_options_pick_the_level_and_name_solid_values() {
     unsafe { ponko_world_free(w) };
 }
 
-unsafe extern "C" fn spawn_and_despawn(ctx: *mut PonkoCtx, user: *mut c_void) {
-    unsafe {
-        spawn(ctx, user);
-        let run = &mut *user.cast::<Run>();
-        assert_eq!(ponko_ctx_despawn_level(ctx, run.root), PONKO_OK);
-        assert_eq!(ponko_ctx_despawn_level(ctx, run.root), PONKO_NOT_FOUND);
-    }
-}
-
 #[test]
 fn despawning_a_level_removes_everything_it_spawned() {
     let mut run = Run {
@@ -190,12 +179,12 @@ fn despawning_a_level_removes_everything_it_spawned() {
     };
     unsafe {
         let game = ponko_game_new(c"levels".as_ptr(), 64, 64);
-        let mut w = null_mut();
-        let user = (&mut run as *mut Run).cast();
-        assert_eq!(
-            ponko_game_run_headless(game, 0, Some(spawn_and_despawn), user, &mut w),
-            PONKO_OK
-        );
+        let w = run_game(game, 0, |ctx| {
+            spawn(ctx, &mut run);
+            assert_eq!(run.status, Some(PONKO_OK), "{}", last_error());
+            assert_eq!(ponko_ctx_despawn_level(ctx, run.root), PONKO_OK);
+            assert_eq!(ponko_ctx_despawn_level(ctx, run.root), PONKO_NOT_FOUND);
+        });
         for &e in &run.entities {
             let mut alive = true;
             assert_eq!(ponko_is_alive(w, e, &mut alive), PONKO_OK);

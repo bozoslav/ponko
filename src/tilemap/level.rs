@@ -471,9 +471,11 @@ pub(super) fn parse_color(s: &str) -> Option<Color> {
 }
 
 /// Resolves `rel` (a path in file `base`) to an asset name: relative to
-/// `base`'s folder, with `.` and `..` worked out.
+/// `base`'s folder, with `.` and `..` worked out. Both may use `\\` (Windows)
+/// or `/`; the result uses `/`. An absolute `rel` (`/x`, `C:/x`) stays as is.
 pub(super) fn resolve(base: &str, rel: &str) -> String {
     let rel = rel.replace('\\', "/");
+    let base = base.replace('\\', "/");
     let joined = if rel.starts_with('/') || rel.contains(':') {
         rel
     } else {
@@ -487,9 +489,14 @@ pub(super) fn resolve(base: &str, rel: &str) -> String {
         match part {
             "." => {}
             "" if !parts.is_empty() => {}
-            ".." if parts.last().is_some_and(|p| *p != ".." && !p.is_empty()) => {
-                parts.pop();
-            }
+            ".." => match parts.last() {
+                // Never above the root or a drive (`C:`).
+                Some(p) if p.is_empty() || p.ends_with(':') => {}
+                Some(p) if *p != ".." => {
+                    parts.pop();
+                }
+                _ => parts.push(".."),
+            },
             p => parts.push(p),
         }
     }
@@ -1082,6 +1089,27 @@ mod tests {
         assert_eq!(resolve("one.tmx", "ground.png"), "ground.png");
         assert_eq!(resolve("/tmp/x/one.tmx", "../t.png"), "/tmp/t.png");
         assert_eq!(resolve("a/b.tmx", "../../t.png"), "../t.png");
+    }
+
+    #[test]
+    fn windows_paths_resolve_against_their_folder_on_every_os() {
+        // A level loaded from an absolute Windows path finds its tileset
+        // next to it, not in `assets/`.
+        assert_eq!(
+            resolve(r"C:\Users\RUNNER~1\Temp\lvl\level.tmx", "ground.tsx"),
+            "C:/Users/RUNNER~1/Temp/lvl/ground.tsx"
+        );
+        // Mixed separators, as from `concat!(env!("CARGO_MANIFEST_DIR"), "/../x")`.
+        assert_eq!(
+            resolve(r"D:\a\repo\crates\c/../../tests/level.tmx", r"..\tiles\t.png"),
+            "D:/a/repo/tiles/t.png"
+        );
+        assert_eq!(resolve(r"levels\one.tmx", "ground.tsx"), "levels/ground.tsx");
+        // `..` stops at the drive and at the root.
+        assert_eq!(resolve(r"C:\one.tmx", "../../t.png"), "C:/t.png");
+        assert_eq!(resolve("/one.tmx", "../t.png"), "/t.png");
+        // Absolute references stay absolute.
+        assert_eq!(resolve(r"C:\a\one.tmx", r"D:\t.png"), "D:/t.png");
     }
 
     #[test]
