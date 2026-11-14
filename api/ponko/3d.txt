@@ -3086,6 +3086,19 @@ pub fn ponko::d3::ShadowMesh::fmt(&self, &mut core::fmt::Formatter<'_>) -> core:
 impl core::marker::Copy for ponko::d3::ShadowMesh
 impl core::marker::StructuralPartialEq for ponko::d3::ShadowMesh
 impl ponko_ecs::bundle::Component for ponko::d3::ShadowMesh
+pub struct ponko::d3::ShadowOnly
+impl core::clone::Clone for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::clone(&self) -> Self
+impl core::cmp::Eq for ponko::d3::ShadowOnly
+impl core::cmp::PartialEq for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::default() -> Self
+impl core::fmt::Debug for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::d3::ShadowOnly
+impl core::marker::StructuralPartialEq for ponko::d3::ShadowOnly
+impl ponko_ecs::bundle::Component for ponko::d3::ShadowOnly
 pub struct ponko::d3::Skeleton
 pub ponko::d3::Skeleton::pose: alloc::vec::Vec<ponko::d3::Transform>
 impl ponko::anim::Skeleton
@@ -7873,6 +7886,19 @@ pub fn ponko::d3::ShadowMesh::fmt(&self, &mut core::fmt::Formatter<'_>) -> core:
 impl core::marker::Copy for ponko::d3::ShadowMesh
 impl core::marker::StructuralPartialEq for ponko::d3::ShadowMesh
 impl ponko_ecs::bundle::Component for ponko::d3::ShadowMesh
+pub struct ponko::prelude::d3::ShadowOnly
+impl core::clone::Clone for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::clone(&self) -> Self
+impl core::cmp::Eq for ponko::d3::ShadowOnly
+impl core::cmp::PartialEq for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::default() -> Self
+impl core::fmt::Debug for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::d3::ShadowOnly
+impl core::marker::StructuralPartialEq for ponko::d3::ShadowOnly
+impl ponko_ecs::bundle::Component for ponko::d3::ShadowOnly
 pub struct ponko::prelude::d3::Skeleton
 pub ponko::prelude::d3::Skeleton::pose: alloc::vec::Vec<ponko::d3::Transform>
 impl ponko::anim::Skeleton
@@ -10705,6 +10731,19 @@ pub fn ponko::d3::ShadowMesh::fmt(&self, &mut core::fmt::Formatter<'_>) -> core:
 impl core::marker::Copy for ponko::d3::ShadowMesh
 impl core::marker::StructuralPartialEq for ponko::d3::ShadowMesh
 impl ponko_ecs::bundle::Component for ponko::d3::ShadowMesh
+pub struct ponko::render::ShadowOnly
+impl core::clone::Clone for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::clone(&self) -> Self
+impl core::cmp::Eq for ponko::d3::ShadowOnly
+impl core::cmp::PartialEq for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::default() -> Self
+impl core::fmt::Debug for ponko::d3::ShadowOnly
+pub fn ponko::d3::ShadowOnly::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::d3::ShadowOnly
+impl core::marker::StructuralPartialEq for ponko::d3::ShadowOnly
+impl ponko_ecs::bundle::Component for ponko::d3::ShadowOnly
 #[non_exhaustive] pub struct ponko::render::Sky
 pub ponko::render::Sky::atmosphere: bool
 pub ponko::render::Sky::equator_color: core::option::Option<ponko::color::Color>

@@ -12,8 +12,8 @@ use super::retained::SERIAL;
 use super::skin::{MeshSkin, SkinDraw};
 use super::{
     Assets3D, Camera3D, Lighting, LodGroup, LodLevel, LodRenderer, Material, Mesh, Model, ModelMaterial,
-    ModelMaterials, PointLight3D, ReceivesDecals, ShadowMesh, Skeleton, SkinFrame, SkinOf, SpotLight3D, TERRAIN_LODS,
-    TerrainTile, Transform3D,
+    ModelMaterials, PointLight3D, ReceivesDecals, ShadowMesh, ShadowOnly, Skeleton, SkinFrame, SkinOf, SpotLight3D,
+    TERRAIN_LODS, TerrainTile, Transform3D,
 };
 use crate::color::Color;
 use ponko_ecs::{Entity, World};
@@ -770,6 +770,59 @@ fn shadow_only_casters_follow_edits_too() {
     scene.check("camera");
 }
 
+/// How many instances the shadow views draw.
+fn shadow_instances(frame: &Frame3D) -> u32 {
+    frame.shadow_runs.iter().flatten().map(|r| r.2).sum()
+}
+
+fn shadow_only_models_cast_their_shadow_but_no_camera_draws_them() {
+    let mut scene = Scene::new(400);
+    let seen = scene.check("plain");
+    let casting = shadow_instances(&scene.frame);
+    assert!(seen > 0 && casting > 0);
+    let models = scene.models.clone();
+    for &e in &models {
+        scene.world.insert(e, ShadowOnly);
+    }
+    assert_eq!(scene.check("shadow only"), 0, "the camera draws none of them");
+    assert_eq!(shadow_instances(&scene.frame), casting, "every shadow still falls");
+    scene.world.get_mut::<Transform3D>(models[7]).unwrap().position.y = 1.0;
+    scene.camera.position.x += 3.0;
+    scene.check("moved while shadow only");
+    for &e in &models {
+        scene.world.remove::<ShadowOnly>(e);
+    }
+    scene.camera.position.x -= 3.0;
+    scene.world.get_mut::<Transform3D>(models[7]).unwrap().position.y = 0.0;
+    assert_eq!(scene.check("shown again"), seen);
+
+    // A skinned model: cast, not seen.
+    let body = scene.world.spawn((ShadowOnly,));
+    let matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 1.0));
+    scene.skins.draws = vec![SkinDraw {
+        mesh: 1,
+        instance: Instance3D {
+            model: matrix.to_cols_array_2d(),
+            color: [1.0; 4],
+        },
+        entity: body.to_bits(),
+        matrix,
+        scale: 1.0,
+        bounds: (Vec3::ZERO, 1.0),
+        first: 0,
+        morph_first: 0,
+        morph_count: 0,
+        material: u32::MAX,
+        parts: (0, 0),
+        lod: u32::MAX,
+        posed_motion: false,
+    }];
+    assert_eq!(scene.check("skinned, shadow only"), seen);
+    assert!(shadow_instances(&scene.frame) > casting, "its shadow falls");
+    scene.world.remove::<ShadowOnly>(body);
+    assert_eq!(scene.check("skinned, shown"), seen + 1);
+}
+
 fn a_kept_cascade_draws_nothing_and_is_right_when_its_turn_comes() {
     let mut scene = Scene::new(1500);
     scene.lighting.shadow_refresh = 4;
@@ -1238,6 +1291,7 @@ both_ways!(
     a_change_to_a_mesh_reaches_the_models_that_use_it,
     random_edits_always_draw_what_a_frame_built_from_nothing_draws,
     shadow_only_casters_follow_edits_too,
+    shadow_only_models_cast_their_shadow_but_no_camera_draws_them,
     a_kept_cascade_draws_nothing_and_is_right_when_its_turn_comes,
     models_are_counted_once_each_also_in_cascades_that_are_kept,
     moved_models_are_listed_with_where_they_were,

@@ -464,7 +464,7 @@ pub use crate::three::{
     GraphicsQuality, InstanceBatch, InstanceBatchOptions, InstanceLevel, Lighting, LodGroup, LodHysteresis, LodLevel,
     LodPick, LodRenderer, LodSettings, LodShadow, Material, MaterialDesc, Mesh, MeshCost, MeshData, Model,
     ModelMaterial, ModelMaterials, Post, ReceivesDecals, RenderPasses, SceneSettings, ScreenEffect, Shader,
-    ShadowFilter, ShadowMesh, Sky, StreamedLod, TargetCamera, TargetEffect, Tonemap,
+    ShadowFilter, ShadowMesh, ShadowOnly, Sky, StreamedLod, TargetCamera, TargetEffect, Tonemap,
 };
 /// Unstable extraction benchmark driver for `ponko_bench` (feature `bench-internals`).
 #[doc(hidden)]

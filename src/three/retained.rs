@@ -96,8 +96,8 @@ use glam::{Quat, Vec3};
 use super::collect::{Culler, FADED, Instance3D, MAX_CASCADES, MAX_SHADOW_VIEWS};
 use super::motion::{IdHasher, Motion, NO_KEY};
 use super::{
-    Assets3D, Model, ModelMaterial, ModelMaterials, ReceivesDecals, SLOT_MASK, ShadowMesh, Skeleton, SkinOf,
-    Transform3D, linear,
+    Assets3D, Model, ModelMaterial, ModelMaterials, ReceivesDecals, SLOT_MASK, ShadowMesh, ShadowOnly, Skeleton,
+    SkinOf, Transform3D, linear,
 };
 use ponko_ecs::{With, Without, World};
 
@@ -498,6 +498,8 @@ struct Source<'a> {
     parts: Option<&'a ModelMaterials>,
     /// Whether it has a [`Skeleton`].
     skeleton: bool,
+    /// Whether it has [`ShadowOnly`]: no view but the shadow maps draws it.
+    shadow_only: bool,
 }
 
 /// What a model's instance is made from: rotation, position, scale, tint,
@@ -516,10 +518,12 @@ type ModelItem<'a> = (
     Option<&'a ReceivesDecals>,
     Option<&'a ModelMaterial>,
     Option<&'a ModelMaterials>,
+    Option<&'a ShadowOnly>,
 );
 
 impl<'a> Source<'a> {
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn of(
         transform: &'a Transform3D,
         model: &'a Model,
@@ -528,6 +532,7 @@ impl<'a> Source<'a> {
         receives: Option<&ReceivesDecals>,
         material: Option<&ModelMaterial>,
         parts: Option<&'a ModelMaterials>,
+        shadow_only: Option<&ShadowOnly>,
     ) -> Self {
         Self {
             transform,
@@ -541,7 +546,15 @@ impl<'a> Source<'a> {
             material: material.map_or(NONE, |o| o.0.id),
             parts: parts.filter(|p| !p.raw().is_empty()),
             skeleton: skeleton.is_some(),
+            shadow_only: shadow_only.is_some(),
         }
+    }
+
+    /// What of `flags` (see [`Culler::classify`]) draws it: all of them,
+    /// or only the shadow maps' for a [`ShadowOnly`] model.
+    #[inline]
+    fn shown(&self, flags: u32) -> u32 {
+        if self.shadow_only { flags & !1 } else { flags }
     }
 
     fn mesh(&self) -> u32 {
@@ -607,7 +620,9 @@ impl<'a> Source<'a> {
             join(receives.to_bits(), self.mesh()),
             join(self.shadow, self.material),
             // The part list by its content (most models have none).
-            u64::from(self.skeleton) | self.parts.map_or(0, |p| super::collect::Overrides::hash(p.raw()) << 1),
+            u64::from(self.skeleton)
+                | u64::from(self.shadow_only) << 1
+                | self.parts.map_or(0, |p| super::collect::Overrides::hash(p.raw()) << 2),
         ];
         let mut h = 0u64;
         for pair in 0..KEYS.len() / 2 {
@@ -974,8 +989,8 @@ impl Pass<'_> {
     /// only one model in [`SAMPLE`] is; the others are worked out and
     /// culled from their components alone. Returns what goes into
     /// `Tracked::results`.
-    fn check(&self, (entity, t, m, shadow, skeleton, receives, material, parts): ModelItem<'_>) -> u32 {
-        let source = Source::of(t, m, shadow, skeleton, receives, material, parts);
+    fn check(&self, (entity, t, m, shadow, skeleton, receives, material, parts, shadow_only): ModelItem<'_>) -> u32 {
+        let source = Source::of(t, m, shadow, skeleton, receives, material, parts, shadow_only);
         let find = || {
             let bits = entity.to_bits();
             match self.slot_of.get(entity.index() as usize) {
@@ -1001,7 +1016,7 @@ impl Pass<'_> {
         };
         if self.rush && !sampled(entity) {
             let derived = derive(source, self.assets, self.overrides);
-            let flags = self.culler.classify_spheres(derived.sphere, derived.caster_sphere);
+            let flags = source.shown(self.culler.classify_spheres(derived.sphere, derived.caster_sphere));
             if flags == 0 {
                 return UNCHANGED;
             }
@@ -1036,7 +1051,7 @@ impl Pass<'_> {
             cold.mesh.store(derived.mesh, Ordering::Relaxed);
             cold.caster.store(derived.caster, Ordering::Relaxed);
             hot.digest.store(digest, Ordering::Relaxed);
-            let flags = self.culler.classify_spheres(derived.sphere, derived.caster_sphere);
+            let flags = source.shown(self.culler.classify_spheres(derived.sphere, derived.caster_sphere));
             cold.pending.store(flags, Ordering::Relaxed);
             if flags != 0 {
                 if self.write_in_place(k, source, flags, derived.mesh, derived.caster) {
@@ -1052,7 +1067,7 @@ impl Pass<'_> {
             }
         } else if self.how.cull {
             let [x, y, z, r, cx, cy, cz, cr] = load(&self.spheres[k]);
-            let flags = self.culler.classify_spheres([x, y, z, r], [cx, cy, cz, cr]);
+            let flags = source.shown(self.culler.classify_spheres([x, y, z, r], [cx, cy, cz, cr]));
             if flags != was {
                 cold.pending.store(flags, Ordering::Relaxed);
                 if flags != 0 {
@@ -1181,20 +1196,22 @@ impl Tracked {
         let mut tally = Tally::default();
         let mut models = world.query::<ModelItem<'_>>().filter::<Without<SkinOf>>();
         if !rush {
-            models.for_each(|(entity, t, m, shadow, skeleton, receives, material, parts)| {
-                let k = match self.find(entity) {
-                    Some(k) => {
-                        found += 1;
-                        k
-                    }
-                    None => {
-                        new += 1;
-                        self.admit(entity, lists)
-                    }
-                };
-                let source = Source::of(t, m, shadow, skeleton, receives, material, parts);
-                self.settle(k, source, &frame, &mut tally, lists, arena, motion);
-            });
+            models.for_each(
+                |(entity, t, m, shadow, skeleton, receives, material, parts, shadow_only)| {
+                    let k = match self.find(entity) {
+                        Some(k) => {
+                            found += 1;
+                            k
+                        }
+                        None => {
+                            new += 1;
+                            self.admit(entity, lists)
+                        }
+                    };
+                    let source = Source::of(t, m, shadow, skeleton, receives, material, parts, shadow_only);
+                    self.settle(k, source, &frame, &mut tally, lists, arena, motion);
+                },
+            );
             if !how.force {
                 self.rush_if_most_changed(&tally);
             }
@@ -1206,19 +1223,21 @@ impl Tracked {
         // in `SAMPLE` is still compared, to tell when the models settle.
         let mut now = std::mem::take(&mut self.fresh_drawn);
         now.clear();
-        models.for_each(|(entity, t, m, shadow, skeleton, receives, material, parts)| {
-            let source = Source::of(t, m, shadow, skeleton, receives, material, parts);
-            if sampled(entity) {
-                new += self.rush_sampled(entity, source, &frame, &mut tally, &mut now, lists, arena, motion);
-                return;
-            }
-            let derived = derive(source, assets, overrides);
-            let flags = culler.classify_spheres(derived.sphere, derived.caster_sphere);
-            if flags != 0 {
-                let seen = (flags, derived.mesh, derived.caster);
-                new += self.rush_drawn(entity, source, seen, &frame, &mut now, lists, arena, motion);
-            }
-        });
+        models.for_each(
+            |(entity, t, m, shadow, skeleton, receives, material, parts, shadow_only)| {
+                let source = Source::of(t, m, shadow, skeleton, receives, material, parts, shadow_only);
+                if sampled(entity) {
+                    new += self.rush_sampled(entity, source, &frame, &mut tally, &mut now, lists, arena, motion);
+                    return;
+                }
+                let derived = derive(source, assets, overrides);
+                let flags = source.shown(culler.classify_spheres(derived.sphere, derived.caster_sphere));
+                if flags != 0 {
+                    let seen = (flags, derived.mesh, derived.caster);
+                    new += self.rush_drawn(entity, source, seen, &frame, &mut now, lists, arena, motion);
+                }
+            },
+        );
         self.end_rush_frame(now, &tally, lists, arena);
         // Which tracked models are gone is found when the rush ends.
         (self.live, new)
@@ -1367,11 +1386,11 @@ impl Tracked {
             let cold = &mut self.cold[k];
             *cold.mesh.get_mut() = derived.mesh;
             *cold.caster.get_mut() = derived.caster;
-            flags = (frame.culler).classify_spheres(derived.sphere, derived.caster_sphere);
+            flags = source.shown((frame.culler).classify_spheres(derived.sphere, derived.caster_sphere));
             (mesh, caster) = (derived.mesh, derived.caster);
         } else if frame.how.cull {
             let [x, y, z, r, cx, cy, cz, cr] = self.spheres[k].each_mut().map(|w| f32::from_bits(*w.get_mut()));
-            flags = frame.culler.classify_spheres([x, y, z, r], [cx, cy, cz, cr]);
+            flags = source.shown(frame.culler.classify_spheres([x, y, z, r], [cx, cy, cz, cr]));
             if flags == was {
                 return;
             }

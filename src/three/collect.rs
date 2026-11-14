@@ -7,8 +7,8 @@ use super::lights::MAX_LIGHT_SHADOW_VIEWS;
 use super::retained::{self, Lists, OverrideIds, Tracked, Transients};
 use super::{
     Assets3D, Camera3D, Lighting, LodGroup, LodHysteresis, LodPick, LodRenderer, LodSettings, LodShadow, Model,
-    ModelMaterial, ModelMaterials, ReceivesDecals, ShadowMesh, SkinFrame, TERRAIN_LODS, TerrainTile, Transform3D,
-    linear,
+    ModelMaterial, ModelMaterials, ReceivesDecals, ShadowMesh, ShadowOnly, SkinFrame, TERRAIN_LODS, TerrainTile,
+    Transform3D, linear,
 };
 use ponko_ecs::{Or, With, Without, World};
 
@@ -664,7 +664,13 @@ impl Frame3D {
                 continue;
             }
             let caster = assets.casts_shadows(d.mesh).then_some(d.bounds);
-            let f = classify_at(d.matrix, d.scale, d.bounds, caster);
+            // A `ShadowOnly` model: only the shadow maps (not counted as
+            // hidden from the camera, which never draws it).
+            let f = if world.has::<ShadowOnly>(ponko_ecs::Entity::from_bits(d.entity)) {
+                classify_uncounted(d.matrix, d.scale, d.bounds, caster) & !(1 | OCCLUDED)
+            } else {
+                classify_at(d.matrix, d.scale, d.bounds, caster)
+            };
             if f != 0 {
                 touch(
                     (d.entity, retained::SKINNED),
