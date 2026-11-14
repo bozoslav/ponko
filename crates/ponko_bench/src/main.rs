@@ -11,6 +11,8 @@ mod archetypes;
 mod ecs_suite;
 mod extraction;
 #[cfg(feature = "render")]
+mod lights2d;
+#[cfg(feature = "render")]
 mod lod_split;
 mod membership;
 mod nav3d;
@@ -228,6 +230,8 @@ fn main() {
     record::run(&mut b);
     #[cfg(feature = "render")]
     lod_split::run(&mut b);
+    #[cfg(feature = "render")]
+    lights2d::run(&mut b);
     #[cfg(feature = "render")]
     let render = render_scenes::run(&mut b);
     #[cfg(not(feature = "render"))]

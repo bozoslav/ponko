@@ -57,6 +57,8 @@ pub(crate) struct Renderer {
     panel_cameras: Vec<(wgpu::Buffer, wgpu::BindGroup)>,
     /// Blend modes and sprite materials: their pipelines and bind groups.
     sprite_pipelines: super::sprite_pipelines::SpritePipelines,
+    /// 2D lighting's passes, made the first frame lighting is on.
+    lights2d: Option<super::lights2d::Lights2D>,
     texture_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     nearest_sampler: wgpu::Sampler,
@@ -201,6 +203,7 @@ pub(super) fn sprite_pipeline_with(
 }
 
 /// What one sprite pass draws with.
+#[derive(Clone, Copy)]
 pub(super) struct SpritePass<'a> {
     pub(super) viewport: [u32; 2],
     pub(super) scale: f32,
@@ -209,6 +212,13 @@ pub(super) struct SpritePass<'a> {
     pub(super) textures: &'a [GpuTexture],
     /// Camera, batches, and where the layer's instances start in `instances`.
     pub(super) layers: &'a [(&'a wgpu::BindGroup, &'a [batch::Batch], u32)],
+}
+
+/// What 2D lighting draws over the world's sprites this frame.
+pub(super) struct Lighting<'a> {
+    pub(super) lights: &'a super::lights2d::Lights2D,
+    pub(super) frame: &'a crate::light2d::LightFrame2D,
+    pub(super) normal_maps: &'a [Option<crate::texture::Texture>],
 }
 
 /// An offscreen copy of one frame on its way back to the CPU.
@@ -651,6 +661,7 @@ impl Renderer {
             panel_pipeline: None,
             panel_cameras: Vec::new(),
             sprite_pipelines,
+            lights2d: None,
             texture_layout,
             sampler,
             nearest_sampler,
@@ -1558,6 +1569,7 @@ impl Renderer {
         world_view: Mat4,
         ui_view: Mat4,
         capture: bool,
+        lights: &crate::light2d::Lighting2D,
     ) -> FrameStatus {
         // `None` when the window can't be drawn to right now; a requested
         // screenshot is still drawn (offscreen), so it never waits on the
@@ -1763,6 +1775,35 @@ impl Renderer {
                     .prepare(&self.device, &self.textures, batches, panel_format);
             }
         }
+        // 2D lighting: its lights and shadows, for the passes after the
+        // world's sprites. Nothing at all while it's off.
+        let lit = lights.frame.on;
+        if lit {
+            let lights2d = self.lights2d.get_or_insert_with(|| {
+                super::lights2d::Lights2D::new(
+                    &self.device,
+                    &self.queue,
+                    self.view_format,
+                    &self.camera_layout,
+                    &self.texture_layout,
+                )
+            });
+            lights2d.prepare(
+                &self.device,
+                &self.queue,
+                &lights.frame,
+                world_view,
+                [self.config.width, self.config.height],
+                &lights.normal_maps,
+                &self.textures,
+                world_batches,
+            );
+        }
+        let lighting = self.lights2d.as_ref().filter(|_| lit).map(|l| Lighting {
+            lights: l,
+            frame: &lights.frame,
+            normal_maps: &lights.normal_maps,
+        });
         // World sprites first, then the UI on top.
         let layers = [
             (&self.camera_bind_group, world_batches, 0),
@@ -1828,13 +1869,14 @@ impl Renderer {
         if let Some(view) = &view {
             let timer = self.timer.as_ref();
             let sprite_clear = self.draw_3d(&mut buffers_3d, view, clear, timer);
-            Self::sprite_pass_with(
+            Self::sprites_lit(
                 &mut encoder,
                 view,
                 sprite_clear,
-                timer.and_then(|t| t.pass("sprites")),
+                timer,
                 &pass,
                 Some((&self.sprite_pipelines, self.view_format)),
+                lighting.as_ref(),
             );
         }
         // A screenshot draws the same sprites a second time, into a texture
@@ -1843,13 +1885,14 @@ impl Renderer {
             let target = Capture::new(&self.device, self.config.width, self.config.height, self.view_format);
             let target_view = target.texture.create_view(&wgpu::TextureViewDescriptor::default());
             let sprite_clear = self.draw_3d(&mut buffers_3d, &target_view, clear, None);
-            Self::sprite_pass_with(
+            Self::sprites_lit(
                 &mut encoder,
                 &target_view,
                 sprite_clear,
                 None,
                 &pass,
                 Some((&self.sprite_pipelines, self.view_format)),
+                lighting.as_ref(),
             );
             target.copy(&mut encoder);
             target
@@ -2021,6 +2064,51 @@ impl Renderer {
         p: &SpritePass<'_>,
     ) {
         Self::sprite_pass_with(encoder, view, clear, timestamp_writes, p, None);
+    }
+
+    /// The sprite pass, lit: without `lighting`, exactly
+    /// [`sprite_pass_with`](Self::sprite_pass_with); with it, the first
+    /// layer (the world), the 2D lighting passes over it, then the other
+    /// layers (the UI) unlit on top.
+    pub(super) fn sprites_lit(
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        clear: Option<Color>,
+        timer: Option<&GpuTimer>,
+        p: &SpritePass<'_>,
+        looks: Option<(&super::sprite_pipelines::SpritePipelines, wgpu::TextureFormat)>,
+        lighting: Option<&Lighting<'_>>,
+    ) {
+        let (Some(lighting), Some((world, rest))) = (lighting, p.layers.split_first()) else {
+            Self::sprite_pass_with(encoder, view, clear, timer.and_then(|t| t.pass("sprites")), p, looks);
+            return;
+        };
+        let world_only = SpritePass {
+            layers: std::slice::from_ref(world),
+            ..*p
+        };
+        Self::sprite_pass_with(
+            encoder,
+            view,
+            clear,
+            timer.and_then(|t| t.pass("sprites")),
+            &world_only,
+            looks,
+        );
+        lighting.lights.draw(
+            encoder,
+            view,
+            lighting.frame,
+            *world,
+            p.instances,
+            p.textures,
+            lighting.normal_maps,
+            timer.and_then(|t| t.pass("2d lights")),
+        );
+        let rest = SpritePass { layers: rest, ..*p };
+        if !rest.layers.iter().all(|(_, batches, _)| batches.is_empty()) {
+            Self::sprite_pass_with(encoder, view, None, None, &rest, looks);
+        }
     }
 
     /// [`sprite_pass`](Self::sprite_pass) with the blend modes' and sprite

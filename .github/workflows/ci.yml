@@ -1042,12 +1042,18 @@ jobs:
           web/build.sh --features 3d web_smoke_3d
           web/build.sh coin_dash
           web/build.sh --features physics ember_hop
+          web/build.sh lights2d
       # Chromium, WebGL2 (WebGPU hidden, the fallback path).
       - name: Chromium, WebGL2, 2D fixture
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend webgl2 --chrome-trace
       - name: Chromium, WebGL2, 3D fixture
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke_3d --browser chromium --backend webgl2
+      # 2D lights (examples/lights2d): the light map, stencil shadows and
+      # normal maps on WebGL2.
+      - name: Chromium, WebGL2, 2D lights
+        if: ${{ !cancelled() }}
+        run: node web/smoke/smoke.mjs --fixture lights2d --browser chromium --backend webgl2
       # The complete-game reference (examples/coin_dash): its coin picture is
       # fetched and decoded, a click and keys reach it, and the screens it
       # reports follow them (play, pause, title, the retained-UI settings

@@ -1202,6 +1202,27 @@ impl core::fmt::Debug for ponko::camera::Camera2D
 pub fn ponko::camera::Camera2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko::camera::Camera2D
 impl core::marker::StructuralPartialEq for ponko::camera::Camera2D
+#[repr(C)] pub struct ponko::d2::DirectionalLight2D
+pub ponko::d2::DirectionalLight2D::color: ponko::color::Color
+pub ponko::d2::DirectionalLight2D::direction: glam::f32::vec2::Vec2
+pub ponko::d2::DirectionalLight2D::elevation: f32
+pub ponko::d2::DirectionalLight2D::intensity: f32
+pub ponko::d2::DirectionalLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::DirectionalLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::DirectionalLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::DirectionalLight2D
+impl serde_core::ser::Serialize for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::DirectionalLight2D where ponko::light2d::DirectionalLight2D: core::default::Default
+pub fn ponko::light2d::DirectionalLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::d2::FlowField
 impl ponko::flow::FlowField
 pub fn ponko::flow::FlowField::compute(&mut self, &ponko::flow::NavGrid, &[glam::f32::vec2::Vec2])
@@ -1339,6 +1360,25 @@ pub fn ponko::flow::NavGrid::eq(&self, &Self) -> bool
 impl core::fmt::Debug for ponko::flow::NavGrid
 pub fn ponko::flow::NavGrid::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for ponko::flow::NavGrid
+pub struct ponko::d2::Occluder2D
+impl ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::circle(f32) -> Self
+pub fn ponko::light2d::Occluder2D::edges(&self) -> &[[glam::f32::vec2::Vec2; 2]]
+pub fn ponko::light2d::Occluder2D::line(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+pub fn ponko::light2d::Occluder2D::polygon(&[glam::f32::vec2::Vec2]) -> Self
+pub fn ponko::light2d::Occluder2D::rect(glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for ponko::light2d::Occluder2D
+impl ponko_ecs::bundle::Component for ponko::light2d::Occluder2D
+impl serde_core::ser::Serialize for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::d2::ParticleCurve(_)
 impl ponko::particles::ParticleCurve
 pub fn ponko::particles::ParticleCurve::keys(&self) -> &[(f32, f32)]
@@ -1448,6 +1488,28 @@ impl core::fmt::Debug for ponko::d2::PlacedTile
 pub fn ponko::d2::PlacedTile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko::d2::PlacedTile
 impl core::marker::StructuralPartialEq for ponko::d2::PlacedTile
+#[repr(C)] pub struct ponko::d2::PointLight2D
+pub ponko::d2::PointLight2D::color: ponko::color::Color
+pub ponko::d2::PointLight2D::falloff: f32
+pub ponko::d2::PointLight2D::height: f32
+pub ponko::d2::PointLight2D::intensity: f32
+pub ponko::d2::PointLight2D::radius: f32
+pub ponko::d2::PointLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::PointLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::PointLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::PointLight2D
+impl serde_core::ser::Serialize for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::PointLight2D where ponko::light2d::PointLight2D: core::default::Default
+pub fn ponko::light2d::PointLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::d2::Properties(pub alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>)
 impl ponko::d2::Properties
 pub fn ponko::d2::Properties::bool(&self, &str) -> core::option::Option<bool>
@@ -1491,6 +1553,30 @@ impl<T: core::fmt::Debug> core::fmt::Debug for ponko::spatial::SpatialGrid<T>
 pub fn ponko::spatial::SpatialGrid<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: core::marker::Copy + core::marker::Send + core::marker::Sync> core::default::Default for ponko::spatial::SpatialGrid<T>
 pub fn ponko::spatial::SpatialGrid<T>::default() -> Self
+#[repr(C)] pub struct ponko::d2::SpotLight2D
+pub ponko::d2::SpotLight2D::angle: f32
+pub ponko::d2::SpotLight2D::color: ponko::color::Color
+pub ponko::d2::SpotLight2D::falloff: f32
+pub ponko::d2::SpotLight2D::height: f32
+pub ponko::d2::SpotLight2D::intensity: f32
+pub ponko::d2::SpotLight2D::radius: f32
+pub ponko::d2::SpotLight2D::shadows: bool
+pub ponko::d2::SpotLight2D::softness: f32
+impl core::clone::Clone for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::SpotLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::SpotLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::SpotLight2D
+impl serde_core::ser::Serialize for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::SpotLight2D where ponko::light2d::SpotLight2D: core::default::Default
+pub fn ponko::light2d::SpotLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::d2::Sprite
 pub ponko::d2::Sprite::color: ponko::color::Color
 pub ponko::d2::Sprite::pivot: glam::f32::vec2::Vec2
@@ -1647,6 +1733,8 @@ pub fn ponko::tilemap::TileMap::tile_at(&self, glam::f32::vec2::Vec2, glam::f32:
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::autotile(&mut self, &ponko::d2::AutoTile, impl core::ops::function::Fn(u32, u32) -> bool)
 pub fn ponko::tilemap::TileMap::paint_autotile(&mut self, &ponko::d2::AutoTile, u32, u32, bool)
+impl ponko::tilemap::TileMap
+pub fn ponko::tilemap::TileMap::occluder(&self, impl core::ops::function::Fn(u16) -> bool) -> ponko::light2d::Occluder2D
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::solid_rects(&self, impl core::ops::function::Fn(u16) -> bool) -> alloc::vec::Vec<ponko::camera::Rect>
 impl core::clone::Clone for ponko::tilemap::TileMap
@@ -3920,6 +4008,11 @@ pub fn ponko::game::Plugin::setup(&self, &mut ponko::prelude::Ctx)
 pub mod ponko::gfx
 pub struct ponko::gfx::Graphics
 impl ponko::gfx::Graphics
+pub fn ponko::gfx::Graphics::ambient_light2d(&self) -> core::option::Option<ponko::color::Color>
+pub fn ponko::gfx::Graphics::normal_map(&self, ponko::texture::Texture) -> core::option::Option<ponko::texture::Texture>
+pub fn ponko::gfx::Graphics::set_ambient_light2d(&mut self, core::option::Option<ponko::color::Color>)
+pub fn ponko::gfx::Graphics::set_normal_map(&mut self, ponko::texture::Texture, core::option::Option<ponko::texture::Texture>)
+impl ponko::gfx::Graphics
 pub fn ponko::gfx::Graphics::asset_error(&self, ponko::streaming::ResidencyKind, &str) -> core::option::Option<&ponko::error::Error>
 pub fn ponko::gfx::Graphics::asset_state(&self, ponko::streaming::ResidencyKind, &str) -> ponko::streaming::AssetState
 pub fn ponko::gfx::Graphics::set_deterministic_uploads(&mut self, bool)
@@ -4573,6 +4666,93 @@ impl core::marker::Copy for ponko::inventory::GpuResidency
 impl core::marker::StructuralPartialEq for ponko::inventory::GpuResidency
 impl serde_core::ser::Serialize for ponko::inventory::GpuResidency
 pub fn ponko::inventory::GpuResidency::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub mod ponko::light2d
+#[repr(C)] pub struct ponko::light2d::DirectionalLight2D
+pub ponko::light2d::DirectionalLight2D::color: ponko::color::Color
+pub ponko::light2d::DirectionalLight2D::direction: glam::f32::vec2::Vec2
+pub ponko::light2d::DirectionalLight2D::elevation: f32
+pub ponko::light2d::DirectionalLight2D::intensity: f32
+pub ponko::light2d::DirectionalLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::DirectionalLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::DirectionalLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::DirectionalLight2D
+impl serde_core::ser::Serialize for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::DirectionalLight2D where ponko::light2d::DirectionalLight2D: core::default::Default
+pub fn ponko::light2d::DirectionalLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+pub struct ponko::light2d::Occluder2D
+impl ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::circle(f32) -> Self
+pub fn ponko::light2d::Occluder2D::edges(&self) -> &[[glam::f32::vec2::Vec2; 2]]
+pub fn ponko::light2d::Occluder2D::line(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+pub fn ponko::light2d::Occluder2D::polygon(&[glam::f32::vec2::Vec2]) -> Self
+pub fn ponko::light2d::Occluder2D::rect(glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for ponko::light2d::Occluder2D
+impl ponko_ecs::bundle::Component for ponko::light2d::Occluder2D
+impl serde_core::ser::Serialize for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[repr(C)] pub struct ponko::light2d::PointLight2D
+pub ponko::light2d::PointLight2D::color: ponko::color::Color
+pub ponko::light2d::PointLight2D::falloff: f32
+pub ponko::light2d::PointLight2D::height: f32
+pub ponko::light2d::PointLight2D::intensity: f32
+pub ponko::light2d::PointLight2D::radius: f32
+pub ponko::light2d::PointLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::PointLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::PointLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::PointLight2D
+impl serde_core::ser::Serialize for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::PointLight2D where ponko::light2d::PointLight2D: core::default::Default
+pub fn ponko::light2d::PointLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[repr(C)] pub struct ponko::light2d::SpotLight2D
+pub ponko::light2d::SpotLight2D::angle: f32
+pub ponko::light2d::SpotLight2D::color: ponko::color::Color
+pub ponko::light2d::SpotLight2D::falloff: f32
+pub ponko::light2d::SpotLight2D::height: f32
+pub ponko::light2d::SpotLight2D::intensity: f32
+pub ponko::light2d::SpotLight2D::radius: f32
+pub ponko::light2d::SpotLight2D::shadows: bool
+pub ponko::light2d::SpotLight2D::softness: f32
+impl core::clone::Clone for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::SpotLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::SpotLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::SpotLight2D
+impl serde_core::ser::Serialize for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::SpotLight2D where ponko::light2d::SpotLight2D: core::default::Default
+pub fn ponko::light2d::SpotLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub mod ponko::nav
 pub struct ponko::nav::FlowField
 impl ponko::flow::FlowField
@@ -6008,6 +6188,27 @@ impl core::fmt::Debug for ponko::camera::Camera2D
 pub fn ponko::camera::Camera2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko::camera::Camera2D
 impl core::marker::StructuralPartialEq for ponko::camera::Camera2D
+#[repr(C)] pub struct ponko::prelude::d2::DirectionalLight2D
+pub ponko::prelude::d2::DirectionalLight2D::color: ponko::color::Color
+pub ponko::prelude::d2::DirectionalLight2D::direction: glam::f32::vec2::Vec2
+pub ponko::prelude::d2::DirectionalLight2D::elevation: f32
+pub ponko::prelude::d2::DirectionalLight2D::intensity: f32
+pub ponko::prelude::d2::DirectionalLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::DirectionalLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::DirectionalLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::DirectionalLight2D
+impl serde_core::ser::Serialize for ponko::light2d::DirectionalLight2D
+pub fn ponko::light2d::DirectionalLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::DirectionalLight2D where ponko::light2d::DirectionalLight2D: core::default::Default
+pub fn ponko::light2d::DirectionalLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::prelude::d2::FlowField
 impl ponko::flow::FlowField
 pub fn ponko::flow::FlowField::compute(&mut self, &ponko::flow::NavGrid, &[glam::f32::vec2::Vec2])
@@ -6145,6 +6346,25 @@ pub fn ponko::flow::NavGrid::eq(&self, &Self) -> bool
 impl core::fmt::Debug for ponko::flow::NavGrid
 pub fn ponko::flow::NavGrid::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for ponko::flow::NavGrid
+pub struct ponko::prelude::d2::Occluder2D
+impl ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::circle(f32) -> Self
+pub fn ponko::light2d::Occluder2D::edges(&self) -> &[[glam::f32::vec2::Vec2; 2]]
+pub fn ponko::light2d::Occluder2D::line(glam::f32::vec2::Vec2, glam::f32::vec2::Vec2) -> Self
+pub fn ponko::light2d::Occluder2D::polygon(&[glam::f32::vec2::Vec2]) -> Self
+pub fn ponko::light2d::Occluder2D::rect(glam::f32::vec2::Vec2) -> Self
+impl core::clone::Clone for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for ponko::light2d::Occluder2D
+impl ponko_ecs::bundle::Component for ponko::light2d::Occluder2D
+impl serde_core::ser::Serialize for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::Occluder2D
+pub fn ponko::light2d::Occluder2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::prelude::d2::ParticleCurve(_)
 impl ponko::particles::ParticleCurve
 pub fn ponko::particles::ParticleCurve::keys(&self) -> &[(f32, f32)]
@@ -6254,6 +6474,28 @@ impl core::fmt::Debug for ponko::d2::PlacedTile
 pub fn ponko::d2::PlacedTile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko::d2::PlacedTile
 impl core::marker::StructuralPartialEq for ponko::d2::PlacedTile
+#[repr(C)] pub struct ponko::prelude::d2::PointLight2D
+pub ponko::prelude::d2::PointLight2D::color: ponko::color::Color
+pub ponko::prelude::d2::PointLight2D::falloff: f32
+pub ponko::prelude::d2::PointLight2D::height: f32
+pub ponko::prelude::d2::PointLight2D::intensity: f32
+pub ponko::prelude::d2::PointLight2D::radius: f32
+pub ponko::prelude::d2::PointLight2D::shadows: bool
+impl core::clone::Clone for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::PointLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::PointLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::PointLight2D
+impl serde_core::ser::Serialize for ponko::light2d::PointLight2D
+pub fn ponko::light2d::PointLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::PointLight2D where ponko::light2d::PointLight2D: core::default::Default
+pub fn ponko::light2d::PointLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::prelude::d2::Properties(pub alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>)
 impl ponko::d2::Properties
 pub fn ponko::d2::Properties::bool(&self, &str) -> core::option::Option<bool>
@@ -6297,6 +6539,30 @@ impl<T: core::fmt::Debug> core::fmt::Debug for ponko::spatial::SpatialGrid<T>
 pub fn ponko::spatial::SpatialGrid<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: core::marker::Copy + core::marker::Send + core::marker::Sync> core::default::Default for ponko::spatial::SpatialGrid<T>
 pub fn ponko::spatial::SpatialGrid<T>::default() -> Self
+#[repr(C)] pub struct ponko::prelude::d2::SpotLight2D
+pub ponko::prelude::d2::SpotLight2D::angle: f32
+pub ponko::prelude::d2::SpotLight2D::color: ponko::color::Color
+pub ponko::prelude::d2::SpotLight2D::falloff: f32
+pub ponko::prelude::d2::SpotLight2D::height: f32
+pub ponko::prelude::d2::SpotLight2D::intensity: f32
+pub ponko::prelude::d2::SpotLight2D::radius: f32
+pub ponko::prelude::d2::SpotLight2D::shadows: bool
+pub ponko::prelude::d2::SpotLight2D::softness: f32
+impl core::clone::Clone for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::eq(&self, &Self) -> bool
+impl core::default::Default for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::default() -> Self
+impl core::fmt::Debug for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko::light2d::SpotLight2D
+impl core::marker::StructuralPartialEq for ponko::light2d::SpotLight2D
+impl ponko_ecs::bundle::Component for ponko::light2d::SpotLight2D
+impl serde_core::ser::Serialize for ponko::light2d::SpotLight2D
+pub fn ponko::light2d::SpotLight2D::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::light2d::SpotLight2D where ponko::light2d::SpotLight2D: core::default::Default
+pub fn ponko::light2d::SpotLight2D::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 pub struct ponko::prelude::d2::Sprite
 pub ponko::prelude::d2::Sprite::color: ponko::color::Color
 pub ponko::prelude::d2::Sprite::pivot: glam::f32::vec2::Vec2
@@ -6453,6 +6719,8 @@ pub fn ponko::tilemap::TileMap::tile_at(&self, glam::f32::vec2::Vec2, glam::f32:
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::autotile(&mut self, &ponko::d2::AutoTile, impl core::ops::function::Fn(u32, u32) -> bool)
 pub fn ponko::tilemap::TileMap::paint_autotile(&mut self, &ponko::d2::AutoTile, u32, u32, bool)
+impl ponko::tilemap::TileMap
+pub fn ponko::tilemap::TileMap::occluder(&self, impl core::ops::function::Fn(u16) -> bool) -> ponko::light2d::Occluder2D
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::solid_rects(&self, impl core::ops::function::Fn(u16) -> bool) -> alloc::vec::Vec<ponko::camera::Rect>
 impl core::clone::Clone for ponko::tilemap::TileMap
@@ -11957,6 +12225,8 @@ pub fn ponko::tilemap::TileMap::tile_at(&self, glam::f32::vec2::Vec2, glam::f32:
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::autotile(&mut self, &ponko::d2::AutoTile, impl core::ops::function::Fn(u32, u32) -> bool)
 pub fn ponko::tilemap::TileMap::paint_autotile(&mut self, &ponko::d2::AutoTile, u32, u32, bool)
+impl ponko::tilemap::TileMap
+pub fn ponko::tilemap::TileMap::occluder(&self, impl core::ops::function::Fn(u16) -> bool) -> ponko::light2d::Occluder2D
 impl ponko::tilemap::TileMap
 pub fn ponko::tilemap::TileMap::solid_rects(&self, impl core::ops::function::Fn(u16) -> bool) -> alloc::vec::Vec<ponko::camera::Rect>
 impl core::clone::Clone for ponko::tilemap::TileMap

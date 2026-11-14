@@ -181,6 +181,7 @@ pub mod inventory;
 
 #[cfg(feature = "inspector")]
 mod inspector;
+pub mod light2d;
 mod logs;
 #[cfg(feature = "navmesh")]
 mod nav3d;

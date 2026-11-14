@@ -20,6 +20,8 @@ pub use crate::ecs::{Sprite, Transform2D as Transform};
 #[doc(no_inline)]
 pub use crate::flow::{FlowField, NavGrid};
 #[doc(no_inline)]
+pub use crate::light2d::{DirectionalLight2D, Occluder2D, PointLight2D, SpotLight2D};
+#[doc(no_inline)]
 pub use crate::particles::{
     ParticleCurve, ParticleEmitter2D as ParticleEmitter, ParticleGradient, ParticleSettings2D as ParticleSettings,
     ParticleShape2D as ParticleShape, ParticleSpace,

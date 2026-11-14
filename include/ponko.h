@@ -1084,6 +1084,34 @@ typedef struct PonkoLevelObject {
   bool visible;
 } PonkoLevelObject;
 
+typedef struct PonkoPointLight2D {
+  struct PonkoColor color;
+  float intensity;
+  float radius;
+  float falloff;
+  float height;
+  bool shadows;
+} PonkoPointLight2D;
+
+typedef struct PonkoSpotLight2D {
+  struct PonkoColor color;
+  float intensity;
+  float radius;
+  float falloff;
+  float height;
+  float angle;
+  float softness;
+  bool shadows;
+} PonkoSpotLight2D;
+
+typedef struct PonkoDirectionalLight2D {
+  struct PonkoColor color;
+  float intensity;
+  struct PonkoVec2 direction;
+  float elevation;
+  bool shadows;
+} PonkoDirectionalLight2D;
+
 typedef struct PonkoFont {
   uint32_t id;
 } PonkoFont;
@@ -3173,6 +3201,65 @@ enum PonkoStatus ponko_tilemap_spawn_colliders(struct PonkoWorld *world,
                                                const uint16_t *solid_tiles,
                                                size_t count,
                                                size_t *out_count);
+
+struct PonkoPointLight2D ponko_point_light2d_default(void);
+
+struct PonkoSpotLight2D ponko_spot_light2d_default(void);
+
+struct PonkoDirectionalLight2D ponko_directional_light2d_default(void);
+
+enum PonkoStatus ponko_point_light2d_component(struct PonkoWorld *world, uint32_t *out_id);
+
+enum PonkoStatus ponko_spot_light2d_component(struct PonkoWorld *world, uint32_t *out_id);
+
+enum PonkoStatus ponko_directional_light2d_component(struct PonkoWorld *world, uint32_t *out_id);
+
+enum PonkoStatus ponko_ctx_set_occluder2d_rect(struct PonkoCtx *ctx,
+                                               uint64_t entity_bits,
+                                               struct PonkoVec2 size);
+
+enum PonkoStatus ponko_ctx_set_occluder2d_circle(struct PonkoCtx *ctx,
+                                                 uint64_t entity_bits,
+                                                 float radius);
+
+enum PonkoStatus ponko_ctx_set_occluder2d_polygon(struct PonkoCtx *ctx,
+                                                  uint64_t entity_bits,
+                                                  const struct PonkoVec2 *points,
+                                                  size_t count);
+
+enum PonkoStatus ponko_ctx_set_occluder2d_line(struct PonkoCtx *ctx,
+                                               uint64_t entity_bits,
+                                               struct PonkoVec2 a,
+                                               struct PonkoVec2 b);
+
+enum PonkoStatus ponko_ctx_set_tilemap_occluder(struct PonkoCtx *ctx,
+                                                uint64_t entity_bits,
+                                                const uint16_t *solid_tiles,
+                                                size_t count);
+
+enum PonkoStatus ponko_ctx_remove_occluder2d(struct PonkoCtx *ctx, uint64_t entity_bits);
+
+enum PonkoStatus ponko_ctx_occluder2d_edge_count(struct PonkoCtx *ctx,
+                                                 uint64_t entity_bits,
+                                                 size_t *out_count);
+
+enum PonkoStatus ponko_ctx_set_ambient_light2d(struct PonkoCtx *ctx,
+                                               bool on,
+                                               struct PonkoColor color);
+
+enum PonkoStatus ponko_ctx_ambient_light2d(struct PonkoCtx *ctx,
+                                           bool *out_on,
+                                           struct PonkoColor *out_color);
+
+enum PonkoStatus ponko_ctx_set_normal_map(struct PonkoCtx *ctx,
+                                          struct PonkoTexture texture,
+                                          bool has_normal_map,
+                                          struct PonkoTexture normal_map);
+
+enum PonkoStatus ponko_ctx_normal_map(struct PonkoCtx *ctx,
+                                      struct PonkoTexture texture,
+                                      bool *out_has,
+                                      struct PonkoTexture *out_normal_map);
 
 enum PonkoStatus ponko_ctx_try_load_texture(struct PonkoCtx *ctx,
                                             const char *path,

@@ -27,5 +27,12 @@
     ],
     "afterReload": ["settings_at_start:Loaded", "storage:persistent"],
     "engineGpu": true
+  },
+  "lights2d": {
+    "example": "lights2d",
+    "asset": "crab.png",
+    "assetSize": "32x32",
+    "min": { "lights": 7 },
+    "engineGpu": true
   }
 }

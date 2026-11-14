@@ -46,6 +46,7 @@ mod handles;
 mod headless_ui;
 mod keys;
 mod levels;
+mod lights2d;
 mod loaders;
 mod media;
 mod messages;
@@ -137,6 +138,7 @@ pub use handles::*;
 pub use headless_ui::*;
 pub use keys::*;
 pub use levels::*;
+pub use lights2d::*;
 pub use loaders::*;
 pub use lod::*;
 pub use media::*;
@@ -636,6 +638,7 @@ pub(crate) fn component(world: &World, id: u32) -> Result<(ComponentId, Kind), F
             .or_else(|| crate::physics3d_stream::stream_kind(t))
             .or_else(|| crate::contacts3d::contact_kind(t))
             .or_else(|| crate::sprite_material::sprite_kind(t))
+            .or_else(|| crate::lights2d::light_kind(t))
         {
             Some(kind) => kind,
             None => {
