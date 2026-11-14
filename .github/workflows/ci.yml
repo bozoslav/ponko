@@ -280,10 +280,11 @@ jobs:
           - name: engine with text shaping and system fonts
             scope: -p ponko
             args: --no-default-features --features window,system-fonts
-          # On Linux this lints the feature's shared code and the path that
-          # does nothing; the macOS adapter itself is linted in the feature
-          # tests' macOS leg (a second macOS runner per pull request would
-          # cost more than the adapter's few hundred lines justify).
+          # On Linux this lints the feature's shared code, the AT-SPI adapter
+          # and its test; the macOS and Windows adapters are linted in the
+          # feature tests' macOS and Windows legs (more runners per pull
+          # request would cost more than the adapters' few hundred lines
+          # justify).
           - name: accessibility feature
             scope: -p ponko
             args: --features accessibility
@@ -646,19 +647,32 @@ jobs:
       - name: Tests, Steam transport
         if: ${{ !cancelled() }}
         run: cargo test -p ponko --no-fail-fast --features steam --lib net::steam
-      # The screen-reader adapter (opt-in). Every OS: the UI's semantics as
-      # AccessKit data, and that the feature builds. macOS: an `NSView` is
-      # asked what a screen reader asks, on the main thread, with no window
-      # (`ui_access_macos` does nothing on the other systems).
+      # The screen-reader adapters (opt-in). Every OS: the UI's semantics as
+      # AccessKit data, the adapter's own logic, and that the feature builds.
+      # macOS: an `NSView` is asked what a screen reader asks, on the main
+      # thread, with no window (`ui_access_macos`). Windows: a UI Automation
+      # client reads and operates a window that is never shown
+      # (`ui_access_platforms`). Each does nothing on the other systems.
       - name: Tests, accessibility adapter
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          cargo test -p ponko --no-fail-fast --features accessibility --lib ui::access_kit
-          cargo test -p ponko --no-fail-fast --features accessibility --test ui_access_macos --test ui_access --test ui_access_changes
-      # The only job where the macOS adapter's code is compiled: lint it here.
-      - name: Clippy, accessibility adapter (macOS)
-        if: ${{ !cancelled() && runner.os == 'macOS' }}
+          cargo test -p ponko --no-fail-fast --features accessibility --lib -- ui::access_kit ui::access_native
+          cargo test -p ponko --no-fail-fast --features accessibility --test ui_access_macos --test ui_access_platforms --test ui_access --test ui_access_changes
+      # Linux: the AT-SPI adapter on a private session bus with the
+      # accessibility bus launcher (at-spi2-core), read and operated over
+      # D-Bus as Orca does. No display is needed.
+      - name: Tests, accessibility adapter over AT-SPI (Linux)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        env:
+          PONKO_ACCESS_ATSPI: 1
+        run: |
+          bash scripts/ci-apt-install.sh at-spi2-core dbus
+          dbus-run-session -- cargo test -p ponko --no-fail-fast --features accessibility --test ui_access_platforms -- --nocapture
+      # The macOS and Windows adapters are compiled only in these jobs: lint
+      # them here (the clippy job lints the Linux one).
+      - name: Clippy, accessibility adapter (macOS, Windows)
+        if: ${{ !cancelled() && runner.os != 'Linux' }}
         run: |
           rustup component add clippy
           cargo clippy -p ponko --all-targets --features accessibility
@@ -950,7 +964,8 @@ jobs:
       # Compressed textures build for the browser; Basis Universal (C++) is
       # left out there, so UASTC files are an Unsupported error on the web.
       - run: cargo clippy -p ponko --target wasm32-unknown-unknown --features 3d,basis-universal
-      # The accessibility feature has no web adapter: it must build and do nothing.
+      # The accessibility feature has no web adapter (AccessKit has none for
+      # a canvas): it must build and do nothing.
       - run: cargo check -p ponko --target wasm32-unknown-unknown --features accessibility
       # Shaping works in the browser; system fonts build and report that the
       # web has none.

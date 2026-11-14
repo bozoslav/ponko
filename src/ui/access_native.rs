@@ -136,9 +136,8 @@ impl Outgoing<'_> {
 /// The engine makes one for the game's window and `ctx.ui` and drives it
 /// every frame; nothing needs to be called from game code. A custom host
 /// that owns its own window makes one with the constructor for its system
-/// ([`for_ns_view`](Self::for_ns_view) on macOS,
-/// [`for_hwnd`](Self::for_hwnd) on Windows, [`for_atspi`](Self::for_atspi)
-/// on Linux and the BSDs) and calls [`update`](Self::update) once a frame,
+/// (`for_ns_view` on macOS, `for_hwnd` on Windows, `for_atspi` on Linux
+/// and the BSDs; each exists only in builds for its system) and calls [`update`](Self::update) once a frame,
 /// after [`Ui::frame`].
 ///
 /// Until assistive technology asks for the tree the adapter does nothing:

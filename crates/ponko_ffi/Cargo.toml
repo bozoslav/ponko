@@ -33,7 +33,8 @@ inspector = ["ponko/inspector"]
 # Gamepads (ponko_ctx_gamepad_*). Off: no pads are ever connected.
 gamepad = ["ponko/gamepad"]
 # Screen readers read and operate the retained UI of the game's window
-# (macOS; builds and does nothing elsewhere). Off by default.
+# (macOS, Windows and Linux; builds and does nothing on the web). Off by
+# default.
 accessibility = ["window", "ponko/accessibility"]
 # 2D physics with rapier (ponko_game_physics, rigid bodies, colliders, rays).
 # Off: those calls fail with an error.

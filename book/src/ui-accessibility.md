@@ -10,6 +10,12 @@ evidence. C and C++ games get the same: build `ponko_ffi` with its
 from C++. All three records were made on macOS 27 on Apple silicon, with the
 game in its own window.
 
+On Windows and Linux the menu is read and operated through UI Automation
+and AT-SPI by the automatic tests (see the UI chapter); no record with
+NVDA, Narrator or Orca has been made yet, so what those screen readers say
+is not established here. [Windows and Linux](#windows-and-linux) below says
+how to hear it.
+
 | Record | Read by | What it shows |
 |---|---|---|
 | [From another process](#from-another-process) | a separate program, through the system accessibility API (`AXUIElement`) | what any assistive program receives, and that it can operate the game |
@@ -82,3 +88,25 @@ operates the menu through it. A focused element is marked.
    one step.
 5. On Quit, press VO-Space: only the dialog "Quit the game?" with Yes and No
    can be reached. Escape or No brings the menu back.
+
+## Windows and Linux
+
+The same menu, the same steps, with the screen reader of each system:
+
+- **Windows**: `cargo run --example ui_menu --features accessibility`, then
+  start Narrator (Ctrl-Win-Enter) or NVDA. Tab moves the engine's focus and
+  the screen reader should announce each control; the screen reader's
+  default action on Play should change the status line to "Started a run
+  for Ann". Narrator's scan mode or NVDA's object navigation also reach the
+  texts.
+  Accessibility Insights for Windows or `inspect.exe` from the Windows SDK
+  show the tree the adapter gives.
+- **Linux**: start Orca (Super-Alt-S on GNOME, or `orca`), then the example.
+  Orca follows the engine's focus as Tab moves it; Accerciser shows the
+  tree on the accessibility bus. The adapter starts only while the
+  desktop's accessibility is on, which Orca does.
+
+What to note for a record, as on macOS: what is said for each control, for
+the Play button's description, for the status line after Play (a polite live
+region), and for the Quit dialog, and whether the reading cursor can leave
+the dialog while it is open.

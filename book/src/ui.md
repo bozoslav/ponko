@@ -496,32 +496,42 @@ ponko = { version = "0.1", features = ["accessibility"] }
 Until assistive technology asks for the window's content the adapter does
 nothing: no snapshot is taken and nothing is allocated. After that it sends
 the whole tree once and then only the nodes that changed. A host that owns
-its own view instead of the engine's window makes a `UiAccessAdapter` itself
-(`UiAccessAdapter::for_ns_view`) and calls `update` once a frame after
-`Ui::frame`.
+its own window instead of the engine's makes a `UiAccessAdapter` itself
+(`UiAccessAdapter::for_ns_view` on macOS, `for_hwnd` on Windows,
+`for_atspi` on Linux) and calls `update` once a frame after `Ui::frame`.
 
 What is supported:
 
 | System | Adapter |
 |---|---|
-| macOS | Yes: `NSAccessibility` through AccessKit (VoiceOver and other `NSAccessibility` clients). |
-| Windows | None. The feature builds and does nothing. |
-| Linux | None. The feature builds and does nothing. |
-| Web | None: the canvas has no accessible content. The feature is not for `wasm32`. |
+| macOS | Yes: `NSAccessibility` on the window's view, through AccessKit (VoiceOver and other `NSAccessibility` clients). |
+| Windows | Yes: UI Automation on the window, through AccessKit (Narrator, NVDA, JAWS and other UI Automation clients). |
+| Linux | Yes: AT-SPI over D-Bus, through AccessKit (Orca and other AT-SPI clients), on X11 and Wayland. The BSDs use the same adapter. |
+| Web | None: the canvas has no accessible content, and AccessKit has no adapter for one. The feature builds and does nothing. |
 
-`UiAccessAdapter::SUPPORTED` says at compile time whether the build has one.
-The limits on macOS:
+All three desktop adapters get the same tree, focus and requests: roles,
+names, descriptions, values, checked and disabled states, modal dialogs and
+live regions; press, focus, set value, increment and decrement.
+`UiAccessAdapter::SUPPORTED` says at compile time whether the build has an
+adapter. The limits:
 
 - The window is named after the game's title, once: the engine has no call
   that renames its window while the game runs.
-- While a screen reader is reading the window, the engine leaves the event
-  loop idle for 4 ms between two vsync-paced frames, so that it can answer:
-  the system delivers a screen reader's questions through the event loop,
-  and a frame that waits for the display would answer one per frame
-  (measured: a read of the whole window took 1.7 to 1.9 s, and VoiceOver
-  called the game "not responding"; with the pause, 15 ms). A game whose
-  frame needs more than the rest of the refresh interval loses a refresh
-  while it is being read. The pause stays on once a screen reader has asked.
+- On macOS and Windows a screen reader's questions arrive through the event
+  loop. While one is reading the window, the engine leaves the event loop
+  idle for 4 ms between two vsync-paced frames, so that it can answer: a
+  frame that waits for the display would answer one question per frame
+  (measured on macOS: a read of the whole window took 1.7 to 1.9 s, and
+  VoiceOver called the game "not responding"; with the pause, 15 ms). A
+  game whose frame needs more than the rest of the refresh interval loses
+  a refresh while it is being read. The pause stays on once a screen reader
+  has asked. On Linux AT-SPI is answered on AccessKit's own thread from its
+  copy of the tree, so there is no pause.
+- On Linux the adapter starts only while the desktop's accessibility is on
+  (a screen reader such as Orca turns it on). If the screen reader quits
+  and starts again, the whole tree is sent again. Under Wayland a program
+  can't know where its window is, so the positions a screen reader gets are
+  relative to the window, not the screen.
 - Only `ctx.ui` is exposed. UI on surfaces in the world (`d3::UiPanel`), the
   immediate-mode calls (`draw_text`, `ui_label`) and the inspector are not.
 - A text input's text is read and can be replaced, but its caret and
@@ -531,31 +541,57 @@ The limits on macOS:
   screen reader's own scroll requests are not handled.
 - C and C++ games get the adapter the same way (it belongs to the engine's
   window) when `ponko_ffi` is built with its `accessibility` feature; there
-  is no C call to make an adapter for a view of your own.
+  is no C call to make an adapter for a window of your own.
 
 `examples/ui_menu.rs` is the sample menu for trying it: a title, a status
 line that is a live region, a described Play button, a named slider and text
 input, a toggle, and a Quit button that opens a modal dialog.
 
-How it is checked (the first two in `tests/ui_access_macos.rs`):
+How it is checked:
 
-- **Without a window** (every run, and CI's macOS leg): the adapter is
-  attached to a view that has no window and asked what VoiceOver asks
-  (children, role, title, value, help, enabled, focused, modal; press,
-  increment, decrement, set value, set focus), through this menu from Play
-  to the Quit dialog.
-- **In the engine's own window** (by hand, `PONKO_ACCESS_WINDOW=1 cargo test
-  --features accessibility --test ui_access_macos engine_window`): the game
-  runs with `Game::run`, which attaches the adapter to the window's content
-  view; a system of the game asks that view the same questions and operates
-  the menu through it. It opens a window for about a second, so CI doesn't
-  run it.
-
+- **The adapter's logic** (every run, every system): the tree, the changes
+  and the requests as AccessKit data (`ui::access_kit` unit tests), and the
+  adapter against a stand-in platform that keeps AccessKit's rules (nothing
+  until a screen reader asks, the whole tree first and after a restart,
+  requests from other threads), in `ui::access_native`.
+- **macOS without a window** (`tests/ui_access_macos.rs`, every run, and
+  CI's macOS leg): the adapter is attached to a view that has no window and
+  asked what VoiceOver asks (children, role, title, value, help, enabled,
+  focused, modal; press, increment, decrement, set value, set focus),
+  through this menu from Play to the Quit dialog.
+- **Windows through UI Automation** (`tests/ui_access_platforms.rs`, every
+  run on Windows, and CI's Windows leg): the menu runs with the adapter on a
+  window that is never shown, and a UI Automation client in the same
+  process reads names, control types, descriptions, values and toggle
+  states, then invokes Play, sets the slider and the name, moves focus,
+  toggles Music and opens and closes the Quit dialog, checking each result
+  through UI Automation.
+- **Linux through AT-SPI** (the same file, with `PONKO_ACCESS_ATSPI=1`
+  under `dbus-run-session` with `at-spi2-core` installed; CI's Linux leg
+  runs it): the adapter registers with a private accessibility bus, and a
+  client finds the window through the AT-SPI registry as Orca does, reads
+  roles, names, descriptions, values and states, operates the menu through
+  the Action, Value and Component interfaces, and turns accessibility off
+  and on again to check that the tree comes back whole.
+- **In the engine's own window on macOS** (by hand, `PONKO_ACCESS_WINDOW=1
+  cargo test --features accessibility --test ui_access_macos
+  engine_window`): the game runs with `Game::run`, which attaches the
+  adapter to the window's content view; a system of the game asks that view
+  the same questions and operates the menu through it. It opens a window
+  for about a second, so CI doesn't run it.
 - **From another process and with VoiceOver** (by hand, on a machine where
   the terminal has the Accessibility permission and VoiceOver may be
   scripted): the menu was read and operated through the system accessibility
   API from outside the game, and VoiceOver was run over it with its speech
   recorded.
+
+What the automatic checks can't show is what a screen reader makes of the
+tree: what NVDA, Narrator or Orca say, how their cursors move, whether they
+announce the live region, and whether the engine's own window (made by
+winit) is found and focused as expected. Those need the program with a
+screen reader on each system, by hand; until such records exist for Windows
+and Linux, the claim there is "the system's accessibility API reads and
+operates the menu", not "tested with NVDA and Orca".
 
 What each of these read and heard is in
 [Screen reader records](ui-accessibility.md).
