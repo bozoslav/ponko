@@ -1462,23 +1462,53 @@ fn apply_scene_bones(
                 .or_else(|| old_nodes.iter().position(|o| o.name == n.name))
         })
         .collect();
-    for clip in &mut skin.animations {
+    retarget_clips(&mut skin.animations, &old_nodes, &skin.nodes, &source_nodes);
+    skin.joints = joints
+        .iter()
+        .map(|i| included.iter().position(|j| j == i).expect("included joint"))
+        .collect();
+}
+
+/// Moves each clip's samples from the model file's nodes (`old`) onto the
+/// scene's (`nodes`; `sources[k]` is node `k`'s in `old`). A sample is a
+/// local transform relative to its node's parent in the model file. Where
+/// the scene keeps that parent, the sample already is the node's local
+/// transform there, as Unity's animation sets it: the scene's pose of the
+/// node (a prefab saved in a posed frame, say) is only its rest pose and is
+/// never added to the clip. A node whose parent changed (a root, now
+/// relative to the renderer, or a node now under another object) keeps its
+/// samples in place by the difference between the two rest poses.
+fn retarget_clips(
+    animations: &mut [crate::mesh::SkinAnimation],
+    old: &[crate::mesh::SkinNode],
+    nodes: &[crate::mesh::SkinNode],
+    sources: &[Option<usize>],
+) {
+    for clip in animations {
         let old_step = std::mem::take(&mut clip.step);
-        clip.step = source_nodes
+        clip.step = sources
             .iter()
             .map(|i| i.and_then(|i| old_step.get(i)).copied().unwrap_or_default())
             .collect();
-        let old = std::mem::take(&mut clip.nodes);
-        clip.nodes = source_nodes
+        let samples = std::mem::take(&mut clip.nodes);
+        clip.nodes = sources
             .iter()
-            .zip(&skin.nodes)
+            .zip(nodes)
             .map(|(source, node)| {
-                let Some(i) = source else {
+                let Some(i) = *source else {
                     return Vec::new();
                 };
-                let correction =
-                    Mat4::from_cols_array(&node.matrix) * Mat4::from_cols_array(&old_nodes[*i].matrix).inverse();
-                old.get(*i)
+                let same_parent = match (node.parent, old[i].parent) {
+                    (Some(p), Some(q)) => sources[p] == Some(q),
+                    _ => false,
+                };
+                let correction = if same_parent {
+                    Mat4::IDENTITY
+                } else {
+                    Mat4::from_cols_array(&node.matrix) * Mat4::from_cols_array(&old[i].matrix).inverse()
+                };
+                samples
+                    .get(i)
                     .map(|samples| {
                         samples
                             .iter()
@@ -1489,15 +1519,46 @@ fn apply_scene_bones(
             })
             .collect();
     }
-    skin.joints = joints
-        .iter()
-        .map(|i| included.iter().position(|j| j == i).expect("included joint"))
-        .collect();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn node(name: &str, parent: Option<usize>, matrix: Mat4) -> crate::mesh::SkinNode {
+        crate::mesh::SkinNode {
+            name: name.into(),
+            parent,
+            matrix: matrix.to_cols_array(),
+        }
+    }
+
+    #[test]
+    fn a_posed_scene_rest_is_not_added_to_the_clips_of_bones_it_keeps_under_their_parent() {
+        // The model file: a root and an arm at its bind pose. The scene was
+        // saved posed: the arm turned, the root moved and re-parented.
+        let bind = Mat4::from_rotation_x(0.1);
+        let posed = Mat4::from_rotation_x(1.2);
+        let old = [node("Root", None, Mat4::IDENTITY), node("Arm", Some(0), bind)];
+        let root_rest = Mat4::from_translation(Vec3::new(0.0, 1.0, 0.0));
+        let nodes = [node("Root", None, root_rest), node("Arm", Some(0), posed)];
+        let key = Mat4::from_rotation_x(0.7);
+        let mut clips = [crate::mesh::SkinAnimation {
+            name: "Wave".into(),
+            looping: true,
+            times: vec![0.0],
+            step: vec![[false; 3]; 2],
+            nodes: vec![vec![Mat4::IDENTITY.to_cols_array()], vec![key.to_cols_array()]],
+            morphs: vec![],
+        }];
+        retarget_clips(&mut clips, &old, &nodes, &[Some(0), Some(1)]);
+        let sample = |n: usize| Mat4::from_cols_array(&clips[0].nodes[n][0]);
+        // The arm plays its key as it is (not posed × bind⁻¹ × key).
+        assert!(sample(1).abs_diff_eq(key, 1e-6));
+        assert!(!sample(1).abs_diff_eq(posed * bind.inverse() * key, 1e-3));
+        // The root, now relative to another frame, keeps its place.
+        assert!(sample(0).abs_diff_eq(root_rest, 1e-6));
+    }
 
     #[test]
     fn mirroring_keeps_rotations_rotations() {
