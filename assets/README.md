@@ -13,6 +13,9 @@ crate; `branding/` does not.
 | `ember_hop/levels/*.tmx`, `cave.tsx` | Its two levels and the tileset, in the Tiled map editor's format | Made for that example (MIT or Apache-2.0) |
 | `ember_hop/prefabs/*.json`, `ember_hop/scenes/title.json` | Its prefabs and its title scene | Written for that example (MIT or Apache-2.0) |
 | `ember_hop/sounds/*.wav`, `ember_hop/music/cave.ogg` | Its sound effects and its music loop | Synthesized by a script for that example (MIT or Apache-2.0) |
+| `shard_grove/grove.glb` | The glTF level of the `shard_grove` 3D reference game: ground, walls, broken walls, pillars, a platform with a ramp, the gate's arch | Made for that example (MIT or Apache-2.0); see `examples/shard_grove/CONTENT-NOTICES.txt` |
+| `shard_grove/warden.glb`, `shard_grove/crawler.glb` | Its two skinned characters with their animation clips | Made for that example (MIT or Apache-2.0) |
+| `shard_grove/sounds/*.wav` | Its sound effects, the crawlers' hum and the wind loop | Synthesized for that example (MIT or Apache-2.0) |
 | `levels/beach.json`, `prefabs/*.json` | A scene and prefabs for the scenes chapter | Written for the engine (#50) |
 | `levels/meadow.tmx`, `levels/meadow.tsx`, `levels/meadow.png` | A Tiled map, its tileset and the tileset's image, for the `level` example and the tilemaps chapter | Written for the engine (#381); the image drawn by a script |
 | `tutorial_2d/cove.tmx`, `tutorial_2d/cove.tsx`, `tutorial_2d/tiles.png`, `tutorial_2d/crab.png` | The level, tileset and crab of the 2D tutorial (`tutorial_2d` example) | Made for the engine (#372); the images drawn and the level laid out by a script |

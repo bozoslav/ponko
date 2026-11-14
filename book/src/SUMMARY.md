@@ -42,6 +42,7 @@
 - [Headless runs and testing](headless.md)
 - [A complete game, packaged](packaging.md)
 - [Ember Hop: a platformer, start to finish](ember-hop.md)
+- [Shard Grove: a 3D game, start to finish](shard-grove.md)
 - [Web builds: games in the browser](web.md)
 - [C and C++](c-cpp.md)
 - [Naming and compatibility](naming.md)
