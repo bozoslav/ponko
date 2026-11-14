@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  BrowserHang,
   UsageError,
   canvasBackendOf,
   checkEngineGpu,
@@ -10,13 +11,16 @@ import {
   checkMusicBeforeClick,
   launchConfig,
   launchFailureKind,
+  logTail,
   musicAfterClick,
   parseArgs,
   parseFixtures,
   parseExpect,
   parseMin,
   parsePress,
+  startWatchdog,
   unsupportedReason,
+  withDeadline,
 } from "./lib.mjs";
 
 const fixtures = parseFixtures(readFileSync(new URL("./fixtures.json", import.meta.url), "utf8"));
@@ -204,4 +208,44 @@ test("after the click the music is heard in a running AudioContext", () => {
   assert.match(musicAfterClick({ audio_unlocked: false }, { contexts: ["running"], audible: 3 }), /audio_unlocked false/);
   assert.match(musicAfterClick(unlocked, { contexts: ["suspended"], audible: 3 }), /no running AudioContext/);
   assert.match(musicAfterClick(unlocked, { contexts: ["running"], audible: 0 }), /no buffer with sound/);
+});
+
+test("a browser call that never returns fails as browser-hang within its deadline", async () => {
+  const never = new Promise(() => {});
+  const started = Date.now();
+  await assert.rejects(withDeadline(never, 200, "clicking the canvas"), (e) => {
+    assert.ok(e instanceof BrowserHang);
+    assert.equal(e.kind, "browser-hang");
+    assert.match(e.message, /clicking the canvas did not return within 0.2s/);
+    return true;
+  });
+  const waited = Date.now() - started;
+  assert.ok(waited >= 150 && waited < 2000, `failed after ${waited} ms, not at the 200 ms deadline`);
+});
+
+test("a browser call within its deadline keeps its value and its own error", async () => {
+  assert.equal(await withDeadline(Promise.resolve(7), 1000, "x"), 7);
+  await assert.rejects(withDeadline(Promise.reject(new Error("page closed")), 1000, "x"), /page closed/);
+});
+
+test("the run's watchdog fires once at its deadline, and not after it is stopped", async () => {
+  let fired = 0;
+  startWatchdog(100, () => fired++);
+  const stop = startWatchdog(100, () => fired++);
+  stop();
+  await new Promise((ok) => setTimeout(ok, 300));
+  assert.equal(fired, 1);
+});
+
+test("a run's deadline is an argument, positive, and covers more than startup", () => {
+  assert.equal(parse("--fixture", "web_smoke").runTimeout, 300);
+  assert.ok(parse("--fixture", "web_smoke").runTimeout > parse("--fixture", "web_smoke").timeout * 2);
+  assert.equal(parse("--fixture", "web_smoke", "--run-timeout", "120").runTimeout, 120);
+  assert.throws(() => parse("--fixture", "web_smoke", "--run-timeout", "0"), UsageError);
+});
+
+test("a hang's message ends with the browser's last lines", () => {
+  const lines = Array.from({ length: 50 }, (_, i) => `line ${i}`);
+  const tail = logTail(lines, 3).split("\n");
+  assert.deepEqual(tail, ["  | line 47", "  | line 48", "  | line 49"]);
 });

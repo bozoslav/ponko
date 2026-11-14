@@ -20,13 +20,18 @@ export const CASES = {
 // must stay above STALL_AFTER in examples/common/web_smoke.rs, since a `stall`
 // run seen early (at tick 1) still advances that far.
 export const MIN_PROGRESS_TICKS = 60;
+// The longest one browser call may take once the game runs (reading the
+// state, a click, a key, a screenshot). Each takes well under a second; a
+// call that doesn't return means the browser hung or its page crashed.
+export const CALL_TIMEOUT_MS = 30_000;
 
 export class UsageError extends Error {}
 
 export const USAGE =
   "usage: smoke.mjs (--dir <built site> | --fixture <name> [--build]) [--browser chromium|firefox|webkit]\n" +
   "                 [--backend auto|webgpu|webgl2] [--case ok|missing-asset|panic|stall]\n" +
-  "                 [--out <artifacts dir>] [--timeout <startup seconds>] [--allow-unsupported]\n" +
+  "                 [--out <artifacts dir>] [--timeout <startup seconds>] [--run-timeout <seconds>]\n" +
+  "                 [--allow-unsupported]\n" +
   "                 [--asset <file under assets/>] [--asset-size <W>x<H>|none]\n" +
   "                 [--press <Key>=<field>:<value>]... [--min <field>=<number>]...\n" +
   "                 [--after-reload <field>:<value>]...\n" +
@@ -77,6 +82,7 @@ export function parseArgs(argv, fixtures = {}) {
     backend: "auto",
     case: "ok",
     timeout: 90,
+    runTimeout: 300,
     allowUnsupported: false,
     browserArgs: [],
     chromiumMode: "shell",
@@ -100,6 +106,7 @@ export function parseArgs(argv, fixtures = {}) {
       case "--case": args.case = value(); break;
       case "--out": args.out = value(); break;
       case "--timeout": args.timeout = Number(value()); break;
+      case "--run-timeout": args.runTimeout = Number(value()); break;
       case "--allow-unsupported": args.allowUnsupported = true; break;
       case "--browser-arg": args.browserArgs.push(value()); break;
       case "--chromium-mode": args.chromiumMode = value(); break;
@@ -140,6 +147,7 @@ export function parseArgs(argv, fixtures = {}) {
   if (!["shell", "new"].includes(args.chromiumMode)) fail("--chromium-mode must be shell or new");
   if (!(args.case in CASES)) fail(`--case must be one of ${Object.keys(CASES).join(", ")}`);
   if (!(args.timeout > 0)) fail("--timeout must be a positive number of seconds");
+  if (!(args.runTimeout > 0)) fail("--run-timeout must be a positive number of seconds");
   if (args.assetSize !== "none" && !/^\d+x\d+$/.test(args.assetSize)) fail("--asset-size must look like 32x32, or none");
   if (args.assetSource !== "none" && !/^\d+x\d+$/.test(args.assetSource)) fail("--asset-source must look like 4x2, or none");
   if (!/^[\w./-]+$/.test(args.asset)) fail("--asset must be a plain file name under assets/");
@@ -322,4 +330,40 @@ export function launchFailureKind(message, env = {}) {
   const notInstalled = /Executable doesn't exist/.test(message);
   const ci = env.CI !== undefined && env.CI !== "" && env.CI !== "false" && env.CI !== "0";
   return notInstalled && !ci ? "unsupported" : "launch";
+}
+
+/** A browser that stopped answering: a call that never returned, or a run past its deadline. */
+export class BrowserHang extends Error {
+  constructor(message) {
+    super(message);
+    this.kind = "browser-hang";
+  }
+}
+
+/**
+ * `promise`, unless it takes longer than `ms`: then it rejects with a
+ * BrowserHang naming `what`. Browser calls have no deadline of their own
+ * (page.evaluate and mouse input wait forever on a hung or crashed page).
+ */
+export function withDeadline(promise, ms, what) {
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new BrowserHang(`${what} did not return within ${ms / 1000}s: the browser stopped answering`)), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The whole run's deadline: calls `onExpired` once after `ms` unless the
+ * returned function is called first. The last line of defence when a call
+ * outside withDeadline hangs, so one browser can't use up CI's hour.
+ */
+export function startWatchdog(ms, onExpired) {
+  const timer = setTimeout(onExpired, ms);
+  return () => clearTimeout(timer);
+}
+
+/** The last `count` lines of the browser's own output, for a failure's message. */
+export function logTail(lines, count = 40) {
+  return lines.slice(-count).map((line) => `  | ${line}`).join("\n");
 }

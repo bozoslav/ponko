@@ -519,7 +519,7 @@ jobs:
             echo "no render test opened a device on the forced tier" && exit 1
           fi
           echo "render tests run: $(grep -c 'render test ran \[' tier.log), skipped with a reason: $(grep -c 'render test SKIPPED \[' tier.log)"
-          exit $status
+          exit "$status"
       # Every image comparison's measured difference, passed or failed
       # (target/render-test-output/comparisons.log): the margins on this
       # runner's adapter.
@@ -1027,10 +1027,17 @@ jobs:
           web/build.sh --features 3d web_smoke_3d
           web/build.sh coin_dash
           web/build.sh --features physics ember_hop
+      # Each browser step has its own deadline (a few minutes per run; a run
+      # takes seconds), on top of the runner's own (a deadline on every
+      # browser call and --run-timeout per run, failing as "browser-hang"
+      # with the browser's last output): a browser that stops answering
+      # fails its step instead of using up the job's hour.
       # Chromium, WebGL2 (WebGPU hidden, the fallback path).
       - name: Chromium, WebGL2, 2D fixture
+        timeout-minutes: 5
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend webgl2 --chrome-trace
       - name: Chromium, WebGL2, 3D fixture
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke_3d --browser chromium --backend webgl2
       # The complete-game reference (examples/coin_dash): its coin picture is
@@ -1039,15 +1046,18 @@ jobs:
       # screen, Escape closing it again; see fixtures.json). The web build
       # keeps no progress yet (no files in a browser).
       - name: Chromium, WebGL2, coin_dash (assets, a click, keys, screens)
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture coin_dash --browser chromium --backend webgl2
       # WebGPU: the headless shell, then the full browser's new headless mode
       # with software Vulkan (a WebGPU canvas is presented through its
       # compositor). Each passes only if it draws or is reported unsupported.
       - name: Chromium, WebGPU, headless shell
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend webgpu --allow-unsupported
       - name: Chromium, WebGPU, new headless mode (2D and 3D fixtures)
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1057,6 +1067,7 @@ jobs:
           done
           exit $status
       - name: Chromium, whatever the engine picks
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser chromium --backend auto --allow-unsupported
       # WebKit: WebGL2 must pass; WebGPU is reported. Firefox: both are
@@ -1064,6 +1075,7 @@ jobs:
       # (also with Mesa's software GL installed), so "unsupported" passes
       # here with its reason; anything else it does wrong still fails.
       - name: Firefox, WebGL2 (2D and 3D fixtures; reported where it has no WebGL2)
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1072,9 +1084,15 @@ jobs:
           done
           exit $status
       - name: Firefox, WebGPU
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser firefox --backend webgpu --allow-unsupported
       - name: WebKit, WebGL2 (2D and 3D fixtures)
+        # WebKit on Linux plays Web Audio and media through GStreamer: its
+        # warnings land in the browser's output (browser.log in the report).
+        env:
+          GST_DEBUG: "2"
+        timeout-minutes: 8
         if: ${{ !cancelled() }}
         run: |
           status=0
@@ -1083,10 +1101,16 @@ jobs:
           done
           exit $status
       - name: WebKit, WebGPU
+        # WebKit on Linux plays Web Audio and media through GStreamer: its
+        # warnings land in the browser's output (browser.log in the report).
+        env:
+          GST_DEBUG: "2"
+        timeout-minutes: 5
         if: ${{ !cancelled() }}
         run: node web/smoke/smoke.mjs --fixture web_smoke --browser webkit --backend webgpu --allow-unsupported
       # The runner itself: each broken build must be caught as that failure.
       - name: Self-tests (missing asset, startup panic, stalled simulation)
+        timeout-minutes: 10
         if: ${{ !cancelled() }}
         run: |
           for case in missing-asset panic stall; do
@@ -1099,6 +1123,7 @@ jobs:
       # effects) and a texture array's mipmaps, which need the renderer's
       # WebGL2 paths for them.
       - name: Web gallery pages (Chromium, WebGL2)
+        timeout-minutes: 15
         if: ${{ !cancelled() }}
         run: |
           node web/gallery/build.mjs --only sprites,3d,compute,terrain,shaders,target_effect

@@ -102,6 +102,7 @@ Options:
 | `--backend auto` | Let the engine choose; the report says which it used. |
 | `--case missing-asset` / `panic` / `stall` | Self-tests: answer 404 for the fixture's asset, panic during setup (`?smoke_case=panic`), or pause the simulation (`?smoke_case=stall`). The run passes only if that failure is detected. |
 | `--timeout <s>` | Seconds to wait for the first frame (default 90). |
+| `--run-timeout <s>` | The whole run's deadline (default 300): past it the run fails as `browser-hang`, naming the step it was on, and exits (which kills the browser). |
 | `--allow-unsupported` | Exit 0 instead of 2 when the browser lacks the backend (the report and the last line still say UNSUPPORTED). |
 | `--asset <file>` / `--asset-size <W>x<H>` / `none` | Without a fixture: the file under `assets/` that must be fetched (default `crab.png`), and the size it must decode to. |
 | `--asset-source <W>x<H>` / `none` | The size the image from the game's in-memory asset source must decode to (the state's `source`); its streamed music must load too, and nothing under `assets/embedded/` may be fetched. Default `4x2` without a fixture. |
@@ -125,6 +126,16 @@ It is never a pass without a reason: the last line, `report.json` and the CI
 summary table all say `UNSUPPORTED` and why (no `navigator.gpu`, no adapter,
 no canvas), even under `--allow-unsupported`.
 
+A browser that stops answering can't hang a run: once the page is open,
+every browser call (reading the state, a click, a key, a screenshot) has a
+30 s deadline, a page whose content process crashes fails at once
+(`browser-crash`), and the whole run has `--run-timeout`. A hang fails as
+`browser-hang` with the step it was on and the last lines of `browser.log`.
+A hung run is not retried: so far every hang has been a real bug (WebKit on
+Linux once hung at the first click, when the game opened its audio), and a
+retry would hide the next one. CI also gives each browser step a
+`timeout-minutes` of a few minutes.
+
 Each run writes to its `--out` folder:
 
 - `report.json`: browser version, platform, launch options, the WebGPU adapter
@@ -134,8 +145,12 @@ Each run writes to its `--out` folder:
   time, the state before and after the progress check, canvas statistics, every
   request with its status, console messages, page errors and the outcome
   (`kind`: `pass`, `asset`, `panic`, `page-error`, `stall`, `startup-timeout`,
-  `input`, `state`, `blank`, `backend`, `launch`, `unsupported`, ...).
+  `input`, `state`, `blank`, `backend`, `launch`, `unsupported`,
+  `browser-hang`, `browser-crash`, ...) with the `step` the run was on.
 - `console.log`: the page's console.
+- `browser.log`: the browser's own output (its process's stdout and stderr,
+  launch and exit, through Playwright's `pw:browser` channel). A browser that
+  hangs or crashes often says why only here.
 - `trace.zip`: Playwright's trace (actions, requests, screenshots over time);
   open it with `node node_modules/playwright-core/cli.js show-trace trace.zip`.
 - `chrome-trace.json` (`--chrome-trace`, Chromium): the GPU process and
