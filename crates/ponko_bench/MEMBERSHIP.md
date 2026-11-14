@@ -272,7 +272,8 @@ extra instructions went:
   measured and the unmeasured run, and leaks it with `mem::forget` in both,
   so neither the spawning nor dropping the world (with its `Slots` and
   `BufferPool`) is in the difference. The workload measures only the
-  despawns and stays as it is.
+  despawns and stays as it is; its description (`bench_track list`) now
+  says that spawning and dropping the world aren't measured.
 - **Per-entity work in `World::despawn`.** It checked
   `archetypes[a].is_empty()` after every removal. On x86-64 that kept the
   archetype pointer and index live across the column loop: three more

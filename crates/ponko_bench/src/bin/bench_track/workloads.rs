@@ -80,7 +80,7 @@ pub static WORKLOADS: &[Workload] = &[
     },
     Workload {
         name: "ecs/despawn/10k",
-        about: "despawning 10k entities one by one",
+        about: "despawning 10k entities one by one (spawning them and dropping the world aren't measured)",
         iterations: 10,
         run: despawn,
     },
