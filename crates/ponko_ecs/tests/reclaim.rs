@@ -39,6 +39,15 @@ fn visit(w: &mut World, masks: impl IntoIterator<Item = u32>) {
     }
 }
 
+/// The marker sets the tests walk through: all 256 of the eight markers, or
+/// under Miri the 128 of the first seven, still well past the 64 empty
+/// archetypes a world keeps before it reclaims (`KEEP_EMPTY`).
+const MASKS: u32 = if cfg!(miri) { 128 } else { 256 };
+/// The highest marker bit the walks set.
+const HIGH: u32 = MASKS >> 1;
+/// Repeated rounds, fewer under Miri: one more round checks the same paths.
+const ROUNDS: u32 = if cfg!(miri) { 1 } else { 3 };
+
 fn slots(w: &World) -> usize {
     w.raw_ref().archetypes().len()
 }
@@ -46,14 +55,14 @@ fn slots(w: &World) -> usize {
 #[test]
 fn a_world_reuses_reclaimed_archetype_slots_for_new_component_sets() {
     let mut w = World::new();
-    visit(&mut w, 0..256);
+    visit(&mut w, 0..MASKS);
     let after_one_round = slots(&w);
-    // 256 marker sets, and the sets passed through on the way to each:
+    // `MASKS` marker sets, and the sets passed through on the way to each:
     // without reclaiming, every one would keep an archetype.
-    assert!(after_one_round < 256, "{after_one_round} slots");
-    for _ in 0..3 {
-        visit(&mut w, (0..256).rev());
-        visit(&mut w, 0..256);
+    assert!(after_one_round < MASKS as usize, "{after_one_round} slots");
+    for _ in 0..ROUNDS {
+        visit(&mut w, (0..MASKS).rev());
+        visit(&mut w, 0..MASKS);
     }
     assert_eq!(slots(&w), after_one_round, "later rounds reuse the same slots");
     assert!(w.is_empty());
@@ -65,18 +74,23 @@ fn entities_move_to_the_right_archetypes_after_their_neighbours_were_reclaimed()
     let e = w.spawn((Value(7),));
     insert_markers(&mut w, e, 0b1);
     // Builds (and links) archetypes next to `e`'s, then reclaims them.
-    visit(&mut w, 0..256);
-    visit(&mut w, (0..256).filter(|m| m & 0b1 == 0));
+    visit(&mut w, 0..MASKS);
+    visit(&mut w, (0..MASKS).filter(|m| m & 0b1 == 0));
     // Each step follows an edge that may have led to a reclaimed archetype.
+    let steps: &[u32] = if cfg!(miri) {
+        &[0b10, HIGH, 0b1]
+    } else {
+        &[0b10, 0b100, 0b1, HIGH, 0b10, 0b1]
+    };
     let mut mask = 0b1;
-    for step in [0b10, 0b100, 0b1, 0b1000_0000, 0b10, 0b1] {
+    for &step in steps {
         if mask & step == 0 {
             insert_markers(&mut w, e, step);
         } else {
             remove_markers(&mut w, e, step);
         }
         mask ^= step;
-        visit(&mut w, (0..256).filter(|&m| m != mask));
+        visit(&mut w, (0..MASKS).filter(|&m| m != mask));
         assert_eq!(w.get::<Value>(e), Some(&Value(7)));
         let has = [
             w.has::<M<0>>(e),
@@ -108,13 +122,13 @@ fn indexed_queries_follow_slots_reused_for_other_component_sets() {
     w.set_query_cache_policy(policy);
     let kept = w.spawn((Value(1),));
     insert_markers(&mut w, kept, 0b1000);
-    for round in 0..4u64 {
+    for round in 0..u64::from(ROUNDS + 1) {
         // Index the signature, then let its archetypes be reclaimed and
         // their slots reused by sets with and without `M<3>`.
         let indexed = w.query::<&Value>().filter::<With<M<3>>>().cached().count();
         assert_eq!(indexed, 1);
-        visit(&mut w, (0..256).map(|m| (m * 37 + round as u32) % 256));
-        let live: Vec<Entity> = (0..256u32)
+        visit(&mut w, (0..MASKS).map(|m| (m * 37 + round as u32) % MASKS));
+        let live: Vec<Entity> = (0..MASKS)
             .filter(|m| m % 3 == round as u32 % 3)
             .map(|m| {
                 let e = w.spawn((Value(u64::from(m) + 100),));
@@ -131,7 +145,7 @@ fn indexed_queries_follow_slots_reused_for_other_component_sets() {
             };
             let mut got: Vec<u64> = query.iter().map(|v| v.0).collect();
             got.sort_unstable();
-            let mut expected: Vec<u64> = (0..256u64)
+            let mut expected: Vec<u64> = (0..u64::from(MASKS))
                 .filter(|m| m % 3 == round % 3 && m & 0b1000 != 0)
                 .map(|m| m + 100)
                 .chain([1])
@@ -149,12 +163,12 @@ fn indexed_queries_follow_slots_reused_for_other_component_sets() {
 #[test]
 fn views_scan_the_archetypes_of_a_world_that_reclaims() {
     let mut w = World::new();
-    visit(&mut w, 0..256);
+    visit(&mut w, 0..MASKS);
     let a = w.spawn((Value(1),));
     insert_markers(&mut w, a, 0b101);
     let b = w.spawn((Value(2),));
-    insert_markers(&mut w, b, 0b1000_0001);
-    visit(&mut w, (0..256).rev());
+    insert_markers(&mut w, b, HIGH | 0b1);
+    visit(&mut w, (0..MASKS).rev());
     let mut state = ViewState::new().write::<Value>().read::<M<0>>().read::<M<2>>();
     state.run(&mut w, |mut view| {
         view.query::<&mut Value>().for_each(|v| v.0 *= 10);
@@ -256,8 +270,8 @@ fn bundle_archetypes_are_never_reclaimed() {
         .position(|a| a.component_ids() == ids)
         .unwrap();
     w.despawn(e);
-    visit(&mut w, 0..256);
-    visit(&mut w, (0..256).rev());
+    visit(&mut w, 0..MASKS);
+    visit(&mut w, (0..MASKS).rev());
     assert_eq!(w.raw_ref().archetypes()[slot].component_ids(), ids);
     let e = w.spawn((Value(2), M::<5>));
     assert_eq!(w.get::<Value>(e), Some(&Value(2)));
