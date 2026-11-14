@@ -514,8 +514,10 @@ pub(crate) struct AssetList {
 }
 
 /// Folders below `assets/` the browser looks into, at most.
+#[cfg(not(target_arch = "wasm32"))]
 const BROWSE_DEPTH: usize = 8;
 /// Files the browser lists, at most.
+#[cfg(not(target_arch = "wasm32"))]
 const BROWSE_FILES: usize = 4096;
 
 /// Lists the assets the editor can place (see [`AssetList`]), from every
