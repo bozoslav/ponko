@@ -846,6 +846,7 @@ pub(super) fn effect_pipeline(
 }
 
 /// `source` is ready for the targets: through [`for_samples`].
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_pipelines(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,

@@ -51,6 +51,7 @@ static OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(f
 
 /// Turns the rewrite and the still motion draws off (`true`) for shaders
 /// made from now on and every frame: what the renderer did before them.
+#[cfg(all(not(target_arch = "wasm32"), any(test, feature = "bench-internals")))]
 pub(super) fn set_off(off: bool) {
     OFF.store(off, std::sync::atomic::Ordering::Relaxed);
 }

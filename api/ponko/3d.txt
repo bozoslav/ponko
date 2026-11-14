@@ -2060,6 +2060,7 @@ pub fn ponko::gfx::Graphics::try_load_effect(&mut self, &str) -> core::result::R
 impl ponko::gfx::Graphics
 pub fn ponko::gfx::Graphics::create_gpu_buffer(&mut self, u32, &[glam::f32::sse2::vec4::Vec4]) -> ponko::render::GpuBuffer
 pub fn ponko::gfx::Graphics::gpu_buffer_len(&self, ponko::render::GpuBuffer) -> core::option::Option<u32>
+pub fn ponko::gfx::Graphics::set_gpu_buffer_motion(&mut self, ponko::render::GpuBuffer, bool)
 pub fn ponko::gfx::Graphics::set_mesh_gpu_bounds(&mut self, ponko::render::Mesh, glam::f32::vec3::Vec3, f32)
 pub fn ponko::gfx::Graphics::set_mesh_gpu_buffer(&mut self, ponko::render::Mesh, ponko::render::GpuBuffer, u32)
 pub fn ponko::gfx::Graphics::write_gpu_buffer(&mut self, ponko::render::GpuBuffer, u32, &[glam::f32::sse2::vec4::Vec4])
