@@ -2,11 +2,11 @@
 //! parallax, autotiling and solid tiles, checked headless. The fixture
 //! levels are in `tests/fixtures/tilemaps`.
 
-use ponko::d2::{
-    AutoTile, LayerKind, Level, LevelLayer, LevelObject, LevelOptions, LevelRoot, ObjectShape, Sprite, TileMap,
-    Transform as Transform2D,
-};
+use ponko::d2::{Sprite, Transform as Transform2D};
 use ponko::prelude::*;
+use ponko::tilemap::{
+    AutoTile, LayerKind, Level, LevelLayer, LevelObject, LevelOptions, LevelRoot, ObjectShape, TileMap,
+};
 
 fn fixture(name: &str) -> String {
     format!("{}/tests/fixtures/tilemaps/{name}", env!("CARGO_MANIFEST_DIR"))
@@ -22,7 +22,7 @@ fn load(name: &str, options: &LevelOptions) -> Level {
     level.unwrap()
 }
 
-fn layer<'a>(level: &'a Level, name: &str) -> &'a ponko::d2::Layer {
+fn layer<'a>(level: &'a Level, name: &str) -> &'a ponko::tilemap::Layer {
     level
         .layers
         .iter()
@@ -37,7 +37,7 @@ fn objects<'a>(level: &'a Level, name: &str) -> &'a [LevelObject] {
     }
 }
 
-fn tiles<'a>(level: &'a Level, name: &str) -> &'a ponko::d2::TileLayer {
+fn tiles<'a>(level: &'a Level, name: &str) -> &'a ponko::tilemap::TileLayer {
     match &layer(level, name).kind {
         LayerKind::Tiles(t) => t,
         other => panic!("{name} is {other:?}"),

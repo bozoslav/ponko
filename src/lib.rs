@@ -8,14 +8,14 @@
 //!
 //! fn main() {
 //!     Game::new("My Game", 800, 600).run(|ctx| {
-//!         let crab = ctx.load_texture("crab.png");
+//!         let crab = ctx.gfx.load_texture("crab.png");
 //!         let mut pos = vec2(400.0, 300.0);
 //!
 //!         move |ctx: &mut Ctx| {
-//!             if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
-//!             if ctx.key_down(Key::Left)  { pos.x -= 200.0 * ctx.dt(); }
-//!             if ctx.key_pressed(Key::Escape) { ctx.quit(); }
-//!             ctx.draw(crab, pos);
+//!             if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
+//!             if ctx.input.key_down(Key::Left)  { pos.x -= 200.0 * ctx.time.dt(); }
+//!             if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
+//!             ctx.gfx.draw(crab, pos);
 //!         }
 //!     });
 //! }
@@ -41,10 +41,11 @@
 //! - [`input`] and [`actions`]: keys, mouse, gamepads and rebindable actions.
 //! - [`ui`] and [`text`]: the retained UI, fonts and text layout.
 //! - [`audio`]: sound effects and music.
-//! - `physics` and `physics3d` (features of the same names): rigid bodies,
-//!   colliders and queries; [`nav`] for pathfinding and navigation meshes.
-//! - [`assets`], [`stream`] and [`streaming`]: asset files, background jobs
-//!   and streaming big worlds, and GPU asset loading with budgets.
+//! - [`d2`] and `d3`: the types of each dimension, physics among them
+//!   (features `physics` and `physics3d`); [`nav`] and [`flow`] for
+//!   pathfinding and navigation meshes.
+//! - [`assets`] and [`streaming`]: asset files, GPU asset loading with
+//!   budgets, background jobs and streaming big worlds.
 //! - [`net`]: networking: lockstep, messages and snapshot replication.
 //! - [`perf`], [`diagnostics`] and [`render`]: frame profiling, ECS
 //!   diagnostics and renderer statistics.
@@ -63,7 +64,7 @@
 //! - `gamepad` (default): gamepads through gilrs; without it
 //!   `Input::gamepads` is always empty. On Linux it needs libudev headers.
 //! - `profiling`: per-system scopes for `puffin_viewer`. (Not needed for
-//!   [`profile_scope!`], [`Perf::report`](perf::Perf::report) or [`CountingAllocator`](alloc_count::CountingAllocator), which
+//!   [`profile_scope!`], [`Perf::report`](perf::Perf::report) or [`CountingAllocator`](ponko::perf::CountingAllocator), which
 //!   are always built in and cost one atomic load while profiling is off.)
 //! - `hotpatch`: change system code while the game runs, with
 //!   `dx serve --hot-patch --features hotpatch`.
@@ -112,12 +113,13 @@ pub mod terrain;
 
 pub mod access;
 pub mod actions;
-pub mod alloc_count;
+mod alloc_count;
 mod asset_cache;
 pub mod assets;
 pub mod attach;
 pub mod audio;
 pub mod camera;
+mod camera2d;
 #[cfg(any(feature = "physics", feature = "physics3d"))]
 pub mod collision;
 pub mod color;
@@ -180,19 +182,21 @@ pub mod inventory;
 
 #[cfg(feature = "inspector")]
 mod inspector;
-pub mod light2d;
+mod light2d;
 mod logs;
 #[cfg(feature = "navmesh")]
 mod nav3d;
 pub mod net;
 pub mod particles;
+mod particles2d;
 
+mod jobs;
 pub mod perf;
 mod perf_report;
 #[cfg(feature = "physics")]
-pub mod physics;
+mod physics;
 #[cfg(feature = "physics3d")]
-pub mod physics3d;
+mod physics3d;
 mod profiler;
 #[cfg(any(all(target_arch = "wasm32", feature = "window"), test))]
 mod query;
@@ -204,12 +208,22 @@ pub mod scenario;
 mod scene;
 pub mod schedule;
 mod schema;
-pub mod scope;
+mod scope;
 pub mod sheet;
 pub mod spatial;
 mod sprite_material;
 pub mod storage;
-pub mod stream;
+/// Deprecated: [`Job`](crate::streaming::Job) and `CellStreamer` moved to
+/// [`streaming`], next to the asset streaming they work with.
+pub mod stream {
+    /// Moved: [`ponko::streaming::Job`](crate::streaming::Job).
+    #[deprecated(since = "0.2.0", note = "use `ponko::streaming::Job`")]
+    pub type Job<T> = crate::streaming::Job<T>;
+    /// Moved: `ponko::streaming::CellStreamer`.
+    #[cfg(feature = "3d")]
+    #[deprecated(since = "0.2.0", note = "use `ponko::streaming::CellStreamer`")]
+    pub type CellStreamer = crate::streaming::CellStreamer;
+}
 pub mod streaming;
 pub mod system_view;
 pub mod systems;

@@ -28,7 +28,7 @@ agents and your own code write them like any other file.
   their ids, so components that refer to other entities still point at the
   right ones. Resources that are [reflected](reflection.md) load too.
 - `spawn_prefab` puts the prefab's position at the point you give and keeps
-  its saved rotation and scale. A prefab without a `Transform2D` gets one.
+  its saved rotation and scale. A prefab without a `d2::Transform` gets one.
   The file is read once, then kept in memory, so spawning a thousand trees
   reads it once.
 - Only [reflected](reflection.md) components go in files: reflect your

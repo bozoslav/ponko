@@ -485,7 +485,7 @@ pub unsafe extern "C" fn ponko_ctx_start_scenario(
     boundary(|| unsafe {
         let scenario = scenario_ref(scenario)?.clone();
         ctx_access(ctx, |c| {
-            c.input.start_scenario(&mut c.world, &mut c.time, scenario);
+            c.start_scenario(scenario);
             Ok(())
         })
     })
@@ -504,7 +504,7 @@ pub unsafe extern "C" fn ponko_ctx_cancel_scenario(ctx: *mut PonkoCtx, out_was_r
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            let was = c.input.cancel_scenario(&mut c.world, &mut c.time);
+            let was = c.cancel_scenario();
             if out_was_running.is_null() {
                 Ok(())
             } else {

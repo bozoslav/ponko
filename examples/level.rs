@@ -11,6 +11,7 @@
 
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::tilemap::{AutoTile, LevelObject, TileMap};
 
 /// The player.
 #[derive(Component)]
@@ -37,7 +38,7 @@ fn setup(ctx: &mut Ctx) {
         .iter()
         .find(|o| o.class == "Spawn")
         .map_or(vec2(48.0, 120.0), |o| o.position);
-    let crab = ctx.load_texture("crab.png");
+    let crab = ctx.gfx.load_texture("crab.png");
     ctx.world.spawn((
         Transform {
             scale: Vec2::splat(0.25),
@@ -113,8 +114,8 @@ fn build(ctx: &mut Ctx) {
 // ANCHOR_END: walls
 
 fn walk(ctx: &mut Ctx) {
-    let dir = f32::from(u8::from(ctx.key_down(Key::Right))) - f32::from(u8::from(ctx.key_down(Key::Left)));
-    let jump = ctx.key_pressed(Key::Space);
+    let dir = f32::from(u8::from(ctx.input.key_down(Key::Right))) - f32::from(u8::from(ctx.input.key_down(Key::Left)));
+    let jump = ctx.input.key_pressed(Key::Space);
     let mut at = None;
     ctx.world
         .query::<(&Transform, &mut Velocity, &Player)>()
@@ -162,8 +163,8 @@ fn hud(ctx: &mut Ctx) {
     let size = ctx.gfx.measure_text(&text, style.text_size) + 2.0 * style.padding;
     let panel = Rect::new(12.0, 12.0, size.x, size.y);
     let padding = ctx.ui.immediate.style.padding;
-    ctx.ui.immediate.panel(&mut ctx.gfx, panel);
-    ctx.ui.immediate.label(&mut ctx.gfx, panel.min + padding, &text);
+    ctx.immediate_ui().panel(panel);
+    ctx.immediate_ui().label(panel.min + padding, &text);
 }
 
 fn main() {

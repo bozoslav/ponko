@@ -5,7 +5,7 @@ use std::ffi::c_char;
 
 use ponko::perf::Budget;
 use ponko::perf::PerfReport;
-use ponko::scope::ProfileScope;
+use ponko::perf::ProfileScope;
 
 use crate::ctx::{ctx_access, out, text};
 use crate::{PonkoCtx, PonkoStatus, boundary, invalid, invalid_owned};

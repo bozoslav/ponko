@@ -73,7 +73,7 @@ fn applying_scenario_input_steps_allocates_nothing_once_the_run_started() {
                 _ => {}
             }
             // A tap on every tick keeps both edges.
-            pressed += u32::from(ctx.key_pressed(Key::Space));
+            pressed += u32::from(ctx.input.key_pressed(Key::Space));
         })
         .input_scenario(scenario)
         .run_headless(200, |_| {});

@@ -13,6 +13,7 @@
 #[allow(unused_imports)]
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::sheet::Animation;
 
 const TILE: u32 = 16;
 /// Tile frames in the generated tileset.
@@ -90,13 +91,13 @@ struct Wander(Vec2);
 // ANCHOR: setup
 fn setup(ctx: &mut Ctx, side: u32) {
     let tiles = tileset(ctx);
-    let mut map = ponko::d2::TileMap::new(tiles, side, side);
+    let mut map = ponko::tilemap::TileMap::new(tiles, side, side);
     for y in 0..side {
         for x in 0..side {
             map.set(x, y, Some(terrain(x as f32, y as f32)));
         }
     }
-    ctx.world.spawn((Transform2D::default(), map));
+    ctx.world.spawn((d2::Transform::default(), map));
 
     let blob = creature(ctx);
     let mut rng = Rng::new(7);
@@ -106,7 +107,7 @@ fn setup(ctx: &mut Ctx, side: u32) {
         let mut walk = Animation::new(blob, 0..8, rng.range(6.0, 12.0));
         walk.time = rng.f32(); // out of step with each other
         (
-            Transform2D::at(at),
+            d2::Transform::at(at),
             blob.sprite(0),
             walk,
             Wander(rng.unit_vec2() * 20.0),
@@ -118,9 +119,9 @@ fn setup(ctx: &mut Ctx, side: u32) {
 // ANCHOR_END: setup
 
 fn wander(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world
-        .query::<(&mut Transform2D, &Wander)>()
+        .query::<(&mut d2::Transform, &Wander)>()
         .par_for_each(|(t, w)| t.position += w.0 * dt);
 }
 
@@ -131,7 +132,7 @@ fn paint(ctx: &mut Ctx) {
     }
     let at = ctx.mouse_world();
     ctx.world
-        .query::<(&Transform2D, &mut ponko::d2::TileMap)>()
+        .query::<(&d2::Transform, &mut ponko::tilemap::TileMap)>()
         .for_each(|(t, map)| {
             if let Some(tile) = map.tile_at(t.position, at) {
                 map.set(tile.x, tile.y, Some(STONE));
@@ -151,10 +152,10 @@ fn hud(ctx: &mut Ctx) {
     );
     let size = ctx.gfx.measure_text(&text, ctx.ui.immediate.style.text_size) + 2.0 * ctx.ui.immediate.style.padding;
     let panel = Rect::new(12.0, 12.0, size.x, size.y);
-    ctx.ui.immediate.panel(&mut ctx.gfx, panel);
-    ctx.ui
-        .immediate
-        .label(&mut ctx.gfx, panel.min + ctx.ui.immediate.style.padding, &text);
+    let at = panel.min + ctx.ui.immediate.style.padding;
+    let mut ui = ctx.immediate_ui();
+    ui.panel(panel);
+    ui.label(at, &text);
 }
 
 fn main() {

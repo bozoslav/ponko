@@ -208,7 +208,7 @@ pub struct PerfReport {
     /// add them to the systems' times.
     pub scopes: Vec<ScopeReport>,
     /// Heap allocations, if they're counted
-    /// ([`CountingAllocator`](crate::alloc_count::CountingAllocator) is installed).
+    /// ([`CountingAllocator`](crate::perf::CountingAllocator) is installed).
     pub allocs: Option<AllocReport>,
     /// The slowest frames and what was in them.
     pub worst_frames: Vec<WorstFrame>,

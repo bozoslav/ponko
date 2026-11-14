@@ -820,7 +820,7 @@ impl<T: Interpolate> SnapshotStream<T> {
 }
 
 /// Component: a remote entity's incoming [`Pose`] snapshots, applied to its
-/// [`Transform3D`](crate::d3::Transform) by [`apply_net_poses`]. Push each
+/// [`d3::Transform`](crate::d3::Transform) by [`apply_net_poses`]. Push each
 /// decoded update from your message handler with `ctx.time.elapsed()` as the
 /// arrival time.
 ///
@@ -843,7 +843,7 @@ pub struct NetPose {
     pub stream: SnapshotStream<Pose>,
 }
 
-/// System: sets the [`Transform3D`](crate::d3::Transform) position and rotation
+/// System: sets the [`d3::Transform`](crate::d3::Transform) position and rotation
 /// of every entity with a [`NetPose`] from its stream, sampled at
 /// `ctx.time.elapsed()` (scale is left alone). Entities without snapshots stay
 /// where they are. Add it with [`Game::system`](crate::game::Game::system), so entities

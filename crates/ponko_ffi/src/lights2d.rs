@@ -1,13 +1,14 @@
-//! 2D lights from C (Rust `d2::PointLight2D`, `d2::SpotLight2D`,
-//! `d2::DirectionalLight2D`, `d2::Occluder2D`): the lights are plain
+//! 2D lights from C (Rust `d2::PointLight`, `d2::SpotLight`,
+//! `d2::DirectionalLight`, `d2::Occluder`): the lights are plain
 //! components (register them with `ponko_point_light2d_component` and the
 //! others, start from their `_default()`), occluders are set on an entity
 //! with a 2D transform, and the ambient light and normal maps are settings
 //! of the context. Lighting stays off, at no cost, until a 2D light exists
 //! or an ambient light is set.
 
-use ponko::d2::{DirectionalLight2D, Occluder2D, PointLight2D, SpotLight2D, TileMap};
+use ponko::d2::{DirectionalLight, Occluder, PointLight, SpotLight};
 use ponko::prelude::{Color, Ctx, Vec2};
+use ponko::tilemap::TileMap;
 
 use crate::ctx::{ctx_access, out};
 use crate::particles::entity;
@@ -90,7 +91,7 @@ pub struct PonkoDirectionalLight2D {
 
 same_layout!(
     PonkoPointLight2D,
-    PointLight2D,
+    PointLight,
     color = color,
     intensity = intensity,
     radius = radius,
@@ -100,7 +101,7 @@ same_layout!(
 );
 same_layout!(
     PonkoSpotLight2D,
-    SpotLight2D,
+    SpotLight,
     color = color,
     intensity = intensity,
     radius = radius,
@@ -112,7 +113,7 @@ same_layout!(
 );
 same_layout!(
     PonkoDirectionalLight2D,
-    DirectionalLight2D,
+    DirectionalLight,
     color = color,
     intensity = intensity,
     direction = direction,
@@ -125,40 +126,40 @@ same_layout!(
 pub(crate) fn light_kind(t: std::any::TypeId) -> Option<Kind> {
     use std::any::TypeId;
     [
-        TypeId::of::<PointLight2D>(),
-        TypeId::of::<SpotLight2D>(),
-        TypeId::of::<DirectionalLight2D>(),
+        TypeId::of::<PointLight>(),
+        TypeId::of::<SpotLight>(),
+        TypeId::of::<DirectionalLight>(),
     ]
     .contains(&t)
     .then_some(Kind::Plain)
 }
 
-/// A point light with the engine's defaults (Rust `PointLight2D::default()`).
+/// A point light with the engine's defaults (Rust `d2::PointLight::default()`).
 /// ```
 /// assert_eq!(ponko_ffi::ponko_point_light2d_default().intensity, 1.0);
 /// ```
 #[unsafe(no_mangle)]
 pub extern "C" fn ponko_point_light2d_default() -> PonkoPointLight2D {
-    to_c(PointLight2D::default())
+    to_c(PointLight::default())
 }
 
-/// A spot light with the engine's defaults (Rust `SpotLight2D::default()`).
+/// A spot light with the engine's defaults (Rust `d2::SpotLight::default()`).
 /// ```
 /// assert_eq!(ponko_ffi::ponko_spot_light2d_default().radius, 300.0);
 /// ```
 #[unsafe(no_mangle)]
 pub extern "C" fn ponko_spot_light2d_default() -> PonkoSpotLight2D {
-    to_c(SpotLight2D::default())
+    to_c(SpotLight::default())
 }
 
 /// A directional light with the engine's defaults (Rust
-/// `DirectionalLight2D::default()`).
+/// `d2::DirectionalLight::default()`).
 /// ```
 /// assert!(!ponko_ffi::ponko_directional_light2d_default().shadows);
 /// ```
 #[unsafe(no_mangle)]
 pub extern "C" fn ponko_directional_light2d_default() -> PonkoDirectionalLight2D {
-    to_c(DirectionalLight2D::default())
+    to_c(DirectionalLight::default())
 }
 
 /// Registers the built-in `PointLight2D` for entity insertion and query columns.
@@ -172,7 +173,7 @@ pub extern "C" fn ponko_directional_light2d_default() -> PonkoDirectionalLight2D
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ponko_point_light2d_component(world: *mut PonkoWorld, out_id: *mut u32) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
-    unsafe { builtin::<PointLight2D>(world, out_id) }
+    unsafe { builtin::<PointLight>(world, out_id) }
 }
 
 /// Registers the built-in `SpotLight2D` for entity insertion and query columns.
@@ -186,7 +187,7 @@ pub unsafe extern "C" fn ponko_point_light2d_component(world: *mut PonkoWorld, o
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ponko_spot_light2d_component(world: *mut PonkoWorld, out_id: *mut u32) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
-    unsafe { builtin::<SpotLight2D>(world, out_id) }
+    unsafe { builtin::<SpotLight>(world, out_id) }
 }
 
 /// Registers the built-in `DirectionalLight2D` for entity insertion and
@@ -201,7 +202,7 @@ pub unsafe extern "C" fn ponko_spot_light2d_component(world: *mut PonkoWorld, ou
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ponko_directional_light2d_component(world: *mut PonkoWorld, out_id: *mut u32) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
-    unsafe { builtin::<DirectionalLight2D>(world, out_id) }
+    unsafe { builtin::<DirectionalLight>(world, out_id) }
 }
 
 fn finite(values: &[f32]) -> Result<(), Failure> {
@@ -216,7 +217,7 @@ fn finite(values: &[f32]) -> Result<(), Failure> {
 unsafe fn set_occluder(
     ctx: *mut PonkoCtx,
     entity_bits: u64,
-    occluder: impl FnOnce(&mut Ctx, ponko_ecs::Entity) -> Result<Occluder2D, Failure>,
+    occluder: impl FnOnce(&mut Ctx, ponko_ecs::Entity) -> Result<Occluder, Failure>,
 ) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
@@ -230,7 +231,7 @@ unsafe fn set_occluder(
 }
 
 /// Gives `entity` a rectangle `size` wide and tall, centered on it, that
-/// blocks 2D light (Rust `Occluder2D::rect`), replacing any occluder it had.
+/// blocks 2D light (Rust `d2::Occluder::rect`), replacing any occluder it had.
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_ctx_set_occluder2d_rect(std::ptr::null_mut(), 0, Default::default()) } as u32, 1);
 /// ```
@@ -246,13 +247,13 @@ pub unsafe extern "C" fn ponko_ctx_set_occluder2d_rect(
     unsafe {
         set_occluder(ctx, entity_bits, |_, _| {
             finite(&[size.x, size.y])?;
-            Ok(Occluder2D::rect(to_c(size)))
+            Ok(Occluder::rect(to_c(size)))
         })
     }
 }
 
 /// Gives `entity` a circle of `radius` (a 16-sided polygon) that blocks 2D
-/// light (Rust `Occluder2D::circle`).
+/// light (Rust `d2::Occluder::circle`).
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_ctx_set_occluder2d_circle(std::ptr::null_mut(), 0, 1.0) } as u32, 1);
 /// ```
@@ -268,14 +269,14 @@ pub unsafe extern "C" fn ponko_ctx_set_occluder2d_circle(
     unsafe {
         set_occluder(ctx, entity_bits, |_, _| {
             finite(&[radius])?;
-            Ok(Occluder2D::circle(radius))
+            Ok(Occluder::circle(radius))
         })
     }
 }
 
 /// Gives `entity` a closed polygon through `count` `points` (relative to
 /// it, either winding, not crossing itself) that blocks 2D light (Rust
-/// `Occluder2D::polygon`). The points are copied.
+/// `d2::Occluder::polygon`). The points are copied.
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_ctx_set_occluder2d_polygon(std::ptr::null_mut(), 0, std::ptr::null(), 0) } as u32, 1);
 /// ```
@@ -304,13 +305,13 @@ pub unsafe extern "C" fn ponko_ctx_set_occluder2d_polygon(
                     .collect()
             };
             finite(&points.iter().flat_map(|p| [p.x, p.y]).collect::<Vec<_>>())?;
-            Ok(Occluder2D::polygon(&points))
+            Ok(Occluder::polygon(&points))
         })
     }
 }
 
 /// Gives `entity` a thin wall from `a` to `b` (relative to it) that blocks
-/// 2D light toward both sides (Rust `Occluder2D::line`).
+/// 2D light toward both sides (Rust `d2::Occluder::line`).
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_ctx_set_occluder2d_line(std::ptr::null_mut(), 0, Default::default(), Default::default()) } as u32, 1);
 /// ```
@@ -327,7 +328,7 @@ pub unsafe extern "C" fn ponko_ctx_set_occluder2d_line(
     unsafe {
         set_occluder(ctx, entity_bits, |_, _| {
             finite(&[a.x, a.y, b.x, b.y])?;
-            Ok(Occluder2D::line(to_c(a), to_c(b)))
+            Ok(Occluder::line(to_c(a), to_c(b)))
         })
     }
 }
@@ -380,7 +381,7 @@ pub unsafe extern "C" fn ponko_ctx_remove_occluder2d(ctx: *mut PonkoCtx, entity_
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
             let e = entity(c, entity_bits)?;
-            c.world.remove::<Occluder2D>(e);
+            c.world.remove::<Occluder>(e);
             Ok(())
         })
     })
@@ -404,7 +405,7 @@ pub unsafe extern "C" fn ponko_ctx_occluder2d_edge_count(
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
             let e = entity(c, entity_bits)?;
-            let n = c.world.get::<Occluder2D>(e).map_or(0, |o| o.edges().len());
+            let n = c.world.get::<Occluder>(e).map_or(0, |o| o.edges().len());
             out(out_count, n)
         })
     })

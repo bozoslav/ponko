@@ -148,7 +148,7 @@ fn a_residency_budget_holds_a_compressed_texture_at_a_smaller_mip_level() {
 #[cfg(feature = "3d")]
 #[test]
 fn texture_arrays_take_compressed_layers() {
-    use ponko::d3::TextureKind;
+    use ponko::terrain::TextureKind;
     Game::new("t", 1, 1).run_headless(0, |ctx| {
         ctx.assets.add_source(textures());
         let array = ctx
@@ -208,7 +208,7 @@ fn reload(path: &Path, edit: Vec<u8>) -> (Vec<u64>, u64) {
             *out.lock().unwrap() = ctx.asset_inventory().get(AssetClass::Texture).bytes;
         })
         .run_headless(5, |ctx| {
-            ctx.load_texture(&name);
+            ctx.gfx.load_texture(&name);
         });
     let seen = seen.lock().unwrap().clone();
     let bytes = *bytes.lock().unwrap();

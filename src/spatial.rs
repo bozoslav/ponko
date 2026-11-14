@@ -24,7 +24,7 @@ pub struct GridEntry<T = ()> {
 /// checking every entity.
 ///
 /// Enable it with [`Game::spatial_grid`](crate::game::Game::spatial_grid): every
-/// entity with a [`Transform2D`] is then indexed at the start of each
+/// entity with a [`d2::Transform`](crate::d2::Transform) is then indexed at the start of each
 /// simulation tick, and you query it through `ctx.spatial`, even from inside a
 /// (parallel) query:
 ///
@@ -66,7 +66,7 @@ pub struct GridEntry<T = ()> {
 /// were when it started.
 ///
 /// To index only some entities, remove the built-in
-/// [`rebuild_spatial_grid`] system and call
+/// [`rebuild_spatial_grid`](crate::systems::rebuild_spatial_grid) system and call
 /// [`rebuild_from`](Self::rebuild_from) yourself.
 ///
 /// A grid can also carry data per entry (a velocity, a team), for queries
@@ -131,7 +131,7 @@ impl SpatialGrid {
         Self::with_data(cell_size)
     }
 
-    /// Re-indexes every entity that has a [`Transform2D`].
+    /// Re-indexes every entity that has a [`d2::Transform`](crate::d2::Transform).
     pub fn rebuild(&mut self, world: &mut World) {
         let mut unsorted = std::mem::take(&mut self.unsorted);
         unsorted.clear();
@@ -493,11 +493,9 @@ impl Buckets {
 
 pub(crate) const SPATIAL_SORT_EVERY: u64 = 32;
 
-/// Built-in system added by [`Game::spatial_grid`](crate::game::Game::spatial_grid):
-/// re-indexes every [`Transform2D`] entity into `ctx.spatial`. It runs first
-/// in every simulation tick, and every [`SpatialGrid::SORT_EVERY`] ticks it also
-/// sorts entities by cell so neighbor queries stay cache-friendly.
-pub fn rebuild_spatial_grid(ctx: &mut Ctx) {
+/// The system behind [`systems::rebuild_spatial_grid`](crate::systems::rebuild_spatial_grid); it keeps
+/// this path for its name (`ponko::spatial::rebuild_spatial_grid`).
+pub(crate) fn rebuild_spatial_grid(ctx: &mut Ctx) {
     if ctx.time.sim_tick().is_multiple_of(SPATIAL_SORT_EVERY) {
         let cell = ctx.spatial.cell_size();
         ctx.world.sort_by::<Transform2D>(|t| spatial_key(t.position, cell));

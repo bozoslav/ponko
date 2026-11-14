@@ -6,7 +6,7 @@ use super::gpu::GpuTexture;
 use super::gpu3d::*;
 use super::render_test_support::{self as support, TestGpu};
 use super::timer::GpuTimer;
-use crate::d3::{PointLight as PointLight3D, SpotLight as SpotLight3D, Transform as Transform3D};
+use crate::d3::{Camera as Camera3D, PointLight as PointLight3D, SpotLight as SpotLight3D, Transform as Transform3D};
 use crate::prelude::*;
 use crate::render::traffic;
 use crate::render::{

@@ -281,19 +281,19 @@ pub(super) fn builtin<T: 'static>() -> Option<ValueSchema> {
     if id == std::any::TypeId::of::<crate::d2::Transform>() {
         return Some(transform2d());
     }
-    if id == std::any::TypeId::of::<crate::d2::Attached>() {
+    if id == std::any::TypeId::of::<crate::attach::Attached>() {
         return Some(attached());
     }
-    if id == std::any::TypeId::of::<crate::d2::PointLight2D>() {
+    if id == std::any::TypeId::of::<crate::light2d::PointLight2D>() {
         return Some(pointlight2d());
     }
-    if id == std::any::TypeId::of::<crate::d2::SpotLight2D>() {
+    if id == std::any::TypeId::of::<crate::light2d::SpotLight2D>() {
         return Some(spotlight2d());
     }
-    if id == std::any::TypeId::of::<crate::d2::DirectionalLight2D>() {
+    if id == std::any::TypeId::of::<crate::light2d::DirectionalLight2D>() {
         return Some(directionallight2d());
     }
-    if id == std::any::TypeId::of::<crate::d2::Occluder2D>() {
+    if id == std::any::TypeId::of::<crate::light2d::Occluder2D>() {
         return Some(occluder2d());
     }
     if id == std::any::TypeId::of::<crate::scene::PrefabParts>() {
@@ -654,13 +654,19 @@ pub(in crate::reflect) mod tests {
         }
         check!(crate::d2::Transform, crate::d2::Transform::default());
         check!(
-            crate::d2::Attached,
-            crate::d2::Attached::to(ponko_ecs::Entity::from_bits(0))
+            crate::attach::Attached,
+            crate::attach::Attached::to(ponko_ecs::Entity::from_bits(0))
         );
-        check!(crate::d2::PointLight2D, crate::d2::PointLight2D::default());
-        check!(crate::d2::SpotLight2D, crate::d2::SpotLight2D::default());
-        check!(crate::d2::DirectionalLight2D, crate::d2::DirectionalLight2D::default());
-        check!(crate::d2::Occluder2D, crate::d2::Occluder2D::rect(glam::vec2(4.0, 2.0)));
+        check!(crate::light2d::PointLight2D, crate::light2d::PointLight2D::default());
+        check!(crate::light2d::SpotLight2D, crate::light2d::SpotLight2D::default());
+        check!(
+            crate::light2d::DirectionalLight2D,
+            crate::light2d::DirectionalLight2D::default()
+        );
+        check!(
+            crate::light2d::Occluder2D,
+            crate::light2d::Occluder2D::rect(glam::vec2(4.0, 2.0))
+        );
         let e = ponko_ecs::Entity::from_bits;
         check!(
             crate::scene::PrefabParts,

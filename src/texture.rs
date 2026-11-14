@@ -12,7 +12,7 @@ use crate::color::Color;
 /// ```
 /// # use ponko::prelude::*;
 /// # fn setup(ctx: &mut Ctx) {
-/// let crab = ctx.load_texture("crab.png");
+/// let crab = ctx.gfx.load_texture("crab.png");
 /// println!("{} x {}", crab.width(), crab.height());
 /// # }
 /// ```
@@ -192,7 +192,7 @@ impl DrawParams {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::BlendMode;
+    /// # use ponko::render::BlendMode;
     /// # fn update(ctx: &mut Ctx, spark: Texture) {
     /// ctx.gfx.draw_ex(spark, vec2(50.0, 50.0), DrawParams::default().with_blend(BlendMode::Additive));
     /// # }

@@ -12,6 +12,7 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{MaterialDesc, MeshData, ModelMaterial};
 
 /// Turns around its own Y axis.
 #[derive(Component)]
@@ -25,21 +26,21 @@ struct Orbit {
 }
 
 fn spin(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world.query::<(&mut Transform, &Spin)>().for_each(|(t, s)| {
         t.rotation *= Quat::from_rotation_y(s.0 * dt);
     });
 }
 
 fn orbit(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::Space) {
+    if ctx.input.key_pressed(Key::Space) {
         if ctx.time.is_paused() {
             ctx.time.resume()
         } else {
             ctx.time.pause()
         }
     }
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
     let drag = if ctx.input.mouse_down(MouseButton::Left) {

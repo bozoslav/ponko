@@ -5,7 +5,7 @@
 use ponko::terrain::FarTerrain;
 use ponko::terrain::TerrainTile;
 use ponko::terrain::TerrainTileData;
-use ponko::{prelude::vec3, stream::CellStreamer};
+use ponko::{prelude::vec3, streaming::CellStreamer};
 
 use crate::ctx::{ctx_access, out};
 use crate::three::{PonkoMaterial, PonkoMesh, PonkoTerrainTile, PonkoVec3, square_grid};

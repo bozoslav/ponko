@@ -5,7 +5,6 @@
 use std::ffi::c_char;
 
 use ponko::__ffi;
-use ponko::d2::{SpriteMaterial, SpriteShader};
 use ponko::handle::LiveCounts;
 use ponko::inventory::{AssetClass, AssetOwner};
 use ponko::prelude::{Font, Sound, Texture};
@@ -16,6 +15,7 @@ use ponko::render::InstanceBatch;
 use ponko::render::Material;
 use ponko::render::Mesh;
 use ponko::render::Shader;
+use ponko::render::{SpriteMaterial, SpriteShader};
 use ponko::terrain::TextureArray;
 
 use crate::ctx::{ctx_access, out, text};

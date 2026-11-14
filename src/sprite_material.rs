@@ -17,7 +17,7 @@ use crate::texture::Texture;
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::BlendMode;
+/// # use ponko::render::BlendMode;
 /// # fn setup(ctx: &mut Ctx, glow: Texture) {
 /// ctx.world.spawn((
 ///     ponko::d2::Transform::at(vec2(200.0, 150.0)),
@@ -60,7 +60,7 @@ impl BlendMode {
     /// The mode numbered `n` (as `n as u32` gives), or `None`.
     ///
     /// ```
-    /// # use ponko::d2::BlendMode;
+    /// # use ponko::render::BlendMode;
     /// assert_eq!(BlendMode::from_u32(1), Some(BlendMode::Additive));
     /// assert_eq!(BlendMode::from_u32(9), None);
     /// ```
@@ -111,7 +111,7 @@ pub struct SpriteShader {
 ///
 /// ```no_run
 /// # use ponko::prelude::*;
-/// # use ponko::d2::{SpriteMaterial, SpriteMaterialDesc};
+/// # use ponko::render::{SpriteMaterial, SpriteMaterialDesc};
 /// # fn setup(ctx: &mut Ctx, crab: Texture) {
 /// let outline = ctx.gfx.load_sprite_shader("shaders/outline.wgsl");
 /// let material = ctx.gfx.create_sprite_material(
@@ -130,7 +130,7 @@ pub struct SpriteMaterial {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::SpriteMaterialDesc;
+/// # use ponko::render::SpriteMaterialDesc;
 /// let desc = SpriteMaterialDesc::default().with_param(1, vec4(0.5, 0.0, 0.0, 0.0));
 /// assert_eq!(desc.shader, None);
 /// assert_eq!(desc.params[1].x, 0.5);
@@ -409,7 +409,7 @@ impl Graphics {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::SpriteMaterialDesc;
+    /// # use ponko::render::SpriteMaterialDesc;
     /// Game::new("t", 1, 1).run_headless(0, |ctx| {
     ///     let tint = ctx.gfx.create_sprite_shader("tint", "
     ///         fn fragment(p: SpritePixel) -> vec4<f32> { return p.color * material.params[0]; }");
@@ -431,7 +431,7 @@ impl Graphics {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::{SpriteMaterial, SpriteMaterialDesc};
+    /// # use ponko::render::{SpriteMaterial, SpriteMaterialDesc};
     /// fn fade(ctx: &mut Ctx, dissolve: SpriteMaterial) {
     ///     let Some(desc) = ctx.gfx.sprite_material_desc(dissolve) else { return };
     ///     let t = ctx.time.elapsed() as f32;

@@ -14,7 +14,7 @@ use ponko_ecs::{Component, Entity, World};
 /// up to [`max_slope`](Self::max_slope) and steps up to
 /// [`step_height`](Self::step_height), stays on the ground going downhill,
 /// falls by gravity and pushes dynamic bodies. Needs a
-/// [`Transform3D`](crate::d3::Transform), whose position is at its feet.
+/// [`d3::Transform`](crate::d3::Transform), whose position is at its feet.
 ///
 /// Set `velocity`'s X and Z each tick to walk; Y keeps falling speed (set
 /// it to jump). After the step, `grounded` says whether it stands on

@@ -12,6 +12,8 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{Blend, Material, MaterialDesc, MeshData, ScreenEffect, Sky, TargetCamera};
+use ponko::terrain::{TerrainMaterialDesc, TextureKind};
 
 const TILES: i32 = 5;
 const N: usize = 129;
@@ -196,20 +198,20 @@ fn main() {
         .vsync(!bench)
         .fullscreen(bench)
         .system(move |ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
-            let dt = ctx.dt();
-            if ctx.key_down(Key::Left) {
+            let dt = ctx.time.dt();
+            if ctx.input.key_down(Key::Left) {
                 yaw += dt;
             }
-            if ctx.key_down(Key::Right) {
+            if ctx.input.key_down(Key::Right) {
                 yaw -= dt;
             }
-            if ctx.key_down(Key::Up) {
+            if ctx.input.key_down(Key::Up) {
                 pitch = (pitch + dt).min(1.4);
             }
-            if ctx.key_down(Key::Down) {
+            if ctx.input.key_down(Key::Down) {
                 pitch = (pitch - dt).max(-1.4);
             }
             let rotation = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch);
@@ -225,7 +227,7 @@ fn main() {
                 (Key::E, Vec3::Y),
                 (Key::Q, Vec3::NEG_Y),
             ] {
-                if ctx.key_down(key) {
+                if ctx.input.key_down(key) {
                     go += dir;
                 }
             }
@@ -235,7 +237,7 @@ fn main() {
             if let Some(mirror) = ctx.scene3d.passes.target_cameras.first().map(|c| c.target) {
                 ctx.scene3d.passes.target_cameras[0] = TargetCamera::reflection(ctx.scene3d.camera, mirror, WATER);
             }
-            if ctx.key_pressed(Key::U) {
+            if ctx.input.key_pressed(Key::U) {
                 std::mem::swap(&mut ctx.scene3d.passes.effects, &mut parked);
             }
             if ctx.time.frame() == 3

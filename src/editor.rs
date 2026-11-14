@@ -342,7 +342,7 @@ impl Editor {
     /// Makes `child` follow `parent` (`None`: follow nothing), without
     /// moving it: its attachment's offset is where it is now, in the
     /// parent's space. 3D entities get an `Attached3D`, 2D ones an
-    /// [`Attached`](crate::d2::Attached). With undo.
+    /// [`Attached`](crate::attach::Attached). With undo.
     ///
     /// # Errors
     ///
@@ -672,7 +672,7 @@ fn link3d(world: &ponko_ecs::World, child: Entity, parent: Entity) -> Option<Val
     None
 }
 
-/// `child`'s 2D [`Attached`](crate::d2::Attached) to `parent`, where it is now.
+/// `child`'s 2D [`Attached`](crate::attach::Attached) to `parent`, where it is now.
 fn link2d(world: &ponko_ecs::World, child: Entity, parent: Entity) -> Option<Value> {
     use crate::d2::Transform as T2;
     let c = world.get::<T2>(child)?;
@@ -680,7 +680,7 @@ fn link2d(world: &ponko_ecs::World, child: Entity, parent: Entity) -> Option<Val
     let divide = |a: f32, b: f32| if b == 0.0 { a } else { a / b };
     let local = Vec2::from_angle(-p.rotation).rotate(c.position - p.position);
     let offset = Vec2::new(divide(local.x, p.scale.x), divide(local.y, p.scale.y));
-    let link = crate::d2::Attached::to(parent)
+    let link = crate::attach::Attached::to(parent)
         .offset(offset)
         .rotated(c.rotation - p.rotation);
     serde_json::to_value(link).ok()
@@ -689,7 +689,7 @@ fn link2d(world: &ponko_ecs::World, child: Entity, parent: Entity) -> Option<Val
 /// How an entity hangs off its parent in the hierarchy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Link {
-    /// [`Attached`](crate::d2::Attached).
+    /// [`Attached`](crate::attach::Attached).
     Attached,
     /// `Attached3D`.
     #[cfg_attr(not(feature = "3d"), allow(dead_code))]
@@ -719,7 +719,7 @@ impl Link {
 /// The entity `e` hangs off, and how. `owners` maps prefab parts to their
 /// prefab's root (see [`part_owners`]).
 fn parent_of(world: &ponko_ecs::World, e: Entity, owners: &HashMap<Entity, Entity>) -> Option<(Entity, Link)> {
-    if let Some(a) = world.get::<crate::d2::Attached>(e) {
+    if let Some(a) = world.get::<crate::attach::Attached>(e) {
         return Some((a.to, Link::Attached));
     }
     #[cfg(feature = "3d")]
@@ -980,7 +980,9 @@ mod tests {
         let mut ctx = ctx();
         let mut ed = Editor::default();
         let root = ctx.world.spawn((Transform2D::default(), Hp(1.0)));
-        let part = ctx.world.spawn((Transform2D::default(), crate::d2::Attached::to(root)));
+        let part = ctx
+            .world
+            .spawn((Transform2D::default(), crate::attach::Attached::to(root)));
         let saved = ctx.assets.save_prefab(&ctx.world, root, &path);
         ctx.world.despawn(root);
         ctx.world.despawn(part);
@@ -1126,7 +1128,7 @@ mod tests {
         let parent = ctx.world.spawn((Transform2D::at(vec2(10.0, 0.0)),));
         let child = ctx
             .world
-            .spawn((Transform2D::default(), crate::d2::Attached::to(parent), Hp(1.0)));
+            .spawn((Transform2D::default(), crate::attach::Attached::to(parent), Hp(1.0)));
         let other = ctx.world.spawn((Transform2D::default(),));
         ed.delete(&mut ctx, parent).unwrap();
         assert!(!ctx.world.is_alive(child), "the tree goes as one");
@@ -1134,7 +1136,11 @@ mod tests {
         ed.undo(&mut ctx).unwrap();
         let (p, c) = (ed.resolve(parent), ed.resolve(child));
         assert!(ctx.world.is_alive(p) && ctx.world.is_alive(c) && p != parent);
-        assert_eq!(ctx.world.get::<crate::d2::Attached>(c).unwrap().to, p, "still attached");
+        assert_eq!(
+            ctx.world.get::<crate::attach::Attached>(c).unwrap().to,
+            p,
+            "still attached"
+        );
         assert_eq!(ctx.world.get::<Hp>(c), Some(&Hp(1.0)));
     }
 
@@ -1149,18 +1155,18 @@ mod tests {
         },));
         let child = ctx.world.spawn((Transform2D::at(vec2(10.0, 4.0)),));
         ed.set_parent(&mut ctx, child, Some(parent)).unwrap();
-        let link = *ctx.world.get::<crate::d2::Attached>(child).unwrap();
+        let link = *ctx.world.get::<crate::attach::Attached>(child).unwrap();
         let (p, r) = crate::attach::tests_place(&ctx.world, link).unwrap();
         assert!((p - vec2(10.0, 4.0)).length() < 1e-4, "{p}: it didn't move");
         assert!((r - 0.0).abs() < 1e-5);
         let err = ed.set_parent(&mut ctx, parent, Some(child)).unwrap_err();
         assert!(err.message().contains("loop"), "{err}");
         ed.set_parent(&mut ctx, child, None).unwrap();
-        assert!(ctx.world.get::<crate::d2::Attached>(child).is_none());
+        assert!(ctx.world.get::<crate::attach::Attached>(child).is_none());
         ed.undo(&mut ctx).unwrap();
-        assert_eq!(ctx.world.get::<crate::d2::Attached>(child), Some(&link));
+        assert_eq!(ctx.world.get::<crate::attach::Attached>(child), Some(&link));
         ed.undo(&mut ctx).unwrap();
-        assert!(ctx.world.get::<crate::d2::Attached>(child).is_none());
+        assert!(ctx.world.get::<crate::attach::Attached>(child).is_none());
     }
 
     #[test]
@@ -1169,7 +1175,9 @@ mod tests {
         let root = ctx.world.spawn((Transform2D::default(),));
         let part = ctx.world.spawn((Transform2D::default(),));
         ctx.world.insert(root, crate::scene::PrefabParts(vec![part]));
-        let attached = ctx.world.spawn((Transform2D::default(), crate::d2::Attached::to(part)));
+        let attached = ctx
+            .world
+            .spawn((Transform2D::default(), crate::attach::Attached::to(part)));
         let loose = ctx.world.spawn((Transform2D::default(),));
         let nodes = hierarchy(&ctx.world);
         let order: Vec<Entity> = nodes.iter().map(|n| n.entity).collect();
@@ -1188,7 +1196,7 @@ mod tests {
         let parent = ctx.world.spawn((Transform2D::default(),));
         let child = ctx
             .world
-            .spawn((Transform2D::default(), crate::d2::Attached::to(parent)));
+            .spawn((Transform2D::default(), crate::attach::Attached::to(parent)));
         let copy = ed.duplicate(&mut ctx, parent, vec2(5.0, 0.0)).unwrap();
         assert_eq!(ctx.world.len(), 4);
         let copied_child = hierarchy(&ctx.world)

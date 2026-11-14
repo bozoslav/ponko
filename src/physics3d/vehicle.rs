@@ -25,12 +25,12 @@ use ponko_ecs::{Component, Entity, World};
 ///
 /// ```
 /// use ponko::prelude::*;
-/// let grip = ponko::physics3d::FrictionCurve::FORWARD;
+/// let grip = ponko::d3::FrictionCurve::FORWARD;
 /// assert_eq!(grip.evaluate(0.0), 0.0);
 /// assert_eq!(grip.evaluate(grip.extremum_slip), 1.0); // the peak
 /// assert_eq!(grip.evaluate(5.0), 0.5); // sliding
-/// let icy = ponko::physics3d::FrictionCurve { stiffness: 0.2, ..ponko::physics3d::FrictionCurve::SIDEWAYS };
-/// assert!(icy.evaluate(0.1) < ponko::physics3d::FrictionCurve::SIDEWAYS.evaluate(0.1));
+/// let icy = ponko::d3::FrictionCurve { stiffness: 0.2, ..ponko::d3::FrictionCurve::SIDEWAYS };
+/// assert!(icy.evaluate(0.1) < ponko::d3::FrictionCurve::SIDEWAYS.evaluate(0.1));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -136,7 +136,7 @@ impl FrictionCurve {
 pub struct Wheel3D {
     // Setup.
     /// Where the wheel's center is at full compression, in the chassis's
-    /// frame (relative to its [`Transform3D`] position).
+    /// frame (relative to its [`d3::Transform`](crate::d3::Transform) position).
     pub position: Vec3,
     /// The wheel's radius in meters. Default 0.5.
     pub radius: f32,
@@ -262,7 +262,7 @@ impl Wheel3D {
 
     /// Where to draw the wheel for a chassis at `chassis`: its center,
     /// with steer, spin and suspension travel. Pass the chassis's
-    /// [`Transform3D`] in a frame system and the wheel moves as smoothly as
+    /// [`d3::Transform`](crate::d3::Transform) in a frame system and the wheel moves as smoothly as
     /// the chassis does.
     ///
     /// ```
@@ -285,7 +285,7 @@ impl Wheel3D {
 /// A car, truck or any wheeled vehicle: up to [`MAX_WHEELS`](Self::MAX_WHEELS)
 /// raycast [`Wheel3D`]s holding up the entity's chassis, which needs a
 /// dynamic [`RigidBody3D`](super::RigidBody3D), a [`Collider3D`](super::Collider3D)
-/// and a [`Transform3D`]. The chassis faces its -Z.
+/// and a [`d3::Transform`](crate::d3::Transform). The chassis faces its -Z.
 ///
 /// Each physics step casts a ray down from every wheel's mount, pushes the
 /// chassis up with the suspension, spins the wheels by their torques and

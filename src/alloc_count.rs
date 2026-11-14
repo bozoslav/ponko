@@ -32,10 +32,10 @@ pub struct AllocCounts {
 /// The system allocator, counting what it hands out while profiling is on.
 ///
 /// ```ignore
-/// use ponko::alloc_count::CountingAllocator;
+/// use ponko::perf::CountingAllocator;
 ///
 /// #[global_allocator]
-/// static ALLOCATOR: ponko::alloc_count::CountingAllocator = ponko::alloc_count::CountingAllocator;
+/// static ALLOCATOR: ponko::perf::CountingAllocator = ponko::perf::CountingAllocator;
 /// ```
 pub struct CountingAllocator;
 
@@ -92,8 +92,8 @@ pub fn note_allocation(bytes: usize) {
 ///
 /// ```
 /// use ponko::perf::alloc_counts;
-/// let before = ponko::alloc_count::alloc_counts();
-/// let after = ponko::alloc_count::alloc_counts();
+/// let before = ponko::perf::alloc_counts();
+/// let after = ponko::perf::alloc_counts();
 /// assert!(after.count >= before.count);
 /// ```
 pub fn alloc_counts() -> AllocCounts {

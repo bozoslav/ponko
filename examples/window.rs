@@ -22,26 +22,26 @@ fn main() {
         move |ctx: &mut Ctx| {
             // Per-frame movement, scaled by dt so speed is the same at any frame rate.
             let mut dir = Vec2::ZERO;
-            if ctx.key_down(Key::Left) || ctx.key_down(Key::A) {
+            if ctx.input.key_down(Key::Left) || ctx.input.key_down(Key::A) {
                 dir.x -= 1.0;
             }
-            if ctx.key_down(Key::Right) || ctx.key_down(Key::D) {
+            if ctx.input.key_down(Key::Right) || ctx.input.key_down(Key::D) {
                 dir.x += 1.0;
             }
-            if ctx.key_down(Key::Up) || ctx.key_down(Key::W) {
+            if ctx.input.key_down(Key::Up) || ctx.input.key_down(Key::W) {
                 dir.y -= 1.0;
             }
-            if ctx.key_down(Key::Down) || ctx.key_down(Key::S) {
+            if ctx.input.key_down(Key::Down) || ctx.input.key_down(Key::S) {
                 dir.y += 1.0;
             }
-            pos += dir.normalize_or_zero() * 200.0 * ctx.dt();
+            pos += dir.normalize_or_zero() * 200.0 * ctx.time.dt();
 
             // Fixed-rate logic: runs exactly 60 times per second on average.
             for _ in 0..ctx.time.fixed_steps() {
                 fixed_ticks += 1;
             }
 
-            if ctx.key_pressed(Key::Space) {
+            if ctx.input.key_pressed(Key::Space) {
                 println!(
                     "pos = ({:.0}, {:.0})  time = {:.2}s  fixed ticks = {}  fps = {:.0}",
                     pos.x,
@@ -53,7 +53,7 @@ fn main() {
             }
 
             if ctx.input.mouse_pressed(MouseButton::Left) {
-                let m = ctx.mouse_pos();
+                let m = ctx.input.mouse_pos();
                 println!("click at ({:.0}, {:.0})", m.x, m.y);
             }
 
@@ -62,7 +62,7 @@ fn main() {
                 println!("zoom = {zoom:.2}");
             }
 
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 println!("bye!");
                 ctx.quit();
             }

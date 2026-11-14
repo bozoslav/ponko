@@ -165,17 +165,26 @@ fn builtin_id(name: &str) -> Option<(SystemId, &'static str)> {
             let path = std::any::type_name_of_val(&crate::systems::$name);
             [path, path]
         }};
+        // Public in `systems`, defined in its topic module: listed under the
+        // topic module's path, the name it had before `systems` was its
+        // only public path, so names in plans and `remove_system` stay.
+        ($module:ident :: $name:ident) => {
+            [
+                std::any::type_name_of_val(&crate::$module::$name),
+                std::any::type_name_of_val(&crate::systems::$name),
+            ]
+        };
     }
     #[cfg(feature = "3d")]
     let one = |name: &'static str| [name, name];
     let entries = [
-        (builtin!(animate_sprites), Systems::ANIMATE_SPRITES),
-        (builtin!(draw_tilemaps), Systems::DRAW_TILEMAPS),
+        (builtin!(sheet::animate_sprites), Systems::ANIMATE_SPRITES),
+        (builtin!(tilemap::draw_tilemaps), Systems::DRAW_TILEMAPS),
         (builtin!(draw_sprites), Systems::DRAW_SPRITES),
         (builtin!(draw_particles), Systems::DRAW_PARTICLES),
         (builtin!(update_particles), Systems::UPDATE_PARTICLES),
-        (builtin!(rebuild_spatial_grid), Systems::REBUILD_SPATIAL_GRID),
-        (builtin!(follow_attachments), Systems::FOLLOW_ATTACHMENTS),
+        (builtin!(spatial::rebuild_spatial_grid), Systems::REBUILD_SPATIAL_GRID),
+        (builtin!(attach::follow_attachments), Systems::FOLLOW_ATTACHMENTS),
         #[cfg(feature = "physics")]
         (builtin!(step_physics), Systems::PHYSICS),
         #[cfg(feature = "physics3d")]
@@ -207,14 +216,14 @@ fn builtin_id(name: &str) -> Option<(SystemId, &'static str)> {
 ///
 /// Game::new("My Game", 800, 600).run(|ctx| {
 ///     // Setup: runs once, after the window exists.
-///     let crab = ctx.load_texture("crab.png");
+///     let crab = ctx.gfx.load_texture("crab.png");
 ///     let mut pos = vec2(400.0, 300.0);
 ///
 ///     // Returned closure: runs every frame.
 ///     move |ctx: &mut Ctx| {
-///         if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
-///         if ctx.key_pressed(Key::Escape) { ctx.quit(); }
-///         ctx.draw(crab, pos);
+///         if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
+///         if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
+///         ctx.gfx.draw(crab, pos);
 ///     }
 /// });
 /// ```
@@ -228,12 +237,12 @@ fn builtin_id(name: &str) -> Option<(SystemId, &'static str)> {
 /// struct Vel(Vec2);
 ///
 /// fn movement(ctx: &mut Ctx) {
-///     let dt = ctx.dt();
+///     let dt = ctx.time.dt();
 ///     ctx.world.query::<(&mut ponko::d2::Transform, &Vel)>().for_each(|(t, v)| t.position += v.0 * dt);
 /// }
 ///
 /// Game::new("Crabs", 800, 600).sim_system(movement).run(|ctx| {
-///     let crab = ctx.load_texture("crab.png");
+///     let crab = ctx.gfx.load_texture("crab.png");
 ///     ctx.world.spawn((ponko::d2::Transform::at(vec2(100.0, 100.0)), ponko::d2::Sprite::new(crab), Vel(vec2(50.0, 0.0))));
 /// });
 /// ```
@@ -1329,7 +1338,7 @@ impl Game {
 
     /// Adds a simulation system: it runs at the fixed rate
     /// ([`fixed_hz`](Self::fixed_hz), default 60 per second), zero or more
-    /// times per frame, and `ctx.dt()` inside it is the fixed step.
+    /// times per frame, and `ctx.time.dt()` inside it is the fixed step.
     /// Put game logic here so it behaves the same at any frame rate.
     ///
     /// Systems run in `Phase::AfterPhysics`, in registration order: this is
@@ -1370,7 +1379,7 @@ impl Game {
 
     /// Turns on 2D physics (feature `physics`): every entity with a
     /// [`RigidBody`](crate::d2::RigidBody), a [`Collider`](crate::d2::Collider) and a
-    /// [`Transform2D`](crate::d2::Transform) is simulated each tick, pulled by
+    /// [`d2::Transform`](crate::d2::Transform) is simulated each tick, pulled by
     /// `gravity` (pixels/s²; y is down). Collisions arrive as
     /// [`CollisionStarted`](crate::collision::CollisionStarted) events; `ctx.physics`
     /// casts rays and finds overlaps.
@@ -1404,13 +1413,13 @@ impl Game {
 
     /// Turns on 3D physics (feature `physics3d`): every entity with a
     /// [`RigidBody3D`](crate::d3::RigidBody), a [`Collider3D`](crate::d3::Collider)
-    /// and a [`Transform3D`](crate::d3::Transform) is simulated each tick, and
+    /// and a [`d3::Transform`](crate::d3::Transform) is simulated each tick, and
     /// every [`Character3D`](crate::d3::Character) walks, pulled by `gravity`
     /// (m/s²; +Y is up, so `vec3(0.0, -9.81, 0.0)`). Collisions arrive as
     /// [`CollisionStarted`](crate::collision::CollisionStarted) events; `ctx.physics3d`
     /// casts rays and shapes and finds overlaps.
     ///
-    /// The simulation runs at [`PHYSICS3D_HZ`](crate::physics3d::PHYSICS3D_HZ) (50)
+    /// The simulation runs at [`Physics::HZ`](crate::d3::Physics::HZ) (50)
     /// ticks per second unless [`fixed_hz`](Self::fixed_hz) chose a rate;
     /// in a window, moving bodies are drawn blended between ticks
     /// ([`interpolate_physics3d`](crate::systems::interpolate_physics3d), a
@@ -1457,7 +1466,7 @@ impl Game {
 
     /// Turns on the built-in [`SpatialGrid`](crate::spatial::SpatialGrid) with square
     /// cells of `cell_size` world units: at the start of every simulation
-    /// tick, all entities with a [`Transform2D`](crate::d2::Transform) are
+    /// tick, all entities with a [`d2::Transform`](crate::d2::Transform) are
     /// indexed into `ctx.spatial` for radius, rectangle and nearest queries.
     ///
     /// Choose a cell size near your usual query radius. The rebuild is the
@@ -1486,7 +1495,7 @@ impl Game {
     /// ```no_run
     /// # use ponko::prelude::*;
     /// fn quit_on_escape(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::Escape) { ctx.quit(); }
+    ///     if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
     /// }
     ///
     /// Game::new("Sim", 800, 600).system(quit_on_escape).run(|_| {});
@@ -1689,7 +1698,7 @@ impl Game {
     /// ```no_run
     /// # use ponko::prelude::*;
     /// Game::new("Art test", 1280, 720).hot_reload(true).run(|ctx| {
-    ///     let crab = ctx.load_texture("crab.png"); // edit crab.png while it runs
+    ///     let crab = ctx.gfx.load_texture("crab.png"); // edit crab.png while it runs
     ///     ctx.world.spawn((ponko::d2::Transform::at(vec2(640.0, 360.0)), ponko::d2::Sprite::new(crab)));
     /// });
     /// ```
@@ -2151,7 +2160,7 @@ impl Game {
     /// struct Pos(f32);
     ///
     /// fn fall(ctx: &mut Ctx) {
-    ///     let dt = ctx.dt();
+    ///     let dt = ctx.time.dt();
     ///     ctx.world.query::<&mut Pos>().for_each(|p| p.0 -= 10.0 * dt);
     /// }
     ///
@@ -2186,7 +2195,7 @@ impl Game {
     /// grow); the report covers the next `ticks` ticks (at most the last
     /// 50,000). Call it from a test or a CI job; see [`PerfReport::assert_within`](crate::perf::PerfReport::assert_within).
     ///
-    /// Counting allocations needs [`CountingAllocator`](crate::alloc_count::CountingAllocator)
+    /// Counting allocations needs [`CountingAllocator`](crate::perf::CountingAllocator)
     /// as the global allocator.
     ///
     /// ```
@@ -2418,7 +2427,7 @@ mod tests {
     }
 
     fn log(ctx: &mut Ctx, s: &str) {
-        let line = format!("{s} dt={:.4}", ctx.dt());
+        let line = format!("{s} dt={:.4}", ctx.time.dt());
         ctx.world.resource_mut::<Log>().0.push(line);
     }
 

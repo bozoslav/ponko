@@ -1,4 +1,4 @@
-//! Looks around a 3D scene file (a `ponko-world` save of `Transform3D` and
+//! Looks around a 3D scene file (a `ponko-world` save of `d3::Transform` and
 //! `Model` entities, like the Unity importer writes):
 //!
 //!   SCENE=town/Town.json cargo run --release --features 3d --example scene_viewer
@@ -15,6 +15,7 @@ use std::time::Instant;
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::Sky;
 
 /// The middle and size of where the scene's models are.
 fn extent(world: &mut World) -> (Vec3, f32) {
@@ -63,29 +64,33 @@ fn main() {
     let (mut yaw, mut pitch) = (0.0f32, -0.3f32);
     Game::new("Ponko: scene viewer", 1280, 720)
         .system(move |ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
-            let dt = ctx.dt();
+            let dt = ctx.time.dt();
             if ctx.time.frame() == 1 {
                 let (y, x, _) = ctx.scene3d.camera.rotation.to_euler(glam::EulerRot::YXZ);
                 (yaw, pitch) = (y, x);
             }
             let turn = 1.2 * dt;
-            if ctx.key_down(Key::Left) {
+            if ctx.input.key_down(Key::Left) {
                 yaw += turn;
             }
-            if ctx.key_down(Key::Right) {
+            if ctx.input.key_down(Key::Right) {
                 yaw -= turn;
             }
-            if ctx.key_down(Key::Up) {
+            if ctx.input.key_down(Key::Up) {
                 pitch = (pitch + turn).min(1.5);
             }
-            if ctx.key_down(Key::Down) {
+            if ctx.input.key_down(Key::Down) {
                 pitch = (pitch - turn).max(-1.5);
             }
             let rotation = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch);
-            let speed = if ctx.key_down(Key::LeftShift) { 120.0 } else { 20.0 } * dt;
+            let speed = if ctx.input.key_down(Key::LeftShift) {
+                120.0
+            } else {
+                20.0
+            } * dt;
             let mut go = Vec3::ZERO;
             for (key, way) in [
                 (Key::W, Vec3::NEG_Z),
@@ -93,14 +98,14 @@ fn main() {
                 (Key::A, Vec3::NEG_X),
                 (Key::D, Vec3::X),
             ] {
-                if ctx.key_down(key) {
+                if ctx.input.key_down(key) {
                     go += rotation * way;
                 }
             }
-            if ctx.key_down(Key::E) {
+            if ctx.input.key_down(Key::E) {
                 go += Vec3::Y;
             }
-            if ctx.key_down(Key::Q) {
+            if ctx.input.key_down(Key::Q) {
                 go -= Vec3::Y;
             }
             ctx.scene3d.camera.position += go * speed;

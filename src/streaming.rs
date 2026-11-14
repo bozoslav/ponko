@@ -18,9 +18,10 @@
 //! bytes of each [`ResidencyKind`] kept on the GPU. The calls that can evict
 //! take the [`World`] too, because eviction never takes what an entity shows.
 //!
-//! [`crate::stream`] is different: it holds no assets, only the tools for a
-//! game's own background work ([`Job`]) and cell grids
-//! (`CellStreamer`).
+//! The module also holds the tools for a game's own content, which hold no
+//! assets: [`Job`] runs background work (loading and building a tile,
+//! decoding a file) on a worker thread, and `CellStreamer` (with the `3d`
+//! feature) says which cells of a grid to load or drop as the camera moves.
 //!
 //! [`Graphics::stream_texture`](crate::gfx::Graphics::stream_texture) (and, with the `3d` feature,
 //! [`Graphics::stream_mesh`](crate::gfx::Graphics::stream_mesh)) never wait: the first call starts decoding the file
@@ -45,8 +46,13 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use crate::assets::{self, Origin};
+#[cfg(feature = "3d")]
+#[doc(inline)]
+pub use crate::jobs::CellStreamer;
+#[doc(inline)]
+pub use crate::jobs::Job;
 pub use crate::residency::{ResidencyKind, ResidencyStats};
-use crate::{ctx::Ctx, stream::Job, texture::Texture};
+use crate::{ctx::Ctx, texture::Texture};
 use ponko_ecs::World;
 
 /// The longest side of a streamed texture's stand-in.

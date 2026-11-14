@@ -59,11 +59,11 @@ fn nested(ctx: &mut Ctx) {
 /// F5 starts timing your scopes and counting allocations; F6 prints where
 /// the last half minute went.
 fn perf_keys(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::F5) {
+    if ctx.input.key_pressed(Key::F5) {
         let on = !ctx.perf.profiling();
         ctx.perf.set_profiling(on);
     }
-    if ctx.key_pressed(Key::F6) {
+    if ctx.input.key_pressed(Key::F6) {
         println!("{}", ctx.perf.report());
     }
 }

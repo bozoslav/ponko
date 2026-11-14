@@ -115,7 +115,7 @@ pub use animator::*;
 /// the engine makes. A Rust program that links this crate as a library and
 /// wants its own allocator should depend on the engine instead.
 #[global_allocator]
-static ALLOCATOR: ponko::alloc_count::CountingAllocator = ponko::alloc_count::CountingAllocator;
+static ALLOCATOR: ponko::perf::CountingAllocator = ponko::perf::CountingAllocator;
 
 pub use action_lookup::*;
 pub use asset_sources::*;
@@ -531,7 +531,7 @@ impl Kind {
         matches!(self, Kind::Plain)
     }
 }
-const _: () = assert!(!std::mem::needs_drop::<ponko::d2::Animation>());
+const _: () = assert!(!std::mem::needs_drop::<ponko::sheet::Animation>());
 
 /// A Rust component and the C struct that stands for it.
 pub(crate) trait CMirror: Sized + 'static {
@@ -609,11 +609,11 @@ pub(crate) fn component(world: &World, id: u32) -> Result<(ComponentId, Kind), F
         None if !info.needs_drop() => Kind::Plain,
         Some(t) if t == TypeId::of::<Transform2D>() => Kind::Plain,
         // repr(C), layout checked against PonkoAttached; any bits are a valid value.
-        Some(t) if t == TypeId::of::<ponko::d2::Attached>() => Kind::Plain,
+        Some(t) if t == TypeId::of::<ponko::attach::Attached>() => Kind::Plain,
         // repr(C), layout checked against PonkoAttached3D; any bits are a valid value.
-        Some(t) if t == TypeId::of::<ponko::d3::Attached>() => Kind::Plain,
+        Some(t) if t == TypeId::of::<ponko::attach::Attached3D>() => Kind::Plain,
         // repr(C), layout checked against PonkoAnimation; `looping` must be 0 or 1.
-        Some(t) if t == TypeId::of::<ponko::d2::Animation>() => Kind::Plain,
+        Some(t) if t == TypeId::of::<ponko::sheet::Animation>() => Kind::Plain,
         Some(t) if t == TypeId::of::<Sprite>() => Kind::Mirror(&SPRITE),
         // repr(C), layout checked against PonkoTransform3D / PonkoModel;
         // any bits are a valid value (unknown meshes draw nothing).

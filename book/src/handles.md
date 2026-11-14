@@ -2,7 +2,7 @@
 
 Textures, meshes, materials, sounds and the other things the engine keeps
 for your game come back as small handles: plain `Copy` values, passed by
-value (`ctx.draw(crab, pos)`, `ctx.play_sound(hit)`). Only the engine makes
+value (`ctx.gfx.draw(crab, pos)`, `ctx.audio.play(hit)`). Only the engine makes
 them: a number can't be turned into a handle, so a handle always names
 something your game made. Every kind works the same way:
 

@@ -195,8 +195,8 @@ fn a_scene_with_a_missing_texture_changes_nothing_but_keeps_loaded_ones() {
         assert!(err.message().contains("no-such-texture.png"), "{err}");
         // Preloading is not undone: the texture that did load is cached and
         // named, so loading it again gives the same handle.
-        let crab = ctx.load_texture("crab.png");
-        assert_eq!(ctx.load_texture("crab.png"), crab);
+        let crab = ctx.gfx.load_texture("crab.png");
+        assert_eq!(ctx.gfx.load_texture("crab.png"), crab);
     });
     assert_eq!(world.query::<&Tag>().iter().map(|t| t.0).collect::<Vec<_>>(), [4]);
     assert_eq!(world.query::<&Sprite>().iter().count(), 0);
@@ -455,17 +455,17 @@ fn attachments_follow_the_new_scenes_entities() {
             let other = ctx.world.spawn((Transform2D::at(vec2(0.0, 0.0)),));
             let turret = ctx.world.spawn((
                 Transform2D::default(),
-                ponko::d2::Attached::to(tank).offset(vec2(0.0, -4.0)),
+                ponko::attach::Attached::to(tank).offset(vec2(0.0, -4.0)),
             ));
             let ring = ctx
                 .world
-                .spawn((Transform2D::default(), ponko::d2::Attached::to(other)));
+                .spawn((Transform2D::default(), ponko::attach::Attached::to(other)));
             ctx.assets.save_scene(&ctx.world, a.0).unwrap();
             // Scene B: the same ids; the tank moved, the turret sits elsewhere
             // on it, and the ring's entity isn't in it.
             ctx.world.get_mut::<Transform2D>(tank).unwrap().position = vec2(100.0, 0.0);
-            *ctx.world.get_mut::<ponko::d2::Attached>(turret).unwrap() =
-                ponko::d2::Attached::to(tank).offset(vec2(10.0, 0.0));
+            *ctx.world.get_mut::<ponko::attach::Attached>(turret).unwrap() =
+                ponko::attach::Attached::to(tank).offset(vec2(10.0, 0.0));
             ctx.world.despawn(other);
             ctx.assets.save_scene(&ctx.world, b.0).unwrap();
             ctx.load_scene(a.0).unwrap();

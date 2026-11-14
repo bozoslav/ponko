@@ -147,7 +147,7 @@ impl Panels {
     /// Draws the inspector into `ui` and applies what was changed in it to `ctx`.
     pub fn show(&mut self, ui: &mut Ui, ctx: &mut Ctx) {
         self.editing = ctx.time.is_paused();
-        self.record_frame(ctx.dt() * 1000.0);
+        self.record_frame(ctx.time.dt() * 1000.0);
         self.reflected.clear();
         self.reflected
             .extend(ctx.world.reflected_components().into_iter().map(str::to_owned));

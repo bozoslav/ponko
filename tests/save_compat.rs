@@ -63,7 +63,7 @@ struct Secret;
 fn reflected_world() -> World {
     let mut w = World::new();
     w.reflect::<Transform2D>();
-    w.reflect::<ponko::d2::Attached>();
+    w.reflect::<ponko::attach::Attached>();
     w.reflect::<Health>();
     w.reflect::<Team>();
     w.reflect::<Follows>();
@@ -133,7 +133,7 @@ fn a_v1_save_loads_with_its_entities_ids_and_components() {
     assert_eq!(t.position, vec2(120.5, -64.0));
     assert_eq!(t.rotation, 0.25);
     assert_eq!(t.scale, vec2(2.0, -1.0));
-    let a = w.get::<ponko::d2::Attached>(turret).unwrap();
+    let a = w.get::<ponko::attach::Attached>(turret).unwrap();
     assert_eq!(a.to, base, "attachments keep pointing at the saved entity");
     assert_eq!(a.offset, vec2(0.0, -8.0));
     assert_eq!(a.rotation, 1.5);
@@ -265,7 +265,7 @@ fn write_v1_fixture() {
     w.spawn((
         Team(1),
         Transform2D::default(),
-        ponko::d2::Attached::to(base).offset(vec2(0.0, -8.0)).rotated(1.5),
+        ponko::attach::Attached::to(base).offset(vec2(0.0, -8.0)).rotated(1.5),
     ));
     w.spawn((Team(2), Follows(base), Mood::Calm));
     w.spawn((

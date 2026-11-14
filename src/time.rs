@@ -409,10 +409,10 @@ impl Time {
     /// ```
     /// # use ponko::prelude::*;
     /// fn controls(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::Space) {
+    ///     if ctx.input.key_pressed(Key::Space) {
     ///         if ctx.time.is_paused() { ctx.time.resume() } else { ctx.time.pause() }
     ///     }
-    ///     if ctx.key_pressed(Key::Period) {
+    ///     if ctx.input.key_pressed(Key::Period) {
     ///         ctx.time.step(); // advance one tick while paused
     ///     }
     /// }

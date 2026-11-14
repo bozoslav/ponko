@@ -626,7 +626,7 @@ struct SpaceHeld(bool);
 struct Jumps(u32);
 
 fn watch_space(ctx: &mut Ctx) {
-    let held = ctx.key_down(Key::Space);
+    let held = ctx.input.key_down(Key::Space);
     ctx.world.resource_mut::<SpaceHeld>().0 = held;
     if ctx.input.action_pressed("jump") {
         ctx.world.resource_mut::<Jumps>().0 += 1;

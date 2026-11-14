@@ -42,7 +42,7 @@ fn run(path: &Path, hot_reload: bool, edit: impl Fn() + 'static) -> (Texture, Ve
                 std::thread::sleep(Duration::from_millis(400));
             }
         })
-        .run_headless(5, |ctx| tex = Some(ctx.load_texture(&name)));
+        .run_headless(5, |ctx| tex = Some(ctx.gfx.load_texture(&name)));
     let seen = seen.lock().unwrap().clone();
     (tex.unwrap(), seen)
 }
@@ -98,13 +98,13 @@ fn a_file_overridden_by_an_asset_source_is_not_reloaded_but_the_folders_copy_is(
             }
         })
         .run_headless(5, |ctx| {
-            let from_folder = ctx.load_texture(&name);
+            let from_folder = ctx.gfx.load_texture(&name);
             let mut png = Vec::new();
             image::RgbaImage::from_pixel(4, 4, image::Rgba([0, 255, 0, 255]))
                 .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
                 .unwrap();
             ctx.assets.add_source(MemorySource::new("pack").with(name.clone(), png));
-            let from_source = ctx.load_texture(&name);
+            let from_source = ctx.gfx.load_texture(&name);
             loaded = Some((from_folder, from_source));
         });
     let (from_folder, from_source) = loaded.unwrap();
@@ -199,7 +199,7 @@ fn load_tuning(ctx: &mut Ctx, path: &str) {
 
 fn step_size(ctx: &Ctx) -> f32 {
     // The file's current values, every tick.
-    ctx.world.resource::<Tuning>().speed * ctx.dt()
+    ctx.world.resource::<Tuning>().speed * ctx.time.dt()
 }
 // ANCHOR_END: data_files
 
@@ -283,7 +283,7 @@ fn edited_fonts_reload_and_broken_ones_are_kept() {
 #[test]
 fn edited_sounds_reload() {
     let load = |ctx: &mut Ctx, f: &str| {
-        ctx.load_sound(f);
+        ctx.audio.load(f);
     };
     assert_eq!(reload_ticks("beep.wav", &wav(800, 1000), wav(1600, 2000), load), [2]);
 }
@@ -351,8 +351,8 @@ fn repeated_edits_reload_in_place_without_growth() {
             }
         })
         .run_headless(2 * EDITS + 2, move |ctx| {
-            let _ = ctx.load_texture(&loads[0]);
-            let _ = ctx.load_sound(&loads[1]);
+            let _ = ctx.gfx.load_texture(&loads[0]);
+            let _ = ctx.audio.load(&loads[1]);
             #[cfg(feature = "3d")]
             let _ = ctx.gfx.load_shader(&loads[2]);
         });

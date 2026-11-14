@@ -7,9 +7,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ponko::d2::{SpriteMaterial, SpriteMaterialDesc, SpriteShader};
 use ponko::prelude::*;
 use ponko::render::{ShaderKind, ShaderOutcome, ShaderStatus};
+use ponko::render::{SpriteMaterial, SpriteMaterialDesc, SpriteShader};
 
 const GOOD: &str = "fn fragment(p: SpritePixel) -> vec4<f32> {\n    return p.color * material.params[0];\n}\n";
 /// Line 3 returns a number, not a color.

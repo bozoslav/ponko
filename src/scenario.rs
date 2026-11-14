@@ -772,34 +772,9 @@ pub(crate) struct Scenarios {
 }
 
 impl crate::input::Input {
-    /// Starts `scenario` on the next simulation tick, which is its tick 0,
-    /// replacing (and cancelling) one that is running. Use it from systems and
-    /// tests; [`Game::input_scenario`](crate::game::Game::input_scenario) starts one
-    /// with the game. The run's [`crate::scenario::ScenarioReport`] is kept in `world` and
-    /// its ticks are counted on `time` (the game's are `ctx.world` and
-    /// `ctx.time`).
-    /// ```
-    /// use ponko::prelude::*;
-    /// struct PressedOn(Option<u64>);
-    ///
-    /// let game = Game::new("t", 1, 1)
-    ///     .sim_system(|ctx: &mut Ctx| {
-    ///         if ctx.time.sim_tick() == 3 {
-    ///             // Started during tick 3, so the scenario's tick 0 is tick 4.
-    ///             let scenario = ponko::scenario::InputScenario::new().at(0, ponko::actions::InputEvent::Key(Key::Space, true));
-    ///             ctx.input.start_scenario(&mut ctx.world, &mut ctx.time, scenario);
-    ///         }
-    ///     })
-    ///     .sim_system(|ctx: &mut Ctx| {
-    ///         if ctx.key_pressed(Key::Space) {
-    ///             let tick = ctx.time.sim_tick();
-    ///             ctx.world.resource_mut::<PressedOn>().0 = Some(tick);
-    ///         }
-    ///     });
-    /// let world = game.run_headless(6, |ctx| ctx.world.insert_resource(PressedOn(None)));
-    /// assert_eq!(world.resource::<ponko::scenario::ScenarioReport>().start_tick, 4);
-    /// assert_eq!(world.resource::<PressedOn>().0, Some(4), "fed before tick 4's systems");
-    /// ```
+    /// Deprecated: use [`Ctx::start_scenario`](crate::ctx::Ctx::start_scenario),
+    /// which takes the world and the clock itself.
+    #[deprecated(since = "0.2.0", note = "use `ctx.start_scenario(scenario)`")]
     pub fn start_scenario(&mut self, world: &mut World, time: &mut Time, scenario: InputScenario) {
         // A system runs inside a tick, so its scenario's tick 0 is the next one.
         let start = if time.in_sim() {
@@ -810,26 +785,8 @@ impl crate::input::Input {
         self.install_scenario(world, time, scenario, start, RunOrigin::default());
     }
 
-    /// Ends the running scenario, releasing the keys, buttons and axes it
-    /// still holds. Returns whether one was running. The report (in
-    /// `world`) says `cancelled`.
-    ///
-    /// The input state is one shared set of held keys, with no record of
-    /// which device holds one, so a key the scenario pressed is released even
-    /// if a player is physically holding it too: it reads as up until its
-    /// next key event. Only what the scenario itself left held is released.
-    /// ```
-    /// use ponko::prelude::*;
-    /// let mut game = Game::new("t", 1, 1).sim_system(|ctx: &mut Ctx| {
-    ///     if ctx.time.sim_tick() == 2 {
-    ///         assert!(ctx.input.cancel_scenario(&mut ctx.world, &mut ctx.time));
-    ///         assert!(!ctx.key_down(Key::Space)); // released
-    ///     }
-    /// });
-    /// let scenario = ponko::scenario::InputScenario::new().at(0, ponko::actions::InputEvent::Key(Key::Space, true)).duration(10);
-    /// let (world, report) = game.run_headless_scenario(scenario, |_| {});
-    /// assert_eq!(report.status, ponko::scenario::ScenarioStatus::Cancelled);
-    /// ```
+    /// Deprecated: use [`Ctx::cancel_scenario`](crate::ctx::Ctx::cancel_scenario).
+    #[deprecated(since = "0.2.0", note = "use `ctx.cancel_scenario()`")]
     pub fn cancel_scenario(&mut self, world: &mut World, time: &mut Time) -> bool {
         self.cancel_scenario_for(world, time, "cancelled", None)
     }
@@ -931,6 +888,65 @@ impl crate::input::Input {
             self.feed(event);
         }
         held.len()
+    }
+}
+
+impl Ctx {
+    /// Starts `scenario` on the next simulation tick, which is its tick 0,
+    /// replacing (and cancelling) one that is running. Use it from systems and
+    /// tests; [`Game::input_scenario`](crate::game::Game::input_scenario) starts one
+    /// with the game. The run's [`ScenarioReport`] is kept in `ctx.world`
+    /// and its ticks are counted on `ctx.time`.
+    /// ```
+    /// use ponko::prelude::*;
+    /// struct PressedOn(Option<u64>);
+    ///
+    /// let game = Game::new("t", 1, 1)
+    ///     .sim_system(|ctx: &mut Ctx| {
+    ///         if ctx.time.sim_tick() == 3 {
+    ///             // Started during tick 3, so the scenario's tick 0 is tick 4.
+    ///             let scenario = ponko::scenario::InputScenario::new().at(0, ponko::actions::InputEvent::Key(Key::Space, true));
+    ///             ctx.start_scenario(scenario);
+    ///         }
+    ///     })
+    ///     .sim_system(|ctx: &mut Ctx| {
+    ///         if ctx.input.key_pressed(Key::Space) {
+    ///             let tick = ctx.time.sim_tick();
+    ///             ctx.world.resource_mut::<PressedOn>().0 = Some(tick);
+    ///         }
+    ///     });
+    /// let world = game.run_headless(6, |ctx| ctx.world.insert_resource(PressedOn(None)));
+    /// assert_eq!(world.resource::<ponko::scenario::ScenarioReport>().start_tick, 4);
+    /// assert_eq!(world.resource::<PressedOn>().0, Some(4), "fed before tick 4's systems");
+    /// ```
+    #[allow(deprecated)] // the one implementation, until the old call goes
+    pub fn start_scenario(&mut self, scenario: InputScenario) {
+        self.input.start_scenario(&mut self.world, &mut self.time, scenario);
+    }
+
+    /// Ends the running scenario, releasing the keys, buttons and axes it
+    /// still holds. Returns whether one was running. The report (in
+    /// `ctx.world`) says `cancelled`.
+    ///
+    /// The input state is one shared set of held keys, with no record of
+    /// which device holds one, so a key the scenario pressed is released even
+    /// if a player is physically holding it too: it reads as up until its
+    /// next key event. Only what the scenario itself left held is released.
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut game = Game::new("t", 1, 1).sim_system(|ctx: &mut Ctx| {
+    ///     if ctx.time.sim_tick() == 2 {
+    ///         assert!(ctx.cancel_scenario());
+    ///         assert!(!ctx.input.key_down(Key::Space)); // released
+    ///     }
+    /// });
+    /// let scenario = ponko::scenario::InputScenario::new().at(0, ponko::actions::InputEvent::Key(Key::Space, true)).duration(10);
+    /// let (world, report) = game.run_headless_scenario(scenario, |_| {});
+    /// assert_eq!(report.status, ponko::scenario::ScenarioStatus::Cancelled);
+    /// ```
+    #[allow(deprecated)] // the one implementation, until the old call goes
+    pub fn cancel_scenario(&mut self) -> bool {
+        self.input.cancel_scenario(&mut self.world, &mut self.time)
     }
 }
 

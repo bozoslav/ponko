@@ -1006,6 +1006,8 @@ mod imp {
     use ponko::__ffi;
     use ponko::d3::Character as Character3D;
     use ponko::d3::Collider as Collider3D;
+    use ponko::d3::CollisionGroups;
+    use ponko::d3::CollisionMesh;
     use ponko::d3::Hit as Hit3D;
     use ponko::d3::Joint as Joint3D;
     use ponko::d3::JointDrive as JointDrive3D;
@@ -1014,8 +1016,6 @@ mod imp {
     use ponko::d3::RigidBody as RigidBody3D;
     use ponko::d3::Shape as Shape3D;
     use ponko::d3::Velocity as Velocity3D;
-    use ponko::physics3d::CollisionGroups;
-    use ponko::physics3d::CollisionMesh;
     use ponko::prelude::{BodyKind, Handle, Quat, Vec3};
     use ponko_ecs::Entity;
 

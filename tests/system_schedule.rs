@@ -836,7 +836,7 @@ fn interval_systems_between_batches_still_skip_their_ticks() {
             .add(
                 Phase::AfterPhysics,
                 (|ctx: &mut Ctx| {
-                    let line = format!("slow at {} dt {:.3}", ctx.time.sim_tick(), ctx.dt());
+                    let line = format!("slow at {} dt {:.3}", ctx.time.sim_tick(), ctx.time.dt());
                     ctx.world.resource_mut::<Log>().0.push(line);
                 })
                 .every(3),

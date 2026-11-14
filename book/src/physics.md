@@ -39,7 +39,7 @@ things for this tick's step (forces, velocities) go in `BeforePhysics` with
 
 ## Bodies and colliders
 
-An entity becomes a physics body with three components: a `Transform2D`, a
+An entity becomes a physics body with three components: a `d2::Transform`, a
 `RigidBody` (how it moves) and a `Collider` (its shape, in pixels):
 
 <div class="lang-pair">
@@ -81,7 +81,7 @@ A rigid body also has `gravity_scale`, `linear_damping`, `angular_damping`,
 `lock_rotation` (characters that shouldn't tip over) and `ccd` (continuous
 collision detection, so bullets don't pass through thin walls).
 
-**`Transform2D` stays the source of truth.** After each step, dynamic bodies
+**`d2::Transform` stays the source of truth.** After each step, dynamic bodies
 write their new position and rotation into it, so sprites, attachments, the
 spatial grid and everything else just follow. Set a transform yourself and
 the body teleports there. Change a `RigidBody` or `Collider` and the body is

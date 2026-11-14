@@ -2,7 +2,7 @@
 //! process (and a single test), so nothing else allocates while it counts.
 
 #[allow(unused_imports)]
-use ponko::alloc_count::CountingAllocator;
+use ponko::perf::CountingAllocator;
 #[allow(unused_imports)]
 use ponko::perf::{Budget, WarningKind};
 use ponko::prelude::*;

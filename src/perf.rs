@@ -250,7 +250,7 @@ impl Perf {
     /// ```
     /// # use ponko::prelude::*;
     /// fn toggle_hud(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::F3) {
+    ///     if ctx.input.key_pressed(Key::F3) {
     ///         let on = ctx.perf.hud();
     ///         ctx.perf.set_hud(!on);
     ///     }
@@ -282,7 +282,7 @@ impl Perf {
     /// ```
     /// # use ponko::prelude::*;
     /// fn capture(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::F4) {
+    ///     if ctx.input.key_pressed(Key::F4) {
     ///         ctx.perf.record_trace("frames.json", 120);
     ///     }
     /// }
@@ -320,7 +320,7 @@ impl Perf {
     /// ```
     /// # use ponko::prelude::*;
     /// fn debug_keys(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::F5) {
+    ///     if ctx.input.key_pressed(Key::F5) {
     ///         let on = !ctx.perf.profiling();
     ///         ctx.perf.set_profiling(on);
     ///     }
@@ -395,7 +395,7 @@ impl Perf {
     /// ```
     /// # use ponko::prelude::*;
     /// fn dump(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::F6) {
+    ///     if ctx.input.key_pressed(Key::F6) {
     ///         println!("{}", ctx.perf.report());
     ///     }
     /// }
@@ -482,9 +482,11 @@ impl Perf {
 }
 
 // Detailed reports live beside the frame service.
+#[doc(inline)]
 pub use crate::alloc_count::{AllocCounts, CountingAllocator, alloc_counts, note_allocation};
 pub use crate::perf_report::*;
 pub use crate::profiler::{FrameStats, GpuPass};
+#[doc(inline)]
 pub use crate::scope::{ProfileScope, ScopeGuard, ScopeTiming, scope_named};
 
 /// Named profiling scopes.

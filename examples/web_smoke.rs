@@ -38,14 +38,14 @@ fn main() {
         .setup(|ctx| {
             let smoke = smoke::Smoke::new("web_smoke");
             // The one fetched asset; a missing file panics with its name.
-            let crab = ctx.load_texture("crab.png");
+            let crab = ctx.gfx.load_texture("crab.png");
             // Assets from a source the game adds: found by name, never fetched.
             ctx.assets.add_source(
                 MemorySource::new("embedded")
                     .with("embedded/dot.png", png(4, 2))
                     .with("embedded/hum.wav", hum_wav(8000)),
             );
-            let dot = ctx.load_texture("embedded/dot.png");
+            let dot = ctx.gfx.load_texture("embedded/dot.png");
             let music = ctx.audio.try_load_stream("embedded/hum.wav");
             let stream = music.is_ok();
             // Music asked for before any click: in a browser it starts at

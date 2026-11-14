@@ -18,9 +18,9 @@ const WORLD: f32 = 4096.0;
 
 /// Wander steering on all cores: the per-agent work of a typical sim tick.
 fn wander(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world
-        .query::<(&mut Transform2D, &mut Agent)>()
+        .query::<(&mut d2::Transform, &mut Agent)>()
         .par_for_each(|(t, a)| {
             let p = &mut t.position;
             a.heading += (p.x * 0.013 + p.y * 0.007 + a.heading).sin() * 0.8 * dt;
@@ -44,11 +44,11 @@ fn main() {
         .sim_system(wander)
         // The two-argument form may borrow locals, here the timers.
         .run_headless(ticks, |ctx| {
-            let tex = ctx.load_texture("crab.png");
+            let tex = ctx.gfx.load_texture("crab.png");
             ctx.world.spawn_batch((0..agents).map(|i| {
                 let pos = vec2((i % 4096) as f32, (i / 4096 % 4096) as f32);
                 (
-                    Transform2D::at(pos),
+                    d2::Transform::at(pos),
                     Sprite::new(tex),
                     Agent {
                         heading: i as f32,

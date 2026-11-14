@@ -4,8 +4,8 @@
 
 use std::ffi::c_char;
 
-use ponko::d2::{BlendMode, SpriteMaterial, SpriteMaterialDesc, SpriteShader};
 use ponko::prelude::{Ctx, Vec4};
+use ponko::render::{BlendMode, SpriteMaterial, SpriteMaterialDesc, SpriteShader};
 
 use crate::ctx::{ctx_access, out, text};
 use crate::types::{SameLayout, draw_params_from_c, same_layout, texture_from_c, texture_to_c, to_c};

@@ -87,7 +87,7 @@ fn errors_convert_with_question_mark_into_boxed_errors() {
 #[should_panic(expected = "ponko: \"nope.png\" not found in assets/")]
 fn panicking_loaders_panic_with_the_error_message_once_prefixed() {
     in_tick(|ctx| {
-        ctx.load_texture("nope.png");
+        ctx.gfx.load_texture("nope.png");
     });
 }
 

@@ -9,8 +9,9 @@
 //!   the last good version stays)
 //! - Escape: quit
 
-use ponko::d2::{BlendMode, Sprite, SpriteMaterialDesc, Transform};
+use ponko::d2::{Sprite, Transform};
 use ponko::prelude::*;
+use ponko::render::{BlendMode, SpriteMaterialDesc};
 
 /// A white disc fading out to its edge: the glow.
 fn soft_circle(ctx: &mut Ctx, size: u32) -> Texture {
@@ -56,7 +57,7 @@ fn noise(ctx: &mut Ctx, size: u32) -> Texture {
 fn main() {
     Game::new("Ponko: sprite effects", 800, 600).run(|ctx| {
         ctx.gfx.clear(Color::hex(0x141B26));
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         ctx.gfx.set_texture_filter(crab, TextureFilter::Nearest);
         let glow = soft_circle(ctx, 64);
         let noise = noise(ctx, 64);
@@ -108,7 +109,7 @@ fn main() {
             // An immediate additive draw: light where the mouse is.
             ctx.gfx.draw_ex(
                 glow,
-                ctx.mouse_pos(),
+                ctx.input.mouse_pos(),
                 DrawParams::default()
                     .with_blend(BlendMode::Additive)
                     .with_scale(Vec2::splat(2.0 + (t * 4.0).sin() * 0.3))
@@ -118,7 +119,7 @@ fn main() {
             for (x, label) in [(150.0, "additive glow"), (360.0, "outline"), (560.0, "dissolve")] {
                 ctx.gfx.draw_text(label, vec2(x, 400.0), 18.0, Color::WHITE);
             }
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
         }

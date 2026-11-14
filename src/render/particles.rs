@@ -518,7 +518,7 @@ mod tests {
                 gravity: Vec3::ZERO,
                 size: (1.0, 1.0),
                 blend: ParticleBlend3D::Additive,
-                color_over_life: crate::d3::ParticleGradient::new(vec![(0.0, Color::rgba(1.0, 0.2, 0.0, 0.5))]),
+                color_over_life: crate::particles::ParticleGradient::new(vec![(0.0, Color::rgba(1.0, 0.2, 0.0, 0.5))]),
                 ..Default::default()
             }),
         ));

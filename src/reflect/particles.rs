@@ -11,10 +11,10 @@ use serde_json::Value;
 
 use super::{Reflected, Registry, SchemaSource, TextureNames, check, remove};
 use crate::color::Color;
-use crate::d2::BlendMode;
-use crate::particles::{
+use crate::particles2d::{
     ParticleCurve, ParticleEmitter2D, ParticleGradient, ParticleSettings2D, ParticleShape2D, ParticleSpace,
 };
+use crate::render::BlendMode;
 use crate::schema::ValueSchema;
 
 /// The reflected name.
@@ -141,7 +141,7 @@ fn emitter_from_json(world: &World, value: Value) -> Result<ParticleEmitter2D, S
             world
                 .get_resource::<TextureNames>()
                 .and_then(|t| t.get(&name))
-                .ok_or_else(|| format!("texture \"{name}\" isn't loaded: ctx.load_texture(\"{name}\") first"))?,
+                .ok_or_else(|| format!("texture \"{name}\" isn't loaded: ctx.gfx.load_texture(\"{name}\") first"))?,
         ),
         None => None,
     };
@@ -340,7 +340,7 @@ mod tests {
             ParticleSettings2D::default().with_texture(image),
         ),));
         assert!(world.get_json(e, NAME).is_err(), "an image made in code has no name");
-        let material = crate::d2::SpriteMaterial { id: 0 };
+        let material = crate::render::SpriteMaterial { id: 0 };
         let e = world.spawn((ParticleEmitter2D::new(
             ParticleSettings2D::default().with_material(material),
         ),));

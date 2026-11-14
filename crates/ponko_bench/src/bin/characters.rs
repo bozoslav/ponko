@@ -27,7 +27,7 @@ fn step_ms(n: usize) -> f32 {
         .physics3d(vec3(0.0, -9.81, 0.0))
         .profile_headless(WARMUP, TICKS, move |ctx| {
             ctx.world.spawn((
-                Transform3D::at(vec3(0.0, -0.5, 0.0)),
+                d3::Transform::at(vec3(0.0, -0.5, 0.0)),
                 RigidBody3D::fixed(),
                 Collider3D::cuboid(vec3(500.0, 0.5, 500.0)),
             ));
@@ -36,7 +36,7 @@ fn step_ms(n: usize) -> f32 {
                 let (x, z) = ((i % side) as f32, (i / side) as f32);
                 let mut c = Character3D::new(1.8, 0.3 + (i % 7) as f32 * 0.001);
                 c.push_mass = 0.0;
-                ctx.world.spawn((Transform3D::at(vec3(x * 2.0, 0.1, z * 2.0)), c));
+                ctx.world.spawn((d3::Transform::at(vec3(x * 2.0, 0.1, z * 2.0)), c));
             }
         });
     report

@@ -14,7 +14,7 @@ use crate::{PonkoCtx, PonkoStatus, PonkoWorld};
 /// game's with `ponko_ctx_physics3d_add_mesh`.
 pub struct PonkoCollisionMeshData {
     #[cfg(feature = "physics3d")]
-    data: ponko::physics3d::CollisionMeshData,
+    data: ponko::d3::CollisionMeshData,
 }
 
 /// The built-in `TerrainCollider` component: makes a terrain tile's entity
@@ -250,10 +250,10 @@ pub unsafe extern "C" fn ponko_ctx_physics3d_is_collider_active(
 mod imp {
     use std::mem::offset_of;
 
-    use ponko::physics3d::ColliderFocus;
-    use ponko::physics3d::CollisionGroups;
-    use ponko::physics3d::CollisionMeshData;
-    use ponko::physics3d::TerrainCollider;
+    use ponko::d3::ColliderFocus;
+    use ponko::d3::CollisionGroups;
+    use ponko::d3::CollisionMeshData;
+    use ponko::d3::TerrainCollider;
     use ponko::prelude::Vec3;
     use ponko_ecs::Entity;
 

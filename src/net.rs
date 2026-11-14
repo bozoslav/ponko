@@ -55,19 +55,19 @@ pub use messages::{Lane, MAX_MESSAGE_BYTES, MessageEvent, MessageStats, NetMessa
 mod interest;
 mod sequence;
 mod service;
-mod snapshots;
+pub(crate) mod snapshots;
 pub use interest::{
     Interest, InterestChange, InterestChangeKind, InterestConfig, InterestEntity, InterestEntry, InterestTier,
     InterestViewer, MAX_INTEREST_TIERS,
 };
 pub use sequence::{Authority, AuthorityCheck, LatestWins, UpdateStamp, seq_diff, seq_newer};
 pub use service::{NetSnapshots, Networking};
+#[cfg(feature = "3d")]
+pub use snapshots::NetPose;
 pub use snapshots::{
     ClockSync, Interpolate, Pose, SnapshotBuffer, SnapshotConfig, SnapshotPush, SnapshotSample, SnapshotState,
     SnapshotStream,
 };
-#[cfg(feature = "3d")]
-pub use snapshots::{NetPose, apply_net_poses};
 
 #[cfg(feature = "steam")]
 mod steam_messages;

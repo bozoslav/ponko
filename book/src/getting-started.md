@@ -135,14 +135,14 @@ use ponko::prelude::*;
 
 fn main() {
     Game::new("My Game", 800, 600).run(|ctx| {
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         let mut pos = vec2(400.0, 300.0);
 
         move |ctx: &mut Ctx| {
-            if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
-            if ctx.key_down(Key::Left)  { pos.x -= 200.0 * ctx.dt(); }
-            if ctx.key_pressed(Key::Escape) { ctx.quit(); }
-            ctx.draw(crab, pos);
+            if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
+            if ctx.input.key_down(Key::Left)  { pos.x -= 200.0 * ctx.time.dt(); }
+            if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
+            ctx.gfx.draw(crab, pos);
         }
     });
 }
@@ -184,7 +184,7 @@ Once a game has systems, its startup work goes on the builder too:
 let game = Game::new("My Game", 800, 600)
     .sim_system(movement)
     .setup(|ctx| {
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         ctx.world.spawn((ponko::d2::Transform::at(vec2(400.0, 300.0)), ponko::d2::Sprite::new(crab)));
     });
 // Startup chosen at run time: each call adds one more callback.

@@ -26,7 +26,7 @@ pub enum PonkoTextAlign3D {
 
 /// World text settings. Start with `ponko_text3d_default`. Size is meters
 /// per line; outline width and softness are fractions of a line, clamped
-/// by the renderer to about 0.12. Text needs a Transform3D to be drawn.
+/// by the renderer to about 0.12. Text needs a d3::Transform to be drawn.
 /// ```
 /// let settings: ponko_ffi::PonkoText3D = ponko_ffi::ponko_text3d_default();
 /// assert!(!settings.billboard);

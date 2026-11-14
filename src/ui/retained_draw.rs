@@ -45,15 +45,15 @@ impl Ctx {
     pub(super) fn retained_input(&self, ui: &crate::ui::Ui, mut text: String) -> crate::ui::UiInput {
         text.clear();
         text.push_str(self.input.typed_text());
-        let pressed = |key| self.key_pressed(key);
+        let pressed = |key| self.input.key_pressed(key);
         let pad = |b| self.input.gamepads().iter().any(|&p| self.input.gamepad_pressed(p, b));
-        let shift = self.key_down(Key::LeftShift) || self.key_down(Key::RightShift);
-        let ctrl = self.key_down(Key::LeftCtrl)
-            || self.key_down(Key::RightCtrl)
-            || self.key_down(Key::LeftSuper)
-            || self.key_down(Key::RightSuper);
+        let shift = self.input.key_down(Key::LeftShift) || self.input.key_down(Key::RightShift);
+        let ctrl = self.input.key_down(Key::LeftCtrl)
+            || self.input.key_down(Key::RightCtrl)
+            || self.input.key_down(Key::LeftSuper)
+            || self.input.key_down(Key::RightSuper);
         crate::ui::UiInput {
-            pointer: self.mouse_pos(),
+            pointer: self.input.mouse_pos(),
             pressed: self.input.mouse_pressed(MouseButton::Left),
             held: self.input.mouse_down(MouseButton::Left),
             released: self.input.mouse_released(MouseButton::Left),

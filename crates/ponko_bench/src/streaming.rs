@@ -169,7 +169,7 @@ impl Load {
     fn ask(self, ctx: &mut Ctx, path: &str) -> bool {
         match self {
             Load::Texture => {
-                ctx.load_texture(path);
+                ctx.gfx.load_texture(path);
                 true
             }
             Load::Mesh => {

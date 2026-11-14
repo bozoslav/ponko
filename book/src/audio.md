@@ -4,10 +4,10 @@
 <div>
 
 ```rust
-let hit = ctx.load_sound("hit.ogg");   // OGG Vorbis, WAV, MP3 or FLAC from assets/
-ctx.play_sound(hit);
+let hit = ctx.audio.load("hit.ogg");   // OGG Vorbis, WAV, MP3 or FLAC from assets/
+ctx.audio.play(hit);
 
-let music = ctx.load_sound("theme.ogg");
+let music = ctx.audio.load("theme.ogg");
 let song = ctx.audio.play_ex(music, SoundParams { volume: 0.5, looping: true, ..Default::default() });
 ctx.audio.stop(song);
 ```

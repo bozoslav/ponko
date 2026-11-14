@@ -786,6 +786,13 @@ jobs:
       - run: cargo public-api --version
       - name: Regenerate the listing and compare it with api/
         run: python3 scripts/api-snapshots.py check
+      # Every public item of `ponko` has one path besides the prelude
+      # (STABILITY.md, "The crate root and globs"): walks rustdoc's JSON,
+      # built with the same nightly.
+      - name: One public path per item
+        run: |
+          python3 scripts/check-naming.py --selftest
+          python3 scripts/check-naming.py --paths
       # Only when the check failed: the regenerated files, for anyone who
       # cannot run the tool themselves.
       - name: Upload the regenerated listing

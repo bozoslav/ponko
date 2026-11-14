@@ -337,7 +337,7 @@ impl SceneSettings {
     /// use ponko::prelude::*;
     /// Game::new("autotune", 64, 64).run_headless(0, |ctx| {
     ///     ctx.scene3d.set_quality_autotune(Some(ponko::render::QualityAutotune::default()));
-    ///     assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_some());
+    ///     assert!(ctx.quality_autotune_status().is_some());
     /// });
     /// ```
     pub fn set_quality_autotune(&mut self, policy: Option<QualityAutotune>) {
@@ -386,22 +386,9 @@ impl SceneSettings {
 }
 
 impl SceneSettings {
-    /// Automatic quality's policy, its current choices and its last
-    /// decisions, or `None` while it is off (see
-    /// [`set_quality_autotune`](Self::set_quality_autotune)). The running
-    /// controller is the context's, so pass `&ctx.gfx`. The reason is
-    /// `Frozen` while it can't decide: frozen by the game, a headless run,
-    /// or a screenshot waiting to be taken.
-    ///
-    /// ```
-    /// use ponko::prelude::*;
-    /// Game::new("autotune", 64, 64).run_headless(0, |ctx| {
-    ///     assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_none(), "off by default");
-    ///     ctx.scene3d.set_quality_autotune(Some(ponko::render::QualityAutotune::default()));
-    ///     let status = ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap();
-    ///     assert_eq!(status.reason, ponko::render::QualityAutotuneReason::Frozen, "headless");
-    /// });
-    /// ```
+    /// Deprecated: use [`Ctx::quality_autotune_status`](crate::ctx::Ctx::quality_autotune_status),
+    /// which reads the render settings and the graphics service itself.
+    #[deprecated(since = "0.2.0", note = "use `ctx.quality_autotune_status()`")]
     #[must_use]
     pub fn quality_autotune_status(&self, gfx: &crate::gfx::Graphics) -> Option<QualityAutotuneStatus> {
         let (policy, token) = self.autotune.policy?;
@@ -425,6 +412,28 @@ impl SceneSettings {
 }
 
 impl crate::ctx::Ctx {
+    /// Automatic quality's policy, its current choices and its last
+    /// decisions, or `None` while it is off (see
+    /// [`ctx.scene3d.set_quality_autotune`](SceneSettings::set_quality_autotune)).
+    /// The reason is
+    /// `Frozen` while it can't decide: frozen by the game, a headless run,
+    /// or a screenshot waiting to be taken.
+    ///
+    /// ```
+    /// use ponko::prelude::*;
+    /// Game::new("autotune", 64, 64).run_headless(0, |ctx| {
+    ///     assert!(ctx.quality_autotune_status().is_none(), "off by default");
+    ///     ctx.scene3d.set_quality_autotune(Some(ponko::render::QualityAutotune::default()));
+    ///     let status = ctx.quality_autotune_status().unwrap();
+    ///     assert_eq!(status.reason, ponko::render::QualityAutotuneReason::Frozen, "headless");
+    /// });
+    /// ```
+    #[allow(deprecated)] // the one implementation, until the old call goes
+    #[must_use]
+    pub fn quality_autotune_status(&self) -> Option<QualityAutotuneStatus> {
+        self.scene3d.quality_autotune_status(&self.gfx)
+    }
+
     /// Runs automatic quality for this frame: follows the policy in
     /// `scene3d` (starting, replacing or dropping the controller), then lets
     /// it change render scale and shadow resolution.
@@ -605,7 +614,7 @@ mod regressions {
     #[test]
     fn explicit_settings_freeze_and_headless_win_even_with_gpu_samples() {
         let mut ctx = Ctx::new(1.0 / 60.0, Vec2::ONE);
-        assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_none());
+        assert!(ctx.quality_autotune_status().is_none());
         ctx.scene3d.set_quality(crate::render::GraphicsQuality::High);
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
         let q = ctx.scene3d.quality();
@@ -620,7 +629,7 @@ mod regressions {
             );
         }
         assert_eq!(ctx.scene3d.quality(), q);
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         let mut ctx = Ctx::new(1.0 / 60.0, Vec2::ONE);
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
         ctx.scene3d.pin_render_scale(1.0);
@@ -635,7 +644,7 @@ mod regressions {
                 false,
             );
         }
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         for headless in [false, true] {
             let mut ctx = Ctx::new(1.0 / 60.0, Vec2::ONE);
             ctx.set_headless(headless);
@@ -650,7 +659,7 @@ mod regressions {
                     !headless,
                 );
             }
-            assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+            assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         }
     }
 
@@ -699,7 +708,7 @@ mod regressions {
         }
         assert_eq!(ctx.scene3d.post.render_scale, 1.0);
         assert_eq!(ctx.scene3d.lighting.shadow_resolution, 2048);
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         ctx.scene3d.freeze_quality_autotune(true);
         for i in 1..4000 {
             ctx.update_quality_autotune(
@@ -711,7 +720,7 @@ mod regressions {
                 false,
             );
         }
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         ctx.scene3d.freeze_quality_autotune(false);
         for i in 4000..4030 {
             ctx.update_quality_autotune(
@@ -723,7 +732,7 @@ mod regressions {
                 false,
             );
         }
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 1);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 1);
     }
 
     #[test]
@@ -753,7 +762,7 @@ mod regressions {
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
         let save = ctx.world.save();
         ctx.replace_world(&save).unwrap();
-        assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_none());
+        assert!(ctx.quality_autotune_status().is_none());
     }
 
     fn over_budget(ctx: &mut Ctx, frames: std::ops::Range<u64>) {
@@ -772,19 +781,13 @@ mod regressions {
         let mut ctx = Ctx::new(1.0 / 60.0, Vec2::ONE);
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
         over_budget(&mut ctx, 1..10);
-        assert_eq!(
-            ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().reason,
-            Reason::Observing
-        );
+        assert_eq!(ctx.quality_autotune_status().unwrap().reason, Reason::Observing);
         ctx.gfx.save_screenshot("shot.png");
-        let status = ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap();
+        let status = ctx.quality_autotune_status().unwrap();
         assert_eq!(status.reason, Reason::Frozen, "before the next frame");
         assert!(!status.frozen, "not frozen by the game");
         ctx.gfx.screenshots.clear();
-        assert_eq!(
-            ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().reason,
-            Reason::Observing
-        );
+        assert_eq!(ctx.quality_autotune_status().unwrap().reason, Reason::Observing);
     }
 
     #[test]
@@ -793,25 +796,25 @@ mod regressions {
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
         over_budget(&mut ctx, 1..40);
         let running = ctx.scene3d.clone();
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 1);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 1);
 
         // A copy of the running policy carries on with its history.
         ctx.scene3d = running.clone();
         over_budget(&mut ctx, 40..41);
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 1);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 1);
 
         // Defaults turn it off, and the next frame drops the controller.
         ctx.scene3d = crate::render::SceneSettings::default();
-        assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_none());
+        assert!(ctx.quality_autotune_status().is_none());
         over_budget(&mut ctx, 41..42);
         assert!(ctx.gfx.autotune.is_none());
 
         // A policy set again starts fresh; restoring the older copy does too.
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune::default()));
-        assert_eq!(ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap().changes, 0);
+        assert_eq!(ctx.quality_autotune_status().unwrap().changes, 0);
         ctx.scene3d = running;
         over_budget(&mut ctx, 42..43);
-        let status = ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap();
+        let status = ctx.quality_autotune_status().unwrap();
         assert_eq!((status.changes, status.reason), (0, Reason::Observing));
     }
 

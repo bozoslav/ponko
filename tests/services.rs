@@ -65,7 +65,7 @@ fn dt_in_a_sim_system_is_the_sim_step_and_frame_dt_stays_the_frames() {
     fn check(ctx: &mut Ctx) {
         assert_eq!(ctx.time.dt(), ctx.time.sim_dt());
         assert_eq!(ctx.time.sim_dt(), ctx.time.fixed_dt());
-        assert_eq!(ctx.dt(), ctx.time.dt(), "the shortcut is the same number");
+        assert_eq!(ctx.time.dt(), ctx.time.dt(), "the shortcut is the same number");
         // A headless run has one frame per tick.
         assert_eq!(ctx.time.frame_dt(), ctx.time.fixed_dt());
     }
@@ -136,8 +136,8 @@ fn input_edges_and_the_cursor_lock_live_on_the_input_service() {
         assert_eq!(ctx.input.typed_text(), "hi");
         // The shortcuts read the same state.
         ctx.input.feed(InputEvent::Key(Key::A, true));
-        assert!(ctx.key_down(Key::A) && ctx.key_pressed(Key::A));
-        assert_eq!(ctx.mouse_pos(), ctx.input.mouse_pos());
+        assert!(ctx.input.key_down(Key::A) && ctx.input.key_pressed(Key::A));
+        assert_eq!(ctx.input.mouse_pos(), ctx.input.mouse_pos());
     });
 }
 
@@ -227,7 +227,7 @@ fn the_audio_service_owns_sounds_buses_and_the_shortcuts_reach_it() {
         assert_eq!(beep.seconds(), 1.0);
         assert!(ctx.is_live(beep));
         // The shortcut plays through the same service.
-        let playing = ctx.play_sound(beep);
+        let playing = ctx.audio.play(beep);
         ctx.audio.stop(playing);
         let music = ctx.audio.bus("music");
         assert_eq!(ctx.audio.bus("music"), music, "a name gives the same bus");
@@ -301,10 +301,11 @@ fn the_graphics_service_owns_textures_and_the_shortcuts_reach_it() {
         ctx.gfx.update_texture(pixel, &[0; 16]);
         ctx.gfx.set_texture_filter(pixel, TextureFilter::Nearest);
         // The shortcuts queue through the same service.
-        ctx.draw(pixel, Vec2::ZERO);
+        ctx.gfx.draw(pixel, Vec2::ZERO);
         ctx.gfx.draw_ex(pixel, Vec2::ZERO, DrawParams::default());
         assert_eq!(ctx.gfx.sprite_count(), 2);
-        ctx.draw_text("headless text is measured, not drawn", Vec2::ZERO, 16.0, Color::WHITE);
+        ctx.gfx
+            .draw_text("headless text is measured, not drawn", Vec2::ZERO, 16.0, Color::WHITE);
         assert!(ctx.gfx.measure_text("wide", 16.0).x > 0.0);
         assert!(ctx.gfx.is_live(Font::DEFAULT));
         assert!(ctx.gfx.try_load_texture("missing.png").is_err());
@@ -403,19 +404,19 @@ fn immediate_widgets_take_the_services_they_use() {
         ctx.ui.immediate.style.text_size = 20.0;
         let panel = Rect::new(100.0, 100.0, 200.0, 100.0);
         assert!(!ctx.ui.immediate.covers(vec2(150.0, 150.0)));
-        ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+        ctx.immediate_ui().panel(panel);
         assert!(ctx.ui.immediate.covers(vec2(150.0, 150.0)));
         assert_eq!(ctx.gfx.sprite_count(), 1, "the panel is one sprite");
-        let size = ctx.ui.immediate.label(&mut ctx.gfx, panel.min, "label");
+        let size = ctx.immediate_ui().label(panel.min, "label");
         assert_eq!(size, ctx.gfx.measure_text("label", 20.0));
 
         // A click is a press and a release over the button.
         let button = Rect::new(0.0, 0.0, 100.0, 30.0);
         // The mouse starts at (0, 0), inside it.
         ctx.input.feed(InputEvent::Mouse(MouseButton::Left, true));
-        assert!(!ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, button, "Go"));
+        assert!(!ctx.immediate_ui().button(button, "Go"));
         ctx.input.feed(InputEvent::Mouse(MouseButton::Left, false));
-        assert!(ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, button, "Go"));
+        assert!(ctx.immediate_ui().button(button, "Go"));
     });
 }
 
@@ -427,7 +428,7 @@ fn the_ui_has_the_pointer_over_immediate_widgets_drawn_this_frame_or_the_last() 
         ctx.world.resource_mut::<Seen>().0.push(over);
         if ctx.time.sim_tick() == 0 {
             // The mouse starts at (0, 0), inside this panel.
-            ctx.ui.immediate.panel(&mut ctx.gfx, Rect::new(0.0, 0.0, 50.0, 50.0));
+            ctx.immediate_ui().panel(Rect::new(0.0, 0.0, 50.0, 50.0));
             assert!(ctx.ui.wants_pointer(), "drawn this frame");
         }
     }
@@ -675,8 +676,9 @@ mod three {
 }
 
 /// The public methods of `Ctx` that rustdoc shows: every `pub fn` in an
-/// `impl Ctx` block of the engine's source that isn't `#[doc(hidden)]`.
-fn visible_ctx_methods() -> Vec<String> {
+/// `impl Ctx` block of the engine's source that isn't `#[doc(hidden)]`,
+/// with whether it is `#[deprecated]`.
+fn visible_ctx_methods() -> Vec<(String, bool)> {
     fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -698,6 +700,7 @@ fn visible_ctx_methods() -> Vec<String> {
         let mut in_ctx = false;
         // Attributes and doc comments since the last item or blank line.
         let mut hidden = false;
+        let mut deprecated = false;
         for line in text.lines() {
             if !in_ctx {
                 in_ctx = line == "impl Ctx {" || line == "impl crate::ctx::Ctx {";
@@ -707,14 +710,18 @@ fn visible_ctx_methods() -> Vec<String> {
                 in_ctx = false;
             } else if line.trim() == "#[doc(hidden)]" {
                 hidden = true;
+            } else if line.trim().starts_with("#[deprecated") {
+                deprecated = true;
             } else if let Some(rest) = line.strip_prefix("    pub fn ") {
                 if !hidden {
                     let name = rest.split(['(', '<']).next().unwrap();
-                    methods.push(name.to_string());
+                    methods.push((name.to_string(), deprecated));
                 }
                 hidden = false;
+                deprecated = false;
             } else if line.trim().is_empty() || line == "    }" {
                 hidden = false;
+                deprecated = false;
             }
         }
     }
@@ -724,13 +731,15 @@ fn visible_ctx_methods() -> Vec<String> {
 
 #[test]
 fn ctx_keeps_fewer_than_forty_documented_methods() {
-    let methods = visible_ctx_methods();
+    let all = visible_ctx_methods();
+    let methods: Vec<&str> = all.iter().filter(|m| !m.1).map(|m| m.0.as_str()).collect();
     assert!(
         methods.len() < 40,
         "`Ctx` has {} documented methods; a new call belongs on a service (`ctx.gfx`, `ctx.audio`, ...): {methods:?}",
         methods.len()
     );
-    // The shortcuts the guide names are among them.
+    // One spelling per call: the 0.1 shortcuts that only forwarded to one
+    // service are deprecated, and only calls that span services stay.
     for shortcut in [
         "dt",
         "key_down",
@@ -739,14 +748,35 @@ fn ctx_keeps_fewer_than_forty_documented_methods() {
         "mouse_pos",
         "draw",
         "draw_text",
-        "quit",
         "load_texture",
         "load_sound",
         "play_sound",
     ] {
         assert!(
-            methods.iter().any(|m| m == shortcut),
-            "`Ctx::{shortcut}` is a documented shortcut"
+            all.iter().any(|m| m.0 == shortcut && m.1),
+            "`Ctx::{shortcut}` duplicates a service call, so it stays deprecated"
         );
     }
+    for kept in ["quit", "free", "is_live", "mouse_world", "immediate_ui"] {
+        assert!(methods.contains(&kept), "`Ctx::{kept}` is the one spelling");
+    }
+}
+
+#[test]
+#[allow(deprecated)]
+fn deprecated_ctx_shortcuts_still_forward_to_their_services() {
+    // Kept for one minor so 0.1 code still builds (with a warning naming the
+    // service call); each must answer as its service does.
+    Game::new("t", 800, 600).run_headless(1, |ctx| {
+        assert_eq!(ctx.mouse_pos(), ctx.input.mouse_pos());
+        assert_eq!(ctx.dt(), ctx.time.dt());
+        assert_eq!(ctx.key_down(Key::Space), ctx.input.key_down(Key::Space));
+        assert_eq!(ctx.key_pressed(Key::Space), ctx.input.key_pressed(Key::Space));
+        assert_eq!(ctx.key_released(Key::Space), ctx.input.key_released(Key::Space));
+        let beep = ctx.audio.create(8000, &[0.0; 80]);
+        let playing = ctx.play_sound(beep);
+        ctx.audio.stop(playing);
+        assert!(ctx.immediate_ui().label(vec2(0.0, 0.0), "x").y > 0.0);
+        assert!(ctx.ui.immediate.label(&mut ctx.gfx, vec2(0.0, 0.0), "x").y > 0.0);
+    });
 }

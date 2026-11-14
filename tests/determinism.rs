@@ -19,7 +19,7 @@ struct Walker {
 struct Food(f32);
 
 fn wander(ctx: &mut Ctx) {
-    let (dt, random, grid) = (ctx.dt(), ctx.random(), &ctx.spatial);
+    let (dt, random, grid) = (ctx.time.dt(), ctx.random(), &ctx.spatial);
     ctx.world
         .query::<(Entity, &mut Transform2D, &mut Walker)>()
         .par_for_each(|(e, t, w)| {

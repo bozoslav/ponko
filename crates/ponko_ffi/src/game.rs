@@ -173,7 +173,7 @@ pub unsafe extern "C" fn ponko_game_fullscreen(game: *mut PonkoGame, on: bool) -
     unsafe { build(game, |g| ok(g.fullscreen(on))) }
 }
 /// Turns on the built-in spatial grid with cells of `cell_size`, rebuilt
-/// from every `Transform2D` at the start of each tick (`ponko_ctx_spatial_*`).
+/// from every `d2::Transform` at the start of each tick (`ponko_ctx_spatial_*`).
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_game_spatial_grid(std::ptr::null_mut(), 32.0) } as u32, 1);
 /// ```

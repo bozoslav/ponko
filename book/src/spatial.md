@@ -14,7 +14,7 @@ Game::new("Boids", 1280, 720)
     .sim_system(flock);
 ```
 
-At the start of every tick, every entity with a `Transform2D` is indexed into
+At the start of every tick, every entity with a `d2::Transform` is indexed into
 `ctx.spatial`. Query it from any sim system:
 
 <div class="lang-pair">

@@ -10,6 +10,7 @@
 // ANCHOR: use_level
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::tilemap::LevelObject;
 // ANCHOR_END: use_level
 // ANCHOR: use_menu
 use ponko::ui::{UiEvent, UiLayout};
@@ -84,7 +85,7 @@ pub fn start_level(ctx: &mut Ctx) {
         .iter()
         .find(|o| o.class == "Spawn")
         .map_or(vec2(40.0, 180.0), |o| o.position);
-    let texture = ctx.load_texture("tutorial_2d/crab.png");
+    let texture = ctx.gfx.load_texture("tutorial_2d/crab.png");
     let crab = ctx.world.spawn((
         Transform::at(start),
         Sprite::new(texture),
@@ -249,8 +250,8 @@ impl Plugin for Pickups {
 
     fn setup(&self, ctx: &mut Ctx) {
         let sounds = Sounds {
-            coin: ctx.load_sound("tutorial_2d/coin.wav"),
-            flag: ctx.load_sound("tutorial_2d/flag.wav"),
+            coin: ctx.audio.load("tutorial_2d/coin.wav"),
+            flag: ctx.audio.load("tutorial_2d/flag.wav"),
         };
         ctx.world.insert_resource(sounds);
         ctx.world.insert_resource(Score::default());
@@ -291,7 +292,7 @@ fn touch(ctx: &mut Ctx) {
             Some("Coin") => {
                 ctx.world.despawn(thing);
                 ctx.world.resource_mut::<Score>().coins += 1;
-                ctx.play_sound(sounds.coin);
+                ctx.audio.play(sounds.coin);
             }
             Some("Goal") => {
                 let coins = std::mem::take(&mut ctx.world.resource_mut::<Score>().coins);
@@ -300,7 +301,7 @@ fn touch(ctx: &mut Ctx) {
                     coins,
                     total: coins + left,
                 });
-                ctx.play_sound(sounds.flag);
+                ctx.audio.play(sounds.flag);
                 start_level(ctx);
                 return;
             }
@@ -337,7 +338,7 @@ fn hud(ctx: &mut Ctx) {
     let coins = ctx.world.resource::<Score>().coins;
     let total = coins + coins_left(&mut ctx.world);
     let text = format!("Coins: {coins} / {total}");
-    ctx.draw_text(&text, vec2(16.0, 12.0), 28.0, Color::WHITE);
+    ctx.gfx.draw_text(&text, vec2(16.0, 12.0), 28.0, Color::WHITE);
 }
 // ANCHOR_END: pickups
 

@@ -17,6 +17,7 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{MaterialDesc, MeshData, ModelMaterial};
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use serde_json::json;

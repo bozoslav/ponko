@@ -4,7 +4,7 @@
 //! a hat attached to the driver. Shared by `main.rs` and the headless test
 //! in `tests/scenes.rs`.
 
-use ponko::d2::Transform as Transform2D;
+use ponko::d2::Transform;
 use ponko::prelude::*;
 
 /// The cart prefab.
@@ -28,7 +28,7 @@ pub fn setup(ctx: &mut Ctx) -> Vec<Entity> {
 /// drivers and hats follow by their attachments.
 pub fn roll(ctx: &mut Ctx) {
     ctx.world
-        .query::<(&mut Transform2D, &PrefabParts)>()
+        .query::<(&mut Transform, &PrefabParts)>()
         .for_each(|(t, _)| t.position.x += SPEED);
 }
 
@@ -40,7 +40,7 @@ pub fn scrap(ctx: &mut Ctx) {
     }
     let first = ctx
         .world
-        .query::<(Entity, &Transform2D, &PrefabParts)>()
+        .query::<(Entity, &Transform, &PrefabParts)>()
         .iter()
         .min_by(|a, b| a.1.position.x.total_cmp(&b.1.position.x))
         .map(|(e, _, _)| e);

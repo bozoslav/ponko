@@ -14,6 +14,7 @@ use ponko::d3::*;
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use ponko::prelude::*;
+use ponko::render::{Blend, MaterialDesc, MeshData, Sky};
 
 /// One blade of grass: a thin quad, texture v from 0 at the root to 1 at the tip.
 fn blade() -> MeshData {
@@ -48,17 +49,17 @@ fn main() {
     let mut fog = env("FOG").unwrap_or(0.0) > 0.0;
     Game::new("Ponko: shaders", 1280, 720)
         .system(move |ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
             // Two hours a second.
-            if ctx.key_down(Key::Right) {
-                hour = (hour + ctx.dt() * 2.0) % 24.0;
+            if ctx.input.key_down(Key::Right) {
+                hour = (hour + ctx.time.dt() * 2.0) % 24.0;
             }
-            if ctx.key_down(Key::Left) {
-                hour = (hour - ctx.dt() * 2.0).rem_euclid(24.0);
+            if ctx.input.key_down(Key::Left) {
+                hour = (hour - ctx.time.dt() * 2.0).rem_euclid(24.0);
             }
-            if ctx.key_pressed(Key::F) {
+            if ctx.input.key_pressed(Key::F) {
                 fog = !fog;
             }
             ctx.scene3d.lighting.sun_direction = Sky::sun_direction_at(hour);

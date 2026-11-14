@@ -14,7 +14,7 @@ use ponko::d3::Transform;
 use ponko::d3::{Character, Collider, QueryFilter, RigidBody};
 #[allow(unused_imports)]
 #[cfg(feature = "physics3d")]
-use ponko::physics3d::{ColliderFocus, CollisionMeshData, TerrainCollider};
+use ponko::d3::{ColliderFocus, CollisionMeshData, TerrainCollider};
 use ponko::prelude::*;
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
@@ -102,7 +102,7 @@ fn collision_meshes_build_on_a_worker_thread() {
             }
         })
         .run_headless(2, |ctx| {
-            let job = ponko::stream::Job::spawn(|| CollisionMeshData::heightfield(&[2.0; 5 * 5], 10.0));
+            let job = ponko::streaming::Job::spawn(|| CollisionMeshData::heightfield(&[2.0; 5 * 5], 10.0));
             let mesh = ctx.physics3d.add_mesh(&job.wait());
             ctx.world.spawn((Transform::default(), TerrainCollider::new(mesh)));
         });
@@ -297,8 +297,8 @@ fn turning_streaming_off_brings_every_collider_back() {
 // ANCHOR: collider_streaming
 /// A streamed tile, built on a worker: its meshes and its collider, from
 /// the same heights.
-fn build_tile(heights: Vec<f32>) -> ponko::stream::Job<(TerrainTileData, CollisionMeshData)> {
-    ponko::stream::Job::spawn(move || {
+fn build_tile(heights: Vec<f32>) -> ponko::streaming::Job<(TerrainTileData, CollisionMeshData)> {
+    ponko::streaming::Job::spawn(move || {
         let drawn = TerrainTileData::new(&heights, 128.0);
         let solid = CollisionMeshData::heightfield(&heights, 128.0);
         (drawn, solid)

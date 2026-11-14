@@ -1,31 +1,41 @@
 //! Three-dimensional game types. Pair with `ponko::prelude::*`.
 //!
-//! `use ponko::d3::*;` brings in every 3D name a game uses, under short
-//! names (`Camera`, `Transform`, `Physics`, `Material`, ...). Each type is
-//! documented at exactly one path, its home:
+//! `use ponko::d3::*;` brings in the types of a 3D world that have a 2D
+//! twin or would otherwise carry a `3D` in their name: the transform, the
+//! camera, lights, decals, text, lines, trails, particle emitters,
+//! reflection probes, positional audio, navigation agents, world-space UI
+//! panels and the physics (feature `physics3d`). This module is their one
+//! path, under these names, so it is the name rustdoc and the guide use.
 //!
-//! - A topic module is the home of its types: [`render`](crate::render)
-//!   (meshes, materials, models, shaders, level of detail, render
-//!   settings), [`anim`](crate::anim) (skeletons, clips, animators, IK),
-//!   [`terrain`](crate::terrain), [`physics3d`](crate::physics3d),
-//!   `collision` (body kinds and collision events, shared with 2D),
-//!   [`audio`](crate::audio), [`nav`](crate::nav) and [`ui`](crate::ui).
-//!   This module re-exports them (listed under *Re-exports*) so one glob is
-//!   enough; both paths name the same type.
-//! - Types with no topic module (cameras, transforms, lights, decals, 3D
-//!   text, lines, trails, particle emitters, reflection probes) live here.
-//!   3D attachments ([`Attached`]) live in [`attach`](crate::attach), with
-//!   the 2D ones.
+//! The rest of 3D lives in its topic module: [`render`](crate::render)
+//! (meshes, materials, models, shaders, level of detail, render settings),
+//! [`anim`](crate::anim) (skeletons, clips, animators, IK),
+//! [`terrain`](crate::terrain), [`particles`](crate::particles) (curves and
+//! gradients shared with 2D), [`collision`](crate::collision) (body kinds
+//! and collision events, shared with 2D), [`attach`](crate::attach)
+//! (3D attachments, `Attached3D`, with the 2D ones) and [`nav`](crate::nav)
+//! (navigation mesh baking).
 //!
 //! ```
 //! use ponko::prelude::*;
 //! use ponko::d3::*;
+//! use ponko::render::MaterialDesc;
 //!
 //! let desc = MaterialDesc::color(Color::WHITE);
-//! assert_eq!(desc, ponko::render::MaterialDesc::color(Color::WHITE));
 //! let light = PointLight { intensity: 20.0, ..Default::default() };
-//! # let _ = (light, Transform::default());
+//! # let _ = (desc, light, Transform::default());
 //! ```
+//!
+//! ## Physics
+//!
+//! 3D physics with rapier (feature `physics3d`): rigid bodies, colliders
+//! (heightfield terrain and triangle meshes too), a character controller
+//! and raycast-wheel vehicles as components, stepped inside the simulation
+//! clock. [`Transform`] stays the source of truth: set it and the body
+//! teleports; moving bodies write their new pose back after every step,
+//! and between steps (in windowed games) a pose blended between the last
+//! two steps, so motion looks smooth at any frame rate. Turn it on with
+//! [`Game::physics3d`](crate::game::Game::physics3d).
 
 // Types whose home is this module.
 #[doc(inline)]
@@ -57,27 +67,15 @@ pub use crate::three::Trail3D as Trail;
 #[doc(inline)]
 pub use crate::three::Transform3D as Transform;
 
-// Types documented in their topic module.
-#[doc(no_inline)]
-pub use crate::anim::{
-    AnimationClip, AnimationCondition, AnimationEvent, AnimationGraph, AnimationGraphError, AnimationLayer,
-    AnimationParameter, AnimationState, AnimationTrack, AnimationTransition, Animator, AttachToJoint, Interpolation,
-    JointAnimation, JointMask, LayerBlend, LayerId, MorphAnimation, MorphFrame, MorphTarget, MorphWeights, Motion,
-    MotionChild, ParamId, RootMotion, Skeleton, SkinOf, StateId,
-};
-#[doc(no_inline)]
-pub use crate::attach::Attached3D as Attached;
-#[doc(no_inline)]
-pub use crate::audio::{
+#[doc(inline)]
+pub use crate::audio::spatial::{
     AudioListener3D as AudioListener, AudioSettings3D as AudioSettings, AudioSource3D as AudioSource,
 };
 #[cfg(feature = "navmesh")]
-#[doc(no_inline)]
-pub use crate::nav::{NavAgent, NavMesh, NavObstacle};
-#[doc(no_inline)]
-pub use crate::particles::{ParticleCurve, ParticleGradient, ParticleSpace};
+#[doc(inline)]
+pub use crate::nav3d::{NavAgent3D as NavAgent, NavMesh3D as NavMesh, NavObstacle3D as NavObstacle};
 #[cfg(feature = "physics3d")]
-#[doc(no_inline)]
+#[doc(inline)]
 pub use crate::physics3d::{
     Character3D as Character, Collider3D as Collider, ColliderFocus, CollisionGroups, CollisionMesh, CollisionMeshData,
     CollisionMeshOptions, ContactModifier3D as ContactModifier, ContactPair3D as ContactPair, FrictionCurve,
@@ -85,22 +83,5 @@ pub use crate::physics3d::{
     Physics3D as Physics, QueryFilter3D as QueryFilter, Ragdoll3D as Ragdoll, RagdollBone, RigidBody3D as RigidBody,
     Shape3D as Shape, TerrainCollider, Vehicle3D as Vehicle, Velocity3D as Velocity, Wheel3D as Wheel,
 };
-#[doc(no_inline)]
-pub use crate::render::{
-    AmbientOcclusion, AntiAliasing, BatchCulling, Blend, Compute, ComputePass, Effect, GlobalIllumination, GpuBuffer,
-    GraphicsQuality, InstanceBatch, InstanceBatchOptions, InstanceLevel, Lighting, LodGroup, LodHysteresis, LodLevel,
-    LodPick, LodRenderer, LodSettings, LodShadow, Material, MaterialDesc, Mesh, MeshCost, MeshData, Model,
-    ModelMaterial, ModelMaterials, Post, ReceivesDecals, RenderPasses, SceneSettings, ScreenEffect, Shader,
-    ShaderDiagnostic, ShaderKind, ShaderOutcome, ShaderStatus, ShadowFilter, ShadowMesh, Sky, StreamedLod,
-    TargetCamera, TargetEffect, Tonemap,
-};
-#[doc(no_inline)]
-pub use crate::terrain::{
-    FarTerrain, Heightfield, TerrainMaterialDesc, TerrainTile, TerrainTileData, TextureArray, TextureKind,
-};
-#[doc(no_inline)]
-pub use crate::ui::UiPanel3D as UiPanel;
-
-#[cfg(any(feature = "physics", feature = "physics3d"))]
-#[doc(no_inline)]
-pub use crate::collision::{BodyKind, CollisionStarted, CollisionStopped};
+#[doc(inline)]
+pub use crate::ui::panel3d::UiPanel3D as UiPanel;

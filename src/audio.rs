@@ -20,9 +20,11 @@
 //! needs a special case. Positional sound needs the `3d` feature.
 
 #[cfg(feature = "3d")]
-mod spatial;
+pub(crate) mod spatial;
 #[cfg(feature = "3d")]
-pub use spatial::*;
+pub use spatial::AudioRolloff;
+#[cfg(feature = "3d")]
+pub(crate) use spatial::*;
 
 /// A loaded sound. Cheap to copy. Get one from
 /// [`Ctx::load_sound`](crate::ctx::Ctx::load_sound) or
@@ -764,8 +766,8 @@ impl Audio {
     /// ```no_run
     /// # use ponko::prelude::*;
     /// # fn setup(ctx: &mut Ctx) {
-    /// let hit = ctx.load_sound("hit.ogg");
-    /// ctx.play_sound(hit);
+    /// let hit = ctx.audio.load("hit.ogg");
+    /// ctx.audio.play(hit);
     /// # }
     /// ```
     pub fn load(&mut self, path: &str) -> Sound {
@@ -781,7 +783,7 @@ impl Audio {
     /// # use ponko::prelude::*;
     /// Game::new("t", 1, 1).run_headless(0, |ctx| {
     ///     if let Ok(music) = ctx.audio.try_load("music/bonus.ogg") {
-    ///         ctx.play_sound(music);
+    ///         ctx.audio.play(music);
     ///     }
     /// });
     /// ```
@@ -849,7 +851,7 @@ impl Audio {
     /// # use ponko::prelude::*;
     /// # fn f(ctx: &mut Ctx, click: Sound) {
     /// if ctx.input.mouse_pressed(MouseButton::Left) {
-    ///     ctx.play_sound(click);
+    ///     ctx.audio.play(click);
     /// }
     /// # }
     /// ```

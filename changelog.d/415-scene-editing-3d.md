@@ -15,7 +15,7 @@
   cover moves, gizmo drags, component edits, spawns, despawns, parenting
   and placed assets, and survive Play / Stop. **Save** writes back to the
   scene loaded or saved last.
-- `d3::Attached` (`Attached3D`): keeps an entity at a transform in another
+- `attach::Attached3D`: keeps an entity at a transform in another
   one's space, placed by `systems::follow_attachments` with the 2D ones,
   saved in scenes and prefabs. C: `PonkoAttached3D` and
   `ponko_attached3d_component`; C++: `ponko::attached3d` and

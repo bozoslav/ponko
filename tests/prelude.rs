@@ -8,7 +8,7 @@ struct Job;
 fn common_game_names_do_not_collide_with_the_prelude() {
     let _ = (Pose, Material, Job);
     let mut world = World::new();
-    let entity = world.spawn((Transform2D::at(vec2(1.0, 2.0)),));
+    let entity = world.spawn((d2::Transform::at(vec2(1.0, 2.0)),));
     assert_eq!(world.get::<d2::Transform>(entity).unwrap().position, vec2(1.0, 2.0));
     let _ = Game::new("prelude", 1, 1).run_headless(0, |_| {});
 }

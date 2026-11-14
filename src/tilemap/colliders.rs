@@ -44,7 +44,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(map: &ponko::d2::TileMap) {
+    /// # fn f(map: &ponko::tilemap::TileMap) {
     /// const WALL: u16 = 3;
     /// for r in map.solid_rects(|tile| tile == WALL) {
     ///     println!("wall from {} to {}", r.min, r.max);
@@ -74,7 +74,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(ctx: &mut Ctx, map: &ponko::d2::TileMap) {
+    /// # fn f(ctx: &mut Ctx, map: &ponko::tilemap::TileMap) {
     /// const WALL: u16 = 3;
     /// ctx.world.spawn_batch(map.colliders(Vec2::ZERO, |tile| tile == WALL));
     /// # }

@@ -20,8 +20,12 @@ fn setup(ctx: &mut Ctx) {
             .with_drag(0.2)
             .with_size(0.05, 0.13)
             .with_rotation(0.0, std::f32::consts::TAU)
-            .with_size_over_life(ponko::d3::ParticleCurve::new(vec![(0.0, 0.5), (0.2, 1.0), (1.0, 0.0)]))
-            .with_color_over_life(ponko::d3::ParticleGradient::new(vec![
+            .with_size_over_life(ponko::particles::ParticleCurve::new(vec![
+                (0.0, 0.5),
+                (0.2, 1.0),
+                (1.0, 0.0),
+            ]))
+            .with_color_over_life(ponko::particles::ParticleGradient::new(vec![
                 (0.0, Color::rgba(1.0, 0.7, 0.2, 1.0)),
                 (1.0, Color::rgba(1.0, 0.1, 0.0, 0.0)),
             ]))

@@ -63,7 +63,7 @@ impl Ctx {
     /// | 2D and 3D physics | Bodies, characters and joints are removed at once (queries find nothing), then built from the new components at the next physics step, from rest unless the scene has a velocity component. Gravity, collision meshes, contact hooks and settings are kept. |
     /// | [`spatial`](Self::spatial) neighbor grid | Refilled at the start of the next simulation tick. |
     /// | 3D navigation (`NavMesh3D`, with the `navmesh` feature) | The baked mesh, a resource, is kept. Crowd agents are components, so they go with their entities; `step_navmesh3d` frees the old agents' crowd slots at its next step, and agents added to the new scene's entities (even with the same ids) start from where they are. |
-    /// | [`Attached`](crate::d2::Attached), `Attached3D` (with the `3d` feature) | Reflected: the scene's attachments, to the scene's entities. [`follow_attachments`](crate::systems::follow_attachments) places them at its next run and despawns those whose entity isn't in the scene. |
+    /// | [`Attached`](crate::attach::Attached), `Attached3D` (with the `3d` feature) | Reflected: the scene's attachments, to the scene's entities. [`follow_attachments`](crate::systems::follow_attachments) places them at its next run and despawns those whose entity isn't in the scene. |
     /// | Skeletons and morph weights | Components that aren't saved: gone with their entities unless the game adds them again. The engine's skinning scratch is rebuilt every frame from the world as it is. |
     /// | [`SkinOf`](crate::anim::SkinOf), [`AttachToJoint`](crate::anim::AttachToJoint), 3D joints | Reflected: the scene's, to the scene's entities. Skeletons aren't saved, so skins and joint attachments show once the game gives their entity a skeleton again. |
     /// | [`PrefabParts`] | Reflected: the scene's prefab trees keep their parts, for [`despawn_prefab`](Self::despawn_prefab). |
@@ -205,7 +205,7 @@ impl Ctx {
     /// A prefab is one entity or a tree of them (a cart with its wheels, a
     /// character with what it carries): the parts are placed relative to the
     /// root, components that name another entity of the prefab
-    /// ([`Attached`](crate::d2::Attached), joints, skin targets, your own
+    /// ([`Attached`](crate::attach::Attached), joints, skin targets, your own
     /// components holding an [`Entity`]) name the new copy, and the root gets
     /// [`PrefabParts`] listing the others, for
     /// [`despawn_prefab`](Self::despawn_prefab). A prefab may include another
@@ -568,7 +568,7 @@ pub(crate) fn relative_to(world: &ponko_ecs::World, part: Entity, root: Entity, 
 
 /// `root` and what [`save_prefab`](crate::assets::Assets::save_prefab) saves
 /// with it, root first: its [`PrefabParts`], then whatever is attached to
-/// those (by [`Attached`](crate::d2::Attached) or its 3D form, a skin or joint attachment,
+/// those (by [`Attached`](crate::attach::Attached) or its 3D form, a skin or joint attachment,
 /// or a 3D joint between two of them), until nothing more is.
 pub(crate) fn prefab_members(world: &ponko_ecs::World, root: Entity) -> Vec<Entity> {
     let mut members = vec![root];
@@ -586,7 +586,7 @@ pub(crate) fn prefab_members(world: &ponko_ecs::World, root: Entity) -> Vec<Enti
     // Whether `e` hangs off an entity of `set`.
     let attached = |e: Entity, set: &std::collections::HashSet<Entity>| {
         let mut to = Vec::new();
-        to.extend(world.get::<crate::d2::Attached>(e).map(|a| a.to));
+        to.extend(world.get::<crate::attach::Attached>(e).map(|a| a.to));
         #[cfg(feature = "3d")]
         {
             to.extend(world.get::<crate::attach::Attached3D>(e).map(|a| a.to));
@@ -666,7 +666,7 @@ impl crate::assets::Assets {
     ///
     ///     ctx.load_scene("shop.json").unwrap(); // loads "icons/apple.png" first
     ///     let item = ctx.world.query::<&ShopItem>().iter().next().unwrap().clone();
-    ///     let icon = ctx.load_texture(&item.icon); // the cached texture
+    ///     let icon = ctx.gfx.load_texture(&item.icon); // the cached texture
     ///     assert_eq!(icon.width(), 1);
     /// });
     /// ```

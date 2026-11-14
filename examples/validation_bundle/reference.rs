@@ -99,7 +99,7 @@ fn game(
         None => game,
     };
     game.sim_system(move |ctx: &mut Ctx| {
-        let dt = ctx.dt();
+        let dt = ctx.time.dt();
         let tick = ctx.time.sim_tick();
         let want_jump = match variant {
             Variant::Fixed => ctx.input.action_pressed("jump"),

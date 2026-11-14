@@ -9,9 +9,11 @@
 //! - Left click: a one-shot burst of confetti where you click
 //! - Escape: quit
 
-use ponko::d2::{BlendMode, ParticleEmitter, ParticleSettings, ParticleShape, ParticleSpace, Sprite, Transform};
+use ponko::d2::{ParticleEmitter, ParticleSettings, ParticleShape, Sprite, Transform};
+use ponko::particles::ParticleSpace;
 use ponko::particles::{ParticleCurve, ParticleGradient};
 use ponko::prelude::*;
+use ponko::render::BlendMode;
 
 /// A white disc fading out to its edge: one soft particle.
 fn soft_circle(ctx: &mut Ctx, size: u32) -> Texture {
@@ -123,7 +125,7 @@ fn main() {
     Game::new("Ponko: 2D particles", 800, 600).run(|ctx| {
         ctx.gfx.clear(Color::hex(0x10141C));
         let soft = soft_circle(ctx, 32);
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         ctx.gfx.set_texture_filter(crab, TextureFilter::Nearest);
 
         let fire_at = vec2(400.0, 420.0);
@@ -157,7 +159,7 @@ fn main() {
 
         let mut bursts = 0u64;
         move |ctx: &mut Ctx| {
-            let mouse = ctx.mouse_pos();
+            let mouse = ctx.input.mouse_pos();
             ctx.world
                 .query::<(&mut Transform, &FollowMouse)>()
                 .for_each(|(t, _)| t.position = mouse);
@@ -187,7 +189,7 @@ fn main() {
                 18.0,
                 Color::WHITE,
             );
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
         }

@@ -141,7 +141,7 @@ of them) and tell the engine how to load it with
 `load` with each name in that field before spawning, so an asset that can't
 be loaded fails the load with the component, field and name, before any
 entity changes. A system gets the handle by loading the name again
-(`ctx.load_texture(&item.icon)`), which returns the cached one.
+(`ctx.gfx.load_texture(&item.icon)`), which returns the cached one.
 
 The engine deliberately doesn't turn names into handles inside your
 components: the component keeps exactly what the file says, saves

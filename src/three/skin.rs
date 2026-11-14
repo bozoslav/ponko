@@ -223,7 +223,7 @@ impl Skeleton {
 /// [`Skeleton`], and draws it where that entity is: clothes, hair and
 /// swappable parts made for the same skeleton. Joints are matched by name,
 /// so a part works on any skeleton that has its joints. The entity needs no
-/// [`Transform3D`] of its own.
+/// [`d3::Transform`](crate::d3::Transform) of its own.
 ///
 /// ```no_run
 /// # use ponko::prelude::*;
@@ -238,7 +238,7 @@ impl Skeleton {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Component, serde::Serialize, serde::Deserialize)]
 pub struct SkinOf(pub Entity);
 
-/// Keeps this entity's [`Transform3D`] on a joint of another entity's
+/// Keeps this entity's [`d3::Transform`](crate::d3::Transform) on a joint of another entity's
 /// [`Skeleton`], moved by `offset` in the joint's space: a gun in a hand, a
 /// hat on a head. The engine sets it just before drawing, so systems see
 /// last frame's place; [`Skeleton::joint_matrix`] gives this frame's.

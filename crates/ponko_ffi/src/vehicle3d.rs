@@ -295,9 +295,9 @@ pub unsafe extern "C" fn ponko_vehicle3d_component(world: *mut PonkoWorld, out_i
 mod imp {
     use std::mem::offset_of;
 
+    use ponko::d3::FrictionCurve;
     use ponko::d3::Vehicle as Vehicle3D;
     use ponko::d3::Wheel as Wheel3D;
-    use ponko::physics3d::FrictionCurve;
 
     use super::*;
     use crate::builtin;

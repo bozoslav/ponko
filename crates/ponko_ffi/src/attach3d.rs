@@ -1,6 +1,6 @@
 //! 3D attachments from C: `PonkoAttached3D`. The system that places them is
 //! the 2D one's, `ponko_game_follow_attachments`: it places both.
-use ponko::d3::Attached;
+use ponko::attach::Attached3D;
 
 use crate::types::PonkoEntity;
 use crate::{PonkoStatus, PonkoTransform3D, PonkoWorld, builtin};
@@ -26,9 +26,9 @@ pub struct PonkoAttached3D {
 }
 
 const _: () = {
-    assert!(size_of::<PonkoAttached3D>() == size_of::<Attached>());
-    assert!(std::mem::offset_of!(PonkoAttached3D, to) == std::mem::offset_of!(Attached, to));
-    assert!(std::mem::offset_of!(PonkoAttached3D, offset) == std::mem::offset_of!(Attached, offset));
+    assert!(size_of::<PonkoAttached3D>() == size_of::<Attached3D>());
+    assert!(std::mem::offset_of!(PonkoAttached3D, to) == std::mem::offset_of!(Attached3D, to));
+    assert!(std::mem::offset_of!(PonkoAttached3D, offset) == std::mem::offset_of!(Attached3D, offset));
 };
 
 /// The id of the built-in `Attached3D` component (`PonkoAttached3D` in C),
@@ -43,5 +43,5 @@ const _: () = {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ponko_attached3d_component(world: *mut PonkoWorld, out_id: *mut u32) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
-    unsafe { builtin::<Attached>(world, out_id) }
+    unsafe { builtin::<Attached3D>(world, out_id) }
 }

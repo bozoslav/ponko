@@ -1319,7 +1319,7 @@ fn flow_benches(b: &mut Bench) {
                 use ponko::d2::Transform as Transform2D;
                 use ponko::systems::follow_attachments;
                 use ponko::{
-                    d2::Attached,
+                    attach::Attached,
                     prelude::{Game, vec2},
                 };
                 let world = Game::new("bench", 1, 1)

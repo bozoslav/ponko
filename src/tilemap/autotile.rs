@@ -30,7 +30,7 @@ pub enum Neighbours {
 /// run on past the edge); [`outside`](Self::outside) changes that.
 ///
 /// ```
-/// use ponko::d2::{AutoTile, TileMap};
+/// use ponko::tilemap::{AutoTile, TileMap};
 /// # use ponko::prelude::*;
 /// # fn f(ctx: &mut Ctx, sheet: SpriteSheet) {
 /// // Frame `mask` of the sheet is the wall piece for that mask.
@@ -93,7 +93,7 @@ impl AutoTile {
     /// [`BLOB_MASKS`](Self::BLOB_MASKS).
     ///
     /// ```
-    /// use ponko::d2::AutoTile;
+    /// use ponko::tilemap::AutoTile;
     /// // A tileset laid out in mask order: frame i is BLOB_MASKS[i].
     /// let rule = AutoTile::eight(|mask| AutoTile::BLOB_MASKS.iter().position(|&m| m == mask).unwrap() as u16);
     /// assert_eq!(AutoTile::BLOB_MASKS[..5], [0, 1, 4, 5, 7]);

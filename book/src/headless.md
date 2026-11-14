@@ -22,7 +22,7 @@ use ponko::prelude::*;
 struct Pos(f32);
 
 fn fall(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world.query::<&mut Pos>().for_each(|p| p.0 -= 10.0 * dt);
 }
 

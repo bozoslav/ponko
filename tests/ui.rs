@@ -13,7 +13,7 @@ fn the_default_camera_shows_world_units_as_window_pixels() {
         assert_eq!(ctx.camera.zoom, 1.0);
         assert_eq!(ctx.camera.viewport(), vec2(800.0, 600.0));
         assert_eq!(ctx.camera.screen_to_world(vec2(30.0, 40.0)), vec2(30.0, 40.0));
-        assert_eq!(ctx.mouse_world(), ctx.mouse_pos());
+        assert_eq!(ctx.mouse_world(), ctx.input.mouse_pos());
     });
 }
 
@@ -51,7 +51,7 @@ fn text_is_measured_headless_but_not_drawn() {
         assert!(one.x > 50.0 && one.x < 150.0, "{one}");
         assert!((two.y - 2.0 * one.y).abs() < 0.5, "two lines: {one} {two}");
         assert!(ctx.gfx.measure_text("wide text", 40.0).x > ctx.gfx.measure_text("wide text", 20.0).x);
-        ctx.draw_text("hello", Vec2::ZERO, 20.0, Color::WHITE);
+        ctx.gfx.draw_text("hello", Vec2::ZERO, 20.0, Color::WHITE);
         assert_eq!(ctx.gfx.sprite_count(), 0, "no glyph atlas without a GPU");
     });
 }
@@ -62,15 +62,10 @@ fn ui_takes_the_mouse_and_buttons_need_a_click() {
         // The mouse starts at (0, 0), inside this button.
         let button = Rect::new(0.0, 0.0, 100.0, 30.0);
         assert!(!ctx.ui.wants_pointer());
-        assert!(
-            !ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, button, "Go"),
-            "hovering isn't clicking"
-        );
+        assert!(!ctx.immediate_ui().button(button, "Go"), "hovering isn't clicking");
         assert!(ctx.ui.wants_pointer());
-        ctx.ui
-            .immediate
-            .panel(&mut ctx.gfx, Rect::new(500.0, 500.0, 10.0, 10.0));
-        assert!(ctx.ui.immediate.label(&mut ctx.gfx, vec2(500.0, 500.0), "label").y > 0.0);
+        ctx.immediate_ui().panel(Rect::new(500.0, 500.0, 10.0, 10.0));
+        assert!(ctx.immediate_ui().label(vec2(500.0, 500.0), "label").y > 0.0);
     });
 }
 

@@ -11,6 +11,7 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{MaterialDesc, MeshData, ScreenEffect, Sky, TargetEffect};
 
 /// Writes the frame's light into its render target; a smaller target than
 /// the frame is a coarse copy, which the screen effect samples smoothly.
@@ -32,7 +33,7 @@ fn effect(p: Pixel) -> vec3<f32> {
 fn main() {
     Game::new("Ponko: target effect", 1280, 720)
         .system(|ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
             if ctx.time.frame() == 60

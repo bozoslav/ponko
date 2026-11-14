@@ -1,33 +1,7 @@
-//! 2D lights: [`PointLight2D`], [`SpotLight2D`], [`DirectionalLight2D`],
-//! an ambient light ([`Graphics::set_ambient_light2d`]), shadows cast by
-//! [`Occluder2D`] shapes and tile maps ([`TileMap::occluder`]), and normal
-//! maps for sprites and tiles ([`Graphics::set_normal_map`]). Re-exported
-//! from [`d2`](crate::d2).
-//!
-//! Lighting is off until the game spawns a 2D light or sets an ambient
-//! light: a game without either draws exactly as before, with no extra
-//! passes and no extra GPU memory. Once on, the world's sprites, tiles and
-//! particles are drawn as usual, then multiplied by a light map: the
-//! ambient light plus every light in view, each cut by its shadows. The
-//! screen-space UI is drawn after, unlit.
-//!
-//! ```
-//! use ponko::prelude::*;
-//! use ponko::d2::{Occluder2D, PointLight2D};
-//!
-//! Game::new("Cave", 320, 240).run_headless(1, |ctx| {
-//!     ctx.gfx.set_ambient_light2d(Some(Color::rgb(0.1, 0.1, 0.15)));
-//!     ctx.world.spawn((
-//!         ponko::d2::Transform::at(vec2(160.0, 120.0)),
-//!         PointLight2D { color: Color::rgb(1.0, 0.8, 0.5), radius: 150.0, shadows: true, ..Default::default() },
-//!     ));
-//!     ctx.world.spawn((ponko::d2::Transform::at(vec2(200.0, 120.0)), Occluder2D::rect(vec2(16.0, 48.0))));
-//! });
-//! ```
-//!
-//! Every GPU tier draws it, WebGL2 included: the light map is a plain
-//! render target, shadows are stencil volumes, and nothing needs compute
-//! or storage buffers.
+//! 2D lights, shadows and normal-mapped sprites: the components behind
+//! `d2::{PointLight, SpotLight, DirectionalLight, Occluder}` (their one
+//! path; the module docs of [`d2`](crate::d2) describe them) and the
+//! ambient light and normal maps on [`Graphics`].
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -40,14 +14,14 @@ use crate::gfx::Graphics;
 use crate::texture::Texture;
 use crate::tilemap::TileMap;
 
-/// A light shining from its entity's [`Transform2D`] position in every
+/// A light shining from its entity's [`d2::Transform`](crate::d2::Transform) position in every
 /// direction, out to `radius` world units. Rotation and scale are ignored.
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::PointLight2D;
+/// # use ponko::d2::PointLight;
 /// # fn f(ctx: &mut Ctx) {
-/// let torch = PointLight2D { color: Color::rgb(1.0, 0.6, 0.3), radius: 120.0, ..Default::default() };
+/// let torch = PointLight { color: Color::rgb(1.0, 0.6, 0.3), radius: 120.0, ..Default::default() };
 /// ctx.world.spawn((ponko::d2::Transform::at(vec2(64.0, 64.0)), torch));
 /// # }
 /// ```
@@ -70,7 +44,7 @@ pub struct PointLight2D {
     /// normal-mapped sprites and tiles see it: low lights graze their
     /// bumps, high lights light them flat. Default 64.
     pub height: f32,
-    /// Whether [`Occluder2D`]s in reach cast shadows from this light.
+    /// Whether [`Occluder`](crate::d2::Occluder)s in reach cast shadows from this light.
     /// Default false.
     pub shadows: bool,
 }
@@ -88,15 +62,15 @@ impl Default for PointLight2D {
     }
 }
 
-/// A cone of light from its entity's [`Transform2D`] position, pointing
+/// A cone of light from its entity's [`d2::Transform`](crate::d2::Transform) position, pointing
 /// along its rotation (rotation 0 points right, along +x; positive turns
-/// clockwise on screen, as sprites do). Fades like a [`PointLight2D`].
+/// clockwise on screen, as sprites do). Fades like a [`PointLight`](crate::d2::PointLight).
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::SpotLight2D;
+/// # use ponko::d2::SpotLight;
 /// # fn f(ctx: &mut Ctx) {
-/// let lamp = SpotLight2D { angle: 0.4, radius: 300.0, shadows: true, ..Default::default() };
+/// let lamp = SpotLight { angle: 0.4, radius: 300.0, shadows: true, ..Default::default() };
 /// let mut at = ponko::d2::Transform::at(vec2(100.0, 50.0));
 /// at.rotation = std::f32::consts::FRAC_PI_2; // shining down
 /// ctx.world.spawn((at, lamp));
@@ -112,9 +86,9 @@ pub struct SpotLight2D {
     pub intensity: f32,
     /// Reach in world units. Default 300.
     pub radius: f32,
-    /// As [`PointLight2D::falloff`]. Default 2.
+    /// As [`PointLight::falloff`](crate::d2::PointLight::falloff). Default 2.
     pub falloff: f32,
-    /// As [`PointLight2D::height`]. Default 64.
+    /// As [`PointLight::height`](crate::d2::PointLight::height). Default 64.
     pub height: f32,
     /// Half the cone's width, in radians (0 to π). Default π/6 (a 60°
     /// cone).
@@ -122,7 +96,7 @@ pub struct SpotLight2D {
     /// How much of the cone's edge fades out instead of ending sharply,
     /// 0 (hard) to 1 (fades from the center line). Default 0.2.
     pub softness: f32,
-    /// Whether [`Occluder2D`]s in reach cast shadows. Default false.
+    /// Whether [`Occluder`](crate::d2::Occluder)s in reach cast shadows. Default false.
     pub shadows: bool,
 }
 
@@ -147,9 +121,9 @@ impl Default for SpotLight2D {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::DirectionalLight2D;
+/// # use ponko::d2::DirectionalLight;
 /// # fn f(ctx: &mut Ctx) {
-/// ctx.world.spawn((DirectionalLight2D {
+/// ctx.world.spawn((DirectionalLight {
 ///     color: Color::rgb(0.6, 0.7, 1.0),
 ///     intensity: 0.5,
 ///     direction: vec2(1.0, 1.0), // toward the bottom right
@@ -171,7 +145,7 @@ pub struct DirectionalLight2D {
     /// The light's angle above the scene in radians, for normal maps: near
     /// 0 grazes, π/2 shines straight down at the screen. Default π/4.
     pub elevation: f32,
-    /// Whether [`Occluder2D`]s cast shadows. Default false.
+    /// Whether [`Occluder`](crate::d2::Occluder)s cast shadows. Default false.
     pub shadows: bool,
 }
 
@@ -188,7 +162,7 @@ impl Default for DirectionalLight2D {
 }
 
 /// A shape that blocks 2D light: lights with `shadows` on cast a shadow
-/// behind it. Put it on an entity with a [`Transform2D`] (position,
+/// behind it. Put it on an entity with a [`d2::Transform`](crate::d2::Transform) (position,
 /// rotation and scale apply); it can share the entity with the sprite it
 /// shades.
 ///
@@ -199,12 +173,12 @@ impl Default for DirectionalLight2D {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::Occluder2D;
-/// let crate_box = Occluder2D::rect(vec2(32.0, 32.0));
+/// # use ponko::d2::Occluder;
+/// let crate_box = Occluder::rect(vec2(32.0, 32.0));
 /// assert_eq!(crate_box.edges().len(), 4);
-/// let pillar = Occluder2D::circle(10.0);
-/// let ramp = Occluder2D::polygon(&[vec2(0.0, 0.0), vec2(40.0, 20.0), vec2(0.0, 20.0)]);
-/// let fence = Occluder2D::line(vec2(-50.0, 0.0), vec2(50.0, 0.0)); // casts on both sides
+/// let pillar = Occluder::circle(10.0);
+/// let ramp = Occluder::polygon(&[vec2(0.0, 0.0), vec2(40.0, 20.0), vec2(0.0, 20.0)]);
+/// let fence = Occluder::line(vec2(-50.0, 0.0), vec2(50.0, 0.0)); // casts on both sides
 /// # let _ = (pillar, ramp, fence);
 /// ```
 ///
@@ -223,7 +197,7 @@ pub struct Occluder2D {
     reach: f32,
 }
 
-/// What an [`Occluder2D`] loads from.
+/// What an [`Occluder`](crate::d2::Occluder) loads from.
 #[derive(serde::Deserialize)]
 struct OccluderEdges {
     edges: Vec<[Vec2; 2]>,
@@ -305,7 +279,7 @@ impl Occluder2D {
 }
 
 impl TileMap {
-    /// An [`Occluder2D`] outlining the tiles `solid` picks (by tile value):
+    /// An [`Occluder`](crate::d2::Occluder) outlining the tiles `solid` picks (by tile value):
     /// one edge along every side where a solid tile meets an empty one or
     /// the map's border, merged into long runs. Put it on the map's entity,
     /// so lights with shadows cast them from the walls; the walls
@@ -316,7 +290,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(ctx: &mut Ctx, map: ponko::d2::TileMap) {
+    /// # fn f(ctx: &mut Ctx, map: ponko::tilemap::TileMap) {
     /// const WALL: u16 = 3;
     /// let shadows = map.occluder(|tile| tile == WALL);
     /// ctx.world.spawn((ponko::d2::Transform::at(vec2(0.0, 0.0)), map, shadows));

@@ -789,7 +789,7 @@ mod meshes {
         ctx.world.spawn((
             Transform::default(),
             LodGroup::new(4.0, levels),
-            ponko::d3::StreamedLod::new(&files),
+            ponko::render::StreamedLod::new(&files),
         ))
     }
 
@@ -874,7 +874,7 @@ fn the_guide_streaming_example_runs() {
         // Ask every frame you need it: never waits. `None` until a small
         // stand-in is up, then the same texture, sharper each frame.
         if let Some(ground) = ctx.gfx.stream_texture("cells/ground.png") {
-            ctx.draw(ground, vec2(0.0, 0.0));
+            ctx.gfx.draw(ground, vec2(0.0, 0.0));
         }
         if ctx.gfx.asset_state(ResidencyKind::Texture, "cells/ground.png") == AssetState::Failed {
             let why = ctx.gfx.asset_error(ResidencyKind::Texture, "cells/ground.png");

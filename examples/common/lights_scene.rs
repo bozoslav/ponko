@@ -21,11 +21,11 @@ pub fn setup(ctx: &mut Ctx, count: usize) {
         .create_material(ponko::render::MaterialDesc::default().with_roughness(0.5));
     let [floor, cube] = geometry().map(|data| ctx.gfx.create_mesh(&data, stone));
     ctx.world
-        .spawn((Transform3D::at(vec3(0.0, -1.0, -25.0)), Model::new(floor)));
+        .spawn((d3::Transform::at(vec3(0.0, -1.0, -25.0)), Model::new(floor)));
     for z in 0..10 {
         for x in 0..15 {
             ctx.world.spawn((
-                Transform3D::at(vec3((x as f32 - 7.0) * 6.0, 0.0, 10.0 - z as f32 * 7.0)),
+                d3::Transform::at(vec3((x as f32 - 7.0) * 6.0, 0.0, 10.0 - z as f32 * 7.0)),
                 Model::new(cube),
             ));
         }
@@ -38,7 +38,7 @@ pub fn setup(ctx: &mut Ctx, count: usize) {
             Color::rgb(0.06, 0.3, 1.0),
             Color::rgb(0.05, 1.0, 0.25),
         ][i % 3];
-        let t = Transform3D::at(vec3(x, 3.0, z));
+        let t = d3::Transform::at(vec3(x, 3.0, z));
         if i % 4 == 0 {
             ctx.world.spawn((
                 t.looking_at(vec3(x + 2.0, -1.0, z - 3.0)),

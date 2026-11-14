@@ -109,7 +109,7 @@ impl UnityTerrain {
     }
 
     /// Where a Ponko tile of this terrain goes (its corner, for its
-    /// `Transform3D`) when Unity's `Terrain` is at `position`.
+    /// `d3::Transform`) when Unity's `Terrain` is at `position`.
     #[must_use]
     pub fn corner(&self, position: [f32; 3]) -> [f32; 3] {
         let [x, y, z] = position;

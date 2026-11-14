@@ -147,7 +147,7 @@ pub trait AssetSource: 'static {
 ///         .write_to(&mut std::io::Cursor::new(&mut pixel), image::ImageFormat::Png)
 ///         .unwrap();
 ///     ctx.assets.add_source(MemorySource::new("embedded").with("red.png", pixel));
-///     let red = ctx.load_texture("red.png");
+///     let red = ctx.gfx.load_texture("red.png");
 ///     assert_eq!((red.width(), red.height()), (1, 1));
 /// });
 /// ```
@@ -1083,7 +1083,7 @@ impl Assets {
     ///
     /// The prefab holds `e`'s children too: its [`PrefabParts`](crate::prelude::PrefabParts)
     /// (if a prefab spawned it) and every entity attached to one of them,
-    /// by [`Attached`](crate::d2::Attached) or its 3D form, a skin or joint attachment, or a 3D
+    /// by [`Attached`](crate::attach::Attached) or its 3D form, a skin or joint attachment, or a 3D
     /// joint between two of them. Their transforms are saved relative to
     /// `e`'s, and their references to each other are kept. Included prefabs
     /// are saved as their entities, not as a link to their file. An entity

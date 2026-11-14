@@ -101,7 +101,7 @@ pub trait IntoSystem<Takes>: Sized {
 
     /// Runs the system only every `ticks`-th simulation tick, for work that
     /// doesn't need the full rate: AI that thinks a few times a second,
-    /// slow growth, pathfinding, statistics. Inside it, `ctx.dt()` is
+    /// slow growth, pathfinding, statistics. Inside it, `ctx.time.dt()` is
     /// `ticks` fixed steps, so rates stay right. Only for the fixed-tick
     /// phases (`Input` through `SimLast`).
     ///
@@ -115,7 +115,7 @@ pub trait IntoSystem<Takes>: Sized {
     /// struct Hunger(f32);
     ///
     /// fn get_hungry(ctx: &mut Ctx) {
-    ///     let dt = ctx.dt(); // 10 ticks' worth of time
+    ///     let dt = ctx.time.dt(); // 10 ticks' worth of time
     ///     ctx.world.query::<&mut Hunger>().for_each(|h| h.0 += 1.0 * dt);
     /// }
     ///

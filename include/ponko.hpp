@@ -100,22 +100,22 @@ using attached = PonkoAttached;
 /// transform2d. Get and set it like any component; it can't be a query column (the engine stores it in a Rust
 /// layout).
 using sprite = PonkoSprite;
-// ---- 2D lights (Rust `PointLight2D`, `SpotLight2D`, `DirectionalLight2D`, `Occluder2D`).
+// ---- 2D lights (Rust `d2::PointLight`, `d2::SpotLight`, `d2::DirectionalLight`, `d2::Occluder`).
 /// The built-in `PointLight2D` component: light from the entity's 2D transform, fading to nothing at
 /// `radius` pixels; `shadows` makes occluders in reach cast shadows. Start from point_light2d_default().
 /// Lighting turns on with the first light or an ambient light (ctx::set_ambient_light2d).
 using point_light2d = PonkoPointLight2D;
-/// A point light with the engine's defaults (Rust `PointLight2D::default()`).
+/// A point light with the engine's defaults (Rust `d2::PointLight::default()`).
 inline point_light2d point_light2d_default() { return ponko_point_light2d_default(); }
 /// The built-in `SpotLight2D` component: a cone of light along the entity's rotation, `angle` radians to
 /// each side, its edge softened by `softness`. Start from spot_light2d_default().
 using spot_light2d = PonkoSpotLight2D;
-/// A spot light with the engine's defaults (Rust `SpotLight2D::default()`).
+/// A spot light with the engine's defaults (Rust `d2::SpotLight::default()`).
 inline spot_light2d spot_light2d_default() { return ponko_spot_light2d_default(); }
 /// The built-in `DirectionalLight2D` component: light from far away (a sun or moon) shining along
 /// `direction` over the whole view; needs no transform. Start from directional_light2d_default().
 using directional_light2d = PonkoDirectionalLight2D;
-/// A directional light with the engine's defaults (Rust `DirectionalLight2D::default()`).
+/// A directional light with the engine's defaults (Rust `d2::DirectionalLight::default()`).
 inline directional_light2d directional_light2d_default() { return ponko_directional_light2d_default(); }
 // ---- Sprite blend modes and sprite materials (Rust `BlendMode`, `SpriteShader`, `SpriteMaterial`).
 /// How a sprite combines with what's behind it (Rust `BlendMode`). Also a component: an entity with a sprite
@@ -173,7 +173,7 @@ using quat = PonkoQuat;
 /// The built-in `Transform3D` component (Rust `Transform3D`): position, rotation and scale. A plain value and
 /// a query column; start from transform3d_at.
 using transform3d = PonkoTransform3D;
-/// The built-in `Attached3D` component (Rust `Attached3D`): keeps an entity at `offset` (a transform in the
+/// The built-in `Attached3D` component (Rust `attach::Attached3D`): keeps an entity at `offset` (a transform in the
 /// other's space) from another; see attach3d_to. Same layout as Rust, so it is a query column.
 using attached3d = PonkoAttached3D;
 /// One joint of a skeleton (Rust `Joint`): its name, the joint it hangs

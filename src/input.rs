@@ -542,7 +542,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
-    /// if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
+    /// if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
     /// # }
     /// ```
     #[must_use]
@@ -555,7 +555,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, paused: &mut bool) {
-    /// if ctx.key_pressed(Key::P) { *paused = !*paused; }
+    /// if ctx.input.key_pressed(Key::P) { *paused = !*paused; }
     /// # }
     /// ```
     #[must_use]
@@ -568,7 +568,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, charging: &mut bool) {
-    /// if ctx.key_released(Key::Space) { *charging = false; }
+    /// if ctx.input.key_released(Key::Space) { *charging = false; }
     /// # }
     /// ```
     #[must_use]
@@ -594,7 +594,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
-    /// if ctx.input.mouse_pressed(MouseButton::Left) { println!("click at {}", ctx.mouse_pos()); }
+    /// if ctx.input.mouse_pressed(MouseButton::Left) { println!("click at {}", ctx.input.mouse_pos()); }
     /// # }
     /// ```
     #[must_use]
@@ -621,7 +621,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
-    /// let target = ctx.mouse_pos();
+    /// let target = ctx.input.mouse_pos();
     /// # }
     /// ```
     #[must_use]
@@ -681,7 +681,7 @@ impl Input {
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
     /// if let Some(&pad) = ctx.input.gamepads().first() {
-    ///     *pos += ctx.input.gamepad_stick(pad, ponko::input::GamepadStick::Left) * 300.0 * ctx.dt();
+    ///     *pos += ctx.input.gamepad_stick(pad, ponko::input::GamepadStick::Left) * 300.0 * ctx.time.dt();
     /// }
     /// # }
     /// ```

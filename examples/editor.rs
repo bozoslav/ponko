@@ -40,20 +40,22 @@ impl Default for Walker {
 const LEVEL: &str = "levels/level.json";
 
 fn walk(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let bounds = ctx.window_size();
-    ctx.world.query::<(&mut Transform2D, &mut Walker)>().for_each(|(t, w)| {
-        let mut v = Vec2::from_angle(w.heading) * w.speed;
-        t.position += v * dt;
-        if !(0.0..=bounds.x).contains(&t.position.x) {
-            v.x = -v.x;
-        }
-        if !(0.0..=bounds.y).contains(&t.position.y) {
-            v.y = -v.y;
-        }
-        t.position = t.position.clamp(Vec2::ZERO, bounds);
-        w.heading = v.to_angle();
-    });
+    ctx.world
+        .query::<(&mut d2::Transform, &mut Walker)>()
+        .for_each(|(t, w)| {
+            let mut v = Vec2::from_angle(w.heading) * w.speed;
+            t.position += v * dt;
+            if !(0.0..=bounds.x).contains(&t.position.x) {
+                v.x = -v.x;
+            }
+            if !(0.0..=bounds.y).contains(&t.position.y) {
+                v.y = -v.y;
+            }
+            t.position = t.position.clamp(Vec2::ZERO, bounds);
+            w.heading = v.to_angle();
+        });
 }
 
 fn main() {
@@ -67,7 +69,7 @@ fn main() {
                 println!("loaded assets/{LEVEL}");
                 return;
             }
-            let crab = ctx.load_texture("crab.png");
+            let crab = ctx.gfx.load_texture("crab.png");
             let mut rng = Rng::new(7);
             for _ in 0..12 {
                 let at = vec2(rng.range(100.0, 1180.0), rng.range(100.0, 620.0));
@@ -75,7 +77,7 @@ fn main() {
                     speed: rng.range(30.0, 90.0),
                     heading: rng.range(0.0, std::f32::consts::TAU),
                 };
-                ctx.world.spawn((Transform2D::at(at), Sprite::new(crab), walker));
+                ctx.world.spawn((d2::Transform::at(at), Sprite::new(crab), walker));
             }
         })
         .run();

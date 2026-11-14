@@ -788,8 +788,8 @@ fn mixed_screen(painter: &Painter, scale: f32, immediate_text: f32) -> (Image, [
         Rect::new(180.0, 20.0, 120.0, 40.0),
     ];
     ctx.ui.immediate.style.text_size = immediate_text;
-    ctx.ui.immediate.panel(&mut ctx.gfx, rects[2]);
-    ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, rects[3], "Run");
+    ctx.immediate_ui().panel(rects[2]);
+    ctx.immediate_ui().button(rects[3], "Run");
     let scaled = |r: Rect| Rect {
         min: r.min * scale,
         max: r.max * scale,

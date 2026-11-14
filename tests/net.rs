@@ -54,7 +54,7 @@ fn crowd(ctx: &mut Ctx) {
         ctx.world.resource_mut::<Steered>().0 = true;
     }
     let random = ctx.random();
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let grid = &ctx.spatial;
     let mut moves = Vec::new();
     for (e, t, u) in ctx.world.query::<(Entity, &Transform2D, &Unit)>().iter() {

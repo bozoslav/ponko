@@ -147,7 +147,7 @@ pub(crate) fn world_loads(world: &World) -> u64 {
 /// For what the game rebuilds from its own files rather than from a save:
 /// [`Ctx::spawn_level`](crate::ctx::Ctx::spawn_level) puts it on everything
 /// it spawns except the objects spawned as prefabs (see
-/// [`LevelOptions::without_saved_objects`](crate::d2::LevelOptions::without_saved_objects)).
+/// [`LevelOptions::without_saved_objects`](crate::tilemap::LevelOptions::without_saved_objects)).
 /// It isn't reflected itself, so it is never in a save, scene or prefab.
 ///
 /// ```
@@ -1535,7 +1535,7 @@ fn sprite_from_json(world: &World, value: Value) -> Result<crate::d2::Sprite, St
     let texture = world
         .get_resource::<TextureNames>()
         .and_then(|t| t.get(&name))
-        .ok_or_else(|| format!("texture \"{name}\" isn't loaded: ctx.load_texture(\"{name}\") first"))?;
+        .ok_or_else(|| format!("texture \"{name}\" isn't loaded: ctx.gfx.load_texture(\"{name}\") first"))?;
     Ok(crate::d2::Sprite {
         texture,
         color: json.color,

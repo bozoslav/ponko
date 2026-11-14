@@ -10,8 +10,8 @@ released.
 ```rust
 # use ponko::prelude::*;
 # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
-if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
-if ctx.key_pressed(Key::Space) { println!("jump"); }
+if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
+if ctx.input.key_pressed(Key::Space) { println!("jump"); }
 # }
 ```
 
@@ -21,7 +21,7 @@ Dvorak players too. In C++: `ctx.key_down(PONKO_KEY_RIGHT)`.
 
 ## Mouse
 
-- `ctx.mouse_pos()`: in window pixels; `ctx.mouse_world()`: through the
+- `ctx.input.mouse_pos()`: in window pixels; `ctx.mouse_world()`: through the
   [camera](camera-ui.md), in world units.
 - `ctx.input.mouse_down(MouseButton::Left)` (and `_pressed`, `_released`).
 - `ctx.input.mouse_delta()` since the last frame, and `ctx.input.mouse_wheel()`.

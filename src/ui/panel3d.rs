@@ -242,7 +242,7 @@ impl Ctx {
         let (origin, direction) = self
             .ui
             .pointer_ray
-            .unwrap_or_else(|| self.scene3d.camera.screen_ray(self.mouse_pos()));
+            .unwrap_or_else(|| self.scene3d.camera.screen_ray(self.input.mouse_pos()));
         // The screen's UI comes first.
         let screen_has_it = self.ui.wants_pointer();
         let mut nearest: Option<(Entity, f32, Vec2)> = None;

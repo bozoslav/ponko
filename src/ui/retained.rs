@@ -1172,7 +1172,7 @@ impl Ui {
     /// use ponko::prelude::*;
     /// assert!(!ponko::ui::Ui::default().wants_keyboard());
     /// # fn update(ctx: &mut Ctx) {
-    /// if !ctx.ui.wants_keyboard() && ctx.key_pressed(Key::Space) { /* jump */ }
+    /// if !ctx.ui.wants_keyboard() && ctx.input.key_pressed(Key::Space) { /* jump */ }
     /// # }
     /// ```
     pub fn wants_keyboard(&self) -> bool {

@@ -22,18 +22,19 @@ fn setup_runs_before_the_first_tick_and_its_commands_are_applied_first() {
     let l = log.clone();
     Game::new("t", 1, 1)
         .sim_system(move |ctx: &mut Ctx| {
-            l.borrow_mut().push(if ctx.world.query::<&Transform2D>().count() == 1 {
-                "tick sees setup entity"
-            } else {
-                "tick misses setup entity"
-            });
+            l.borrow_mut()
+                .push(if ctx.world.query::<&d2::Transform>().count() == 1 {
+                    "tick sees setup entity"
+                } else {
+                    "tick misses setup entity"
+                });
         })
         .setup({
             let log = log.clone();
             move |ctx| {
                 assert!(ctx.time.sim_tick() == 0, "no tick has run during setup");
                 log.borrow_mut().push("builder setup");
-                ctx.commands.spawn((Transform2D::default(),));
+                ctx.commands.spawn((d2::Transform::default(),));
             }
         })
         .setup({

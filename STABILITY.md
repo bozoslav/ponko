@@ -137,6 +137,10 @@ The crate root holds only modules: every item has one path, in its module,
 and the prelude re-exports the common ones as the same items. Games start from `use ponko::prelude::*;`
 and import modules as needed; `use ponko::*;` brings in the modules, not the
 prelude.
+`ponko::ecs_core` is the one way into the ECS crate beyond the prelude, and
+`d2`/`d3` are the one path of the types named after a dimension.
+`scripts/check-naming.py --paths` fails CI on an item with a second public
+path; a `#[deprecated]` alias of a moved item stays for one minor.
 
 The root glob also brings in the root modules (`audio`, `input`, `net`,
 `render`, `ui`, ...). For a game that writes it and depends on a crate of the
