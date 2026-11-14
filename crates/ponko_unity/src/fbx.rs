@@ -375,8 +375,13 @@ impl ModelFile {
         let groups: Vec<Vec<u32>> = if mesh.material_parts.is_empty() {
             vec![(0..mesh.faces.len() as u32).collect()]
         } else {
-            mesh.material_parts
+            // Unity numbers submeshes by the first face using each material,
+            // rather than by the FBX material connection index. Renderer
+            // material arrays already use that order, including overrides.
+            mesh.material_part_usage_order
                 .iter()
+                .map(|&i| &mesh.material_parts[i as usize])
+                .filter(|p| !p.face_indices.is_empty())
                 .map(|p| p.face_indices.iter().copied().collect())
                 .collect()
         };
