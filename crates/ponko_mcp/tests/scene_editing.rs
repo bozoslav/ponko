@@ -8,7 +8,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use ponko::d3::{Attached, Transform};
+use ponko::attach::Attached3D;
+use ponko::d3::Transform;
 use ponko::prelude::*;
 use ponko_mcp::{Config, Server};
 use serde_json::{Value, json};
@@ -140,7 +141,7 @@ fn an_agent_assembles_saves_and_reloads_a_3d_level_through_mcp() {
             < 1e-4
     );
     assert_eq!(
-        world.get::<Attached>(Entity::from_bits(2)).unwrap().to,
+        world.get::<Attached3D>(Entity::from_bits(2)).unwrap().to,
         Entity::from_bits(1)
     );
     // The post was placed at (3, 0, 3), then carried 4 units along -Z with its parent.

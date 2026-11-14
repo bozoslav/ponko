@@ -161,7 +161,7 @@ fn place(world: &World, a: Attached) -> Option<(Vec2, f32)> {
 /// Keeps this entity's 3D transform at `offset` in another entity's space:
 /// the 3D parent link. A lamp on a cart, a door in a house, a level's
 /// props grouped under one entity to move them together. Placed by
-/// [`follow_attachments`], which also despawns it when the entity it
+/// [`follow_attachments`](crate::systems::follow_attachments), which also despawns it when the entity it
 /// follows is gone; chains of attachments work as in 2D.
 ///
 /// `offset` is a whole transform in the parent's space: its position is
@@ -172,14 +172,15 @@ fn place(world: &World, a: Attached) -> Option<(Vec2, f32)> {
 ///
 /// ```
 /// use ponko::prelude::*;
-/// use ponko::d3::{Attached, Transform};
+/// use ponko::attach::Attached3D;
+/// use ponko::d3::Transform;
 ///
 /// let mut lamp = None;
 /// let world = Game::new("carts", 320, 240)
 ///     .sim_system(systems::follow_attachments)
 ///     .run_headless(1, |ctx| {
 ///         let cart = ctx.world.spawn((Transform::at(vec3(10.0, 0.0, 0.0)).scaled(2.0),));
-///         let on_top = Attached::to(cart).offset(Transform::at(vec3(0.0, 1.0, 0.0)));
+///         let on_top = Attached3D::to(cart).offset(Transform::at(vec3(0.0, 1.0, 0.0)));
 ///         lamp = Some(ctx.world.spawn((Transform::default(), on_top)));
 ///     });
 /// let at = world.get::<Transform>(lamp.unwrap()).unwrap();
