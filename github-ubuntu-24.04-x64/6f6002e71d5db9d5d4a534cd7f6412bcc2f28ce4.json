@@ -1,0 +1,118 @@
+{
+  "env": {
+    "arch": "x86_64",
+    "commit_time": 1794668860,
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "debug_assertions": false,
+    "git_dirty": false,
+    "git_rev": "6f6002e71d5db9d5d4a534cd7f6412bcc2f28ce4",
+    "machine": "github-ubuntu-24.04-x64",
+    "method": "instructions",
+    "os": "linux",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "unix_time": 1794668951,
+    "valgrind": "valgrind-3.22.0",
+    "workloads": "efcc3fbceb798570"
+  },
+  "results": [
+    {
+      "about": "`pos += vel * dt` over 10k entities with a typed query",
+      "instructions": 33015.02,
+      "iterations": 50,
+      "kind": "instructions",
+      "name": "ecs/iter/10k",
+      "runs": 3,
+      "samples": [
+        33015.02,
+        33015.02,
+        33015.02
+      ],
+      "spread": 0.0
+    },
+    {
+      "about": "a `With<Tag>` query over 10k entities in 4 archetypes (half match)",
+      "instructions": 20641.02,
+      "iterations": 50,
+      "kind": "instructions",
+      "name": "ecs/query-filtered/10k",
+      "runs": 3,
+      "samples": [
+        20641.02,
+        20641.12,
+        20640.92
+      ],
+      "spread": 9.68944364187078e-6
+    },
+    {
+      "about": "10k `World::get` lookups in a scattered order",
+      "instructions": 880015.25,
+      "iterations": 20,
+      "kind": "instructions",
+      "name": "ecs/get/10k",
+      "runs": 3,
+      "samples": [
+        880015.25,
+        880015.25,
+        880015.25
+      ],
+      "spread": 0.0
+    },
+    {
+      "about": "spawning 10k `(Pos, Vel)` entities into an empty world",
+      "instructions": 2902126.5,
+      "iterations": 10,
+      "kind": "instructions",
+      "name": "ecs/spawn/10k",
+      "runs": 3,
+      "samples": [
+        2902126.5,
+        2902126.5,
+        2902126.5
+      ],
+      "spread": 0.0
+    },
+    {
+      "about": "despawning 10k entities one by one",
+      "instructions": 1721822.6,
+      "iterations": 10,
+      "kind": "instructions",
+      "name": "ecs/despawn/10k",
+      "runs": 3,
+      "samples": [
+        1721822.6,
+        1721829.1,
+        1721819.5
+      ],
+      "spread": 5.575487277314824e-6
+    },
+    {
+      "about": "one headless game tick: three systems over 10k entities, scheduler off",
+      "instructions": 119868.35,
+      "iterations": 20,
+      "kind": "instructions",
+      "name": "sim/tick/10k",
+      "runs": 3,
+      "samples": [
+        119865.8,
+        119868.35,
+        119870.1
+      ],
+      "spread": 0.00003587268866221075
+    },
+    {
+      "about": "collecting a 3D frame of 10k models (culling and shadows) as the camera moves",
+      "instructions": 4817034.4,
+      "iterations": 10,
+      "kind": "instructions",
+      "name": "render/collect/10k",
+      "runs": 3,
+      "samples": [
+        4817037.7,
+        4817033.9,
+        4817034.4
+      ],
+      "spread": 7.88867108736806e-7
+    }
+  ],
+  "schema_version": 1
+}
