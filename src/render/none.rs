@@ -242,6 +242,7 @@ impl Renderer {
         _world_view: Mat4,
         _ui_view: Mat4,
         _capture: bool,
+        _lights: &crate::light2d::Lighting2D,
     ) -> FrameStatus {
         match *self {}
     }

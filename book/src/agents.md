@@ -83,6 +83,18 @@ ctx.world.reflect::<Health>();
 | `save_scene` / `load_scene` | ✓ | write or read a [scene](scenes.md) in the game's `assets/` |
 | `spawn_prefab` / `save_prefab` | ✓ | place a [prefab](scenes.md) at a point (with its children), or save an entity as one |
 | `despawn_prefab` | ✓ | remove a placed prefab with its children |
+| `pick_entity` | | what is under a window point of a 3D game, as a click in the editor picks it, and where that point's ray meets the ground |
+| `scene_hierarchy` | | every entity as a tree: what it hangs off and how (attached, joint, skin, prefab part) |
+| `list_assets` | | what the editor's asset browser lists: meshes, prefabs, scenes and materials |
+| `place_asset` | ✓ | drop a glTF mesh or a prefab into the scene at a point, or where a window point's ray meets the ground, optionally on the grid |
+| `transform_entities` | ✓ | move, turn and scale entities as the gizmo does (world or local axes, snapping), as one undo step |
+| `drag_gizmo` | ✓ | drag a gizmo handle from one window point to another, exactly as the mouse does |
+| `set_parent` | ✓ | make an entity follow another (or nothing) without moving it |
+| `paint_material` | ✓ | paint a model with a material of a loaded mesh file |
+| `duplicate_entities` / `delete_entities` | ✓ | copy or remove entities with everything that hangs off them, as one undo step |
+| `undo_edit` / `redo_edit` | ✓ | step through the editor's history, shared with the [inspector](inspector.md#editing-in-3d) |
+| `save_edited_scene` | ✓ | save the world back to the scene file it came from (or a new one) |
+| `set_camera_3d` | | move, turn, fly or frame the 3D camera, e.g. before `pick_entity` or a screenshot |
 | `quit_instance` | ✓ | |
 
 `--read-only` hides every tool marked ✓, for agents that should only watch.

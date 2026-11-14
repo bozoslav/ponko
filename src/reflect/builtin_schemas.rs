@@ -9,6 +9,40 @@ fn transform2d() -> ValueSchema {
 fn attached() -> ValueSchema {
     ValueSchema::object([("to", Entity), ("offset", Vec2), ("rotation", Number)])
 }
+fn pointlight2d() -> ValueSchema {
+    ValueSchema::object([
+        ("color", Color),
+        ("intensity", Number),
+        ("radius", Number),
+        ("falloff", Number),
+        ("height", Number),
+        ("shadows", Bool),
+    ])
+}
+fn spotlight2d() -> ValueSchema {
+    ValueSchema::object([
+        ("color", Color),
+        ("intensity", Number),
+        ("radius", Number),
+        ("falloff", Number),
+        ("height", Number),
+        ("angle", Number),
+        ("softness", Number),
+        ("shadows", Bool),
+    ])
+}
+fn directionallight2d() -> ValueSchema {
+    ValueSchema::object([
+        ("color", Color),
+        ("intensity", Number),
+        ("direction", Vec2),
+        ("elevation", Number),
+        ("shadows", Bool),
+    ])
+}
+fn occluder2d() -> ValueSchema {
+    ValueSchema::object([("edges", ValueSchema::array(Tuple(vec![Vec2; 2])))])
+}
 fn prefab_parts() -> ValueSchema {
     ValueSchema::array(Entity)
 }
@@ -19,6 +53,10 @@ fn skin_of() -> ValueSchema {
 #[cfg(feature = "3d")]
 fn attach_to_joint() -> ValueSchema {
     ValueSchema::object([("skeleton", Entity), ("joint", Unsigned), ("offset", transform3d())])
+}
+#[cfg(feature = "3d")]
+fn attached3d() -> ValueSchema {
+    ValueSchema::object([("to", Entity), ("offset", transform3d())])
 }
 #[cfg(feature = "physics3d")]
 fn joint3d() -> ValueSchema {
@@ -246,6 +284,18 @@ pub(super) fn builtin<T: 'static>() -> Option<ValueSchema> {
     if id == std::any::TypeId::of::<crate::attach::Attached>() {
         return Some(attached());
     }
+    if id == std::any::TypeId::of::<crate::light2d::PointLight2D>() {
+        return Some(pointlight2d());
+    }
+    if id == std::any::TypeId::of::<crate::light2d::SpotLight2D>() {
+        return Some(spotlight2d());
+    }
+    if id == std::any::TypeId::of::<crate::light2d::DirectionalLight2D>() {
+        return Some(directionallight2d());
+    }
+    if id == std::any::TypeId::of::<crate::light2d::Occluder2D>() {
+        return Some(occluder2d());
+    }
     if id == std::any::TypeId::of::<crate::scene::PrefabParts>() {
         return Some(prefab_parts());
     }
@@ -256,6 +306,10 @@ pub(super) fn builtin<T: 'static>() -> Option<ValueSchema> {
     #[cfg(feature = "3d")]
     if id == std::any::TypeId::of::<crate::anim::AttachToJoint>() {
         return Some(attach_to_joint());
+    }
+    #[cfg(feature = "3d")]
+    if id == std::any::TypeId::of::<crate::attach::Attached3D>() {
+        return Some(attached3d());
     }
     #[cfg(feature = "physics3d")]
     if id == std::any::TypeId::of::<crate::d3::Joint>() {
@@ -603,6 +657,16 @@ pub(in crate::reflect) mod tests {
             crate::attach::Attached,
             crate::attach::Attached::to(ponko_ecs::Entity::from_bits(0))
         );
+        check!(crate::light2d::PointLight2D, crate::light2d::PointLight2D::default());
+        check!(crate::light2d::SpotLight2D, crate::light2d::SpotLight2D::default());
+        check!(
+            crate::light2d::DirectionalLight2D,
+            crate::light2d::DirectionalLight2D::default()
+        );
+        check!(
+            crate::light2d::Occluder2D,
+            crate::light2d::Occluder2D::rect(glam::vec2(4.0, 2.0))
+        );
         let e = ponko_ecs::Entity::from_bits;
         check!(
             crate::scene::PrefabParts,
@@ -611,6 +675,7 @@ pub(in crate::reflect) mod tests {
         #[cfg(feature = "3d")]
         {
             check!(crate::anim::SkinOf, crate::anim::SkinOf(e(4)));
+            check!(crate::attach::Attached3D, crate::attach::Attached3D::to(e(4)));
             check!(
                 crate::anim::AttachToJoint,
                 crate::anim::AttachToJoint {

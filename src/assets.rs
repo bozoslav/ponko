@@ -1083,7 +1083,7 @@ impl Assets {
     ///
     /// The prefab holds `e`'s children too: its [`PrefabParts`](crate::prelude::PrefabParts)
     /// (if a prefab spawned it) and every entity attached to one of them,
-    /// by [`Attached`](crate::attach::Attached), a skin or joint attachment, or a 3D
+    /// by [`Attached`](crate::attach::Attached) or its 3D form, a skin or joint attachment, or a 3D
     /// joint between two of them. Their transforms are saved relative to
     /// `e`'s, and their references to each other are kept. Included prefabs
     /// are saved as their entities, not as a link to their file. An entity

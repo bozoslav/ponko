@@ -1,0 +1,27 @@
+{
+  "about": "A recorded MCP session: an agent assembles a small 3D level with the editor tools, saves it and loads it back. tests/scene_editing.rs replays every call against a fresh headless game and checks each reply against `expect` (the keys given must match; other keys may be anything).",
+  "steps": [
+    { "tool": "list_assets", "arguments": {},
+      "expect": { "meshes": ["models/house.glb"], "prefabs": ["prefabs/lamp_post.json"], "scenes": [] } },
+    { "tool": "set_camera_3d", "arguments": { "position": [0, 10, 14], "look_at": [0, 0, 0] } },
+    { "tool": "place_asset", "arguments": { "path": "models/house.glb", "at": [0.3, 0, 0.2], "snap": true },
+      "expect": { "entity": 0, "can_undo": true } },
+    { "tool": "place_asset", "arguments": { "path": "models/house.glb", "at": [6, 0, 0] },
+      "expect": { "entity": 1 } },
+    { "tool": "transform_entities", "arguments": { "entities": [1], "rotate": [0, 90, 0] } },
+    { "tool": "place_asset", "arguments": { "path": "prefabs/lamp_post.json", "at": [3, 0, 3] },
+      "expect": { "entity": 2, "parts": [3] } },
+    { "tool": "set_parent", "arguments": { "entity": 2, "parent": 1 },
+      "expect": { "entity": 2, "parent": 1 } },
+    { "tool": "transform_entities", "arguments": { "entities": [1], "translate": [0, 0, -4] } },
+    { "tool": "duplicate_entities", "arguments": { "entities": [0], "offset": [-6, 0, 0] },
+      "expect": { "entities": [4] } },
+    { "tool": "delete_entities", "arguments": { "entities": [4] }, "expect": { "despawned": 1 } },
+    { "tool": "undo_edit", "arguments": {}, "expect": { "done": true, "can_redo": true } },
+    { "tool": "redo_edit", "arguments": {}, "expect": { "done": true, "can_redo": false } },
+    { "tool": "save_edited_scene", "arguments": { "path": "levels/yard.json" },
+      "expect": { "path": "levels/yard.json", "entities": 4 } },
+    { "tool": "load_scene", "arguments": { "path": "levels/yard.json" }, "expect": { "entities": 4 } },
+    { "tool": "save_edited_scene", "arguments": {}, "expect": { "path": "levels/yard.json" } }
+  ]
+}

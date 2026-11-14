@@ -1113,6 +1113,23 @@ static void attachments() {
     CHECK(!w.alive(root) && !w.alive(arm) && !w.alive(hand));
 }
 
+static void attachments3d() {
+    // A 3D chain follows its parent, turned with it.
+    ponko::entity base = 0, arm = 0;
+    ponko::transform3d seen{};
+    ponko::game("t", 1, 1)
+        .follow_attachments()
+        .sim_system([&](ponko::ctx& ctx) { seen = ctx.world().get<ponko::transform3d>(arm); })
+        .run_headless(1, [&](ponko::ctx& ctx) {
+            auto world = ctx.world();
+            base = world.spawn(ponko::transform3d_at({10, 0, 0}, ponko::quat_from_rotation_y(1.5707964f)));
+            arm = world.spawn(ponko::transform3d_at({0, 0, 0}),
+                              ponko::attach3d_to(base, ponko::transform3d_at({0, 2, -5})));
+        });
+    CHECK(std::fabs(seen.position.x - 5) < 1e-4f && std::fabs(seen.position.y - 2) < 1e-4f &&
+          std::fabs(seen.position.z) < 1e-4f);
+}
+
 static void physics() {
     // A ball drops through a sensor onto the floor; queries and events work from C++.
     ponko::entity ball = 0, floor = 0, sensor = 0;
@@ -3383,6 +3400,7 @@ int main() {
     presence_filters_allocate_nothing();
     games();
     attachments();
+    attachments3d();
     physics();
     joints3d();
     vehicles();

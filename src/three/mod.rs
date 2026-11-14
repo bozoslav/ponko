@@ -761,6 +761,11 @@ impl Camera3D {
         self.viewport = viewport;
     }
 
+    /// The window size the camera projects to, in logical pixels.
+    pub(crate) fn viewport(&self) -> Vec2 {
+        self.viewport
+    }
+
     /// Turns the camera to look at `target`, keeping +Y up.
     ///
     /// ```no_run

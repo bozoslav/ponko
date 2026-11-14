@@ -208,6 +208,15 @@ pub struct Ctx {
     /// Scene loads so far, so tools holding entity ids (the inspector's
     /// selection) can tell the world was replaced.
     pub(crate) scene_loads: u64,
+    /// The scene file the world was last loaded from or saved to (by
+    /// `load_scene`, the editor or the control endpoint), where the editor
+    /// saves back to.
+    pub(crate) scene_file: Option<String>,
+    /// The editor's undo and redo history and Play snapshot, shared by the
+    /// inspector and the control endpoint's `editor.*` methods so a person
+    /// and an agent edit the same world the same way. Empty (no cost) until
+    /// something edits.
+    pub(crate) editor: crate::editor::Editor,
     /// Keyboard, mouse, gamepads and named actions: see [`Input`].
     ///
     /// ```
@@ -356,8 +365,13 @@ impl Ctx {
             crate::reflect::WorldReflect::reflect::<crate::render::LodHysteresis>(&mut world);
             crate::reflect::WorldReflect::reflect::<crate::anim::SkinOf>(&mut world);
             crate::reflect::WorldReflect::reflect::<crate::anim::AttachToJoint>(&mut world);
+            crate::reflect::WorldReflect::reflect::<crate::attach::Attached3D>(&mut world);
         }
         crate::reflect::reflect_sprite(&mut world);
+        crate::reflect::WorldReflect::reflect::<crate::light2d::PointLight2D>(&mut world);
+        crate::reflect::WorldReflect::reflect::<crate::light2d::SpotLight2D>(&mut world);
+        crate::reflect::WorldReflect::reflect::<crate::light2d::DirectionalLight2D>(&mut world);
+        crate::reflect::WorldReflect::reflect::<crate::light2d::Occluder2D>(&mut world);
         crate::reflect::reflect_particle_emitter2d(&mut world);
         crate::reflect::reflect_animation(&mut world);
         // The file names behind sprites and models: the world saves by them,
@@ -399,6 +413,8 @@ impl Ctx {
             control_addr: None,
             in_setup: false,
             scene_loads: 0,
+            scene_file: None,
+            editor: crate::editor::Editor::default(),
             input: Input::new(),
             time: Time::new(fixed_dt),
             window_size,
@@ -435,6 +451,12 @@ impl Ctx {
         let panels = self.ui_state.panels.frame_draws();
         #[cfg(not(feature = "3d"))]
         let panels: &mut [crate::render::batch::PanelDraw] = &mut [];
+        if self.gfx.renderer.is_some() {
+            let lights = &mut self.gfx.lights2d;
+            lights
+                .frame
+                .collect(&mut self.world, self.camera.visible_rect(), lights.ambient);
+        }
         let status = match self.gfx.renderer.as_mut() {
             Some(renderer) => renderer.render(
                 &mut self.gfx.draw_list,
@@ -444,6 +466,7 @@ impl Ctx {
                 self.camera.view_proj(),
                 screen_projection(self.window_size),
                 capture,
+                &self.gfx.lights2d,
             ),
             None => FrameStatus::Skipped,
         };

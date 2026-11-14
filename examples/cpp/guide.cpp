@@ -2590,6 +2590,44 @@ static void sparks2d(ponko::ctx& ctx) {
     // ANCHOR_END: particles2d
 }
 
+static void lights2d(ponko::ctx& ctx) {
+    std::vector<std::uint8_t> stone(32 * 16 * 4, 200), bumps(32 * 16 * 4, 128);
+    const auto tiles = ctx.create_texture(32, 16, stone.data(), stone.size());
+    const auto tile_normals = ctx.create_texture(32, 16, bumps.data(), bumps.size());
+    const auto crate = tiles;
+    const std::uint16_t FLOOR = 0, WALL = 1;
+    const ponko::entity room = ctx.world().spawn(ponko::transform_at({0, 0}));
+    auto map = ctx.world().add_tilemap(room, ponko::sheet_of(tiles, 16, 16), 20, 15);
+    for (std::uint32_t y = 0; y < 15; ++y)
+        for (std::uint32_t x = 0; x < 20; ++x)
+            map.set(x, y, x == 0 || y == 0 || x == 19 || y == 14 ? WALL : FLOOR);
+    // ANCHOR: lights2d
+    // Dark blue where no light reaches; this turns 2D lighting on.
+    ctx.set_ambient_light2d(ponko::rgb(0.1f, 0.11f, 0.18f));
+    // A warm torch whose light the walls and the crate block.
+    auto torch = ponko::point_light2d_default();
+    torch.color = ponko::rgb(1, 0.6f, 0.3f);
+    torch.radius = 250;
+    torch.shadows = true;
+    ctx.world().spawn(ponko::transform_at({160, 120}), torch);
+    // A lantern: a cone along its rotation (here, to the right).
+    auto lantern = ponko::spot_light2d_default();
+    lantern.angle = 0.4f;
+    ctx.world().spawn(ponko::transform_at({60, 60}), lantern);
+    // The walls (tile 1) of the map cast shadows; so does a crate.
+    ctx.set_tilemap_occluder(room, {WALL});
+    const auto box = ctx.world().spawn(ponko::transform_at({220, 150}), ponko::sprite_of(crate));
+    ctx.set_occluder2d_rect(box, {16, 16});
+    // Bumpy tiles: light shades their bevels.
+    ctx.set_normal_map(tiles, tile_normals);
+    // ANCHOR_END: lights2d
+    if (ctx.occluder2d_edge_count(room) != 8 || ctx.occluder2d_edge_count(box) != 4 || !ctx.ambient_light2d() ||
+        ctx.normal_map(tiles)->id != tile_normals.id) {
+        std::fprintf(stderr, "2D lights guide\n");
+        std::abort();
+    }
+}
+
 static void ribbons(ponko::ctx& ctx) {
     auto white = ctx.default_material();
     auto floor_data = ponko::mesh_data::plane(12);
@@ -3333,6 +3371,7 @@ int main() {
     ponko::game("particle guide", 1, 1).run_headless(0, campfire);
     ponko::game("ribbon guide", 1, 1).run_headless(0, ribbons);
     ponko::game("particle 2d guide", 1, 1).run_headless(0, sparks2d);
+    ponko::game("2d lights guide", 1, 1).run_headless(0, lights2d);
     if (!messages_round_trip()) { std::fprintf(stderr, "no message\n"); std::abort(); }
     if (!replication_snippets()) { std::fprintf(stderr, "replication snippets failed\n"); std::abort(); }
     ponko::game("sound guide", 1, 1).run_headless(0, [](ponko::ctx& ctx) {

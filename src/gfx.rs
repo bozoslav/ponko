@@ -158,6 +158,8 @@ pub struct Graphics {
     pub(crate) renderer: Option<Renderer>,
     /// Sprite shaders and materials.
     pub(crate) sprites: crate::sprite_material::SpriteAssets,
+    /// 2D lighting: the ambient light, normal maps and this frame's lights.
+    pub(crate) lights2d: crate::light2d::Lighting2D,
     /// The latest compile of each of the game's shaders (`Graphics::shader_status`).
     pub(crate) shader_statuses: Vec<crate::render::ShaderStatus>,
     pub(crate) screenshots: Vec<ScreenshotRequest>,
@@ -215,6 +217,7 @@ impl Graphics {
             material_names,
             renderer: None,
             sprites: Default::default(),
+            lights2d: Default::default(),
             shader_statuses: Vec::new(),
             screenshots: Vec::new(),
             draw_list: DrawList::default(),

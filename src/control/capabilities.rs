@@ -64,6 +64,10 @@ pub(super) fn unavailable(ctx: &Ctx, method: &str) -> Option<String> {
         ),
         #[cfg(not(feature = "3d"))]
         "quality.set" => Some(super::NO_QUALITY.into()),
+        #[cfg(not(feature = "3d"))]
+        "editor.pick" | "editor.transform" | "editor.drag" | "editor.material" | "editor.camera" => {
+            Some(super::editor::NO_3D.into())
+        }
         // Asks for no lines: errors only when output isn't captured.
         "logs.get" => crate::logs::get(None, 0).err(),
         _ => None,

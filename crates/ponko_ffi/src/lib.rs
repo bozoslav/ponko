@@ -32,6 +32,7 @@ mod actions;
 mod animator;
 mod asset_sources;
 mod attach;
+mod attach3d;
 mod audio3d;
 mod changes;
 mod contacts3d;
@@ -45,6 +46,7 @@ mod handles;
 mod headless_ui;
 mod keys;
 mod levels;
+mod lights2d;
 mod loaders;
 mod media;
 mod messages;
@@ -118,6 +120,7 @@ static ALLOCATOR: ponko::perf::CountingAllocator = ponko::perf::CountingAllocato
 pub use action_lookup::*;
 pub use asset_sources::*;
 pub use attach::*;
+pub use attach3d::*;
 pub use audio_curves::*;
 pub use audio3d::*;
 pub use builtins::*;
@@ -135,6 +138,7 @@ pub use handles::*;
 pub use headless_ui::*;
 pub use keys::*;
 pub use levels::*;
+pub use lights2d::*;
 pub use loaders::*;
 pub use lod::*;
 pub use media::*;
@@ -606,6 +610,8 @@ pub(crate) fn component(world: &World, id: u32) -> Result<(ComponentId, Kind), F
         Some(t) if t == TypeId::of::<Transform2D>() => Kind::Plain,
         // repr(C), layout checked against PonkoAttached; any bits are a valid value.
         Some(t) if t == TypeId::of::<ponko::attach::Attached>() => Kind::Plain,
+        // repr(C), layout checked against PonkoAttached3D; any bits are a valid value.
+        Some(t) if t == TypeId::of::<ponko::attach::Attached3D>() => Kind::Plain,
         // repr(C), layout checked against PonkoAnimation; `looping` must be 0 or 1.
         Some(t) if t == TypeId::of::<ponko::sheet::Animation>() => Kind::Plain,
         Some(t) if t == TypeId::of::<Sprite>() => Kind::Mirror(&SPRITE),
@@ -632,6 +638,7 @@ pub(crate) fn component(world: &World, id: u32) -> Result<(ComponentId, Kind), F
             .or_else(|| crate::physics3d_stream::stream_kind(t))
             .or_else(|| crate::contacts3d::contact_kind(t))
             .or_else(|| crate::sprite_material::sprite_kind(t))
+            .or_else(|| crate::lights2d::light_kind(t))
         {
             Some(kind) => kind,
             None => {

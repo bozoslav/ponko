@@ -34,6 +34,7 @@ use crate::diagnostics::short_name as short;
 use crate::reflect::WorldReflect;
 
 mod capabilities;
+mod editor;
 mod inspector;
 mod query;
 use query::{Condition, FieldPath, FieldStats};
@@ -1190,6 +1191,59 @@ pub(crate) const METHODS: &[(&str, &str)] = &[
         "replace the world with a scene from assets/, loading the images its sprites name; params: path (a .json file relative to assets/)",
     ),
     (
+        "editor.pick",
+        "the entity under a window point in 3D (the nearest mesh bounds the mouse ray enters) and where that ray meets the ground (y = 0); params: at [x, y] in window pixels. `entity` is null when nothing is there",
+    ),
+    (
+        "editor.transform",
+        "move, turn and scale entities as the editor's gizmo does, as one undo step; attached ones keep their parent, and what is attached to them follows; params: entities [ids], translate? [x, y, z], rotate? [x, y, z] (degrees about each axis, about the entities' middle), scale? (a factor or [x, y, z], along each entity's own axes), space? (\"world\" or \"local\": the first entity's axes), snap? (true, or { step, angle (degrees), scale })",
+    ),
+    (
+        "editor.drag",
+        "drag a handle of the gizmo from one window point to another, as the mouse does in the editor, as one undo step; params: entities [ids], mode (translate, rotate or scale), handle (x, y, z, xy, xz, yz or center), from [x, y], to [x, y], space? (world or local), snap? (as editor.transform)",
+    ),
+    (
+        "editor.parent",
+        "make an entity follow another in the hierarchy (Attached3D in 3D, Attached in 2D) without moving it, or follow nothing; params: entity, parent (an id, or null to detach). Refuses loops",
+    ),
+    (
+        "editor.hierarchy",
+        "every entity as a tree: each node's parent and how it hangs off it (attached, attached3d, joint, skin, prefab_part), depth, children, whether it is a prefab instance's root, and its component names; roots first, each followed by its subtree",
+    ),
+    (
+        "editor.assets",
+        "what the editor's asset browser lists: glTF meshes, prefabs and scenes in assets/, and the materials of the mesh files loaded so far (mesh, index, name)",
+    ),
+    (
+        "editor.place",
+        "drop an asset into the scene, as one undo step: a glTF mesh (a model) or a prefab; params: path (.glb, .gltf or a prefab .json in assets/), at? [x, y, z] (or [x, y] for a 2D prefab), screen? [x, y] (where that window point's ray meets the ground; default the middle of the view), snap? (true or { step }: put it on the grid). Returns the entity and its prefab parts",
+    ),
+    (
+        "editor.material",
+        "paint a model with a material of a loaded mesh file (a ModelMaterial), as one undo step; params: entity, mesh (the file), material (its name, or its number in the file)",
+    ),
+    (
+        "editor.delete",
+        "despawn entities with everything that hangs off them (prefab parts, attachments), as one undo step; params: entities [ids]",
+    ),
+    (
+        "editor.duplicate",
+        "copy entities with everything that hangs off them, as one undo step; params: entities [ids], offset? ([x, y] in 2D, [x, y, z] in 3D). Returns the copies",
+    ),
+    (
+        "editor.undo",
+        "undo the last editor change (made here or in the inspector)",
+    ),
+    ("editor.redo", "redo the last undone editor change"),
+    (
+        "editor.save",
+        "save the world back to the scene file it was loaded from (or last saved to); params: path? (a .json file relative to assets/)",
+    ),
+    (
+        "editor.camera",
+        "read or move the 3D camera as the editor's fly camera does; params: position? [x, y, z], look_at? [x, y, z], fov? (degrees), turn? [dx, dy] (mouse pixels), fly? [right, up, forward] (world units), focus? (an entity to frame)",
+    ),
+    (
         "prefab.spawn",
         "spawn a prefab from assets/ at a point; params: path (a .json file relative to assets/), at [x, y]. Returns the root entity and its parts",
     ),
@@ -1791,6 +1845,7 @@ pub(crate) fn handle(ctx: &mut Ctx, method: &str, params: &Value) -> Result<Valu
         "scene.save" => {
             let path = asset_path_param(params)?;
             ctx.assets.save_scene(&ctx.world, path)?;
+            ctx.scene_file = Some(path.to_string());
             json!({ "path": path, "entities": ctx.world.len() })
         }
         "scene.load" => {
@@ -1811,6 +1866,20 @@ pub(crate) fn handle(ctx: &mut Ctx, method: &str, params: &Value) -> Result<Valu
             json!({ "entity": e.to_bits(), "parts": parts })
         }
         "prefab.despawn" => json!(ctx.despawn_prefab(entity_param(params)?)),
+        "editor.pick" => editor::pick(ctx, params)?,
+        "editor.transform" => editor::transform(ctx, params)?,
+        "editor.drag" => editor::drag(ctx, params)?,
+        "editor.parent" => editor::parent(ctx, params)?,
+        "editor.hierarchy" => editor::hierarchy(ctx),
+        "editor.assets" => editor::assets(ctx),
+        "editor.place" => editor::place(ctx, params)?,
+        "editor.material" => editor::material(ctx, params)?,
+        "editor.delete" => editor::delete(ctx, params)?,
+        "editor.duplicate" => editor::duplicate(ctx, params)?,
+        "editor.undo" => editor::undo(ctx, false)?,
+        "editor.redo" => editor::undo(ctx, true)?,
+        "editor.save" => editor::save(ctx, params)?,
+        "editor.camera" => editor::camera(ctx, params)?,
         "prefab.save" => {
             let e = entity_param(params)?;
             let path = asset_path_param(params)?;
@@ -2123,7 +2192,7 @@ mod tests {
             if let Err(e) = r {
                 let uncaptured = *name == "logs.get" && e.contains("captured");
                 let refused = *name == "input.scenario.load" && e.contains("input injection is off");
-                let no_3d = *name == "quality.set" && e.contains("`3d` feature");
+                let no_3d = (*name == "quality.set" || name.starts_with("editor.")) && e.contains("`3d` feature");
                 assert!(
                     e.starts_with("missing param") || uncaptured || refused || no_3d,
                     "{name}: {e}"

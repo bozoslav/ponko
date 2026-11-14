@@ -58,3 +58,31 @@ Placing runs on all cores and allocates nothing in steady state: about
 Attachments are a sim system, so they're deterministic, saved with the world
 (`Attached` is reflected) and visible to tools and agents like any other
 component.
+
+## In 3D
+
+`attach::Attached3D` does the same for `Transform3D`: its
+`offset` is a whole transform in the followed entity's space, so the
+attached entity's position, rotation **and** scale are the parent's
+composed with it (a lamp on a post, a sword in a hand, a turret on a tank
+that turns with it). The same `follow_attachments` system places both
+kinds, parents first; chains, loops and despawns work as in 2D.
+
+```rust
+# use ponko::prelude::*;
+# fn f(world: &mut World) {
+let post = world.spawn((ponko::d3::Transform::at(vec3(4.0, 0.0, 0.0)),));
+let lamp = world.spawn((
+    ponko::d3::Transform::default(),
+    ponko::attach::Attached3D::to(post).offset(ponko::d3::Transform::at(vec3(0.0, 3.0, 0.0))),
+));
+# let _ = lamp;
+# }
+```
+
+C and C++ have it too: `PonkoAttached3D` and `ponko_attached3d_component`
+in C, `ponko::attach3d_to(e, transform3d_at(...))` in C++.
+
+The [editor](inspector.md#the-hierarchy-and-the-asset-browser) parents
+entities by adding these: dragging one onto another in its hierarchy
+attaches it without moving it.

@@ -190,8 +190,12 @@ fn games_reflect_the_builtin_components_by_default() {
     let mut expected = vec![
         "Animation",
         "Attached",
+        "DirectionalLight2D",
+        "Occluder2D",
         "ParticleEmitter2D",
+        "PointLight2D",
         "PrefabParts",
+        "SpotLight2D",
         "Sprite",
         "Transform2D",
     ];
@@ -199,6 +203,7 @@ fn games_reflect_the_builtin_components_by_default() {
         expected.push("Transform3D");
         expected.extend([
             "AttachToJoint",
+            "Attached3D",
             "SkinOf",
             "Decal3D",
             "LodGroup",

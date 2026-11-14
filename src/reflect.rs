@@ -1702,6 +1702,23 @@ impl MaterialNames {
         table.by_file.insert(file.to_string(), list);
     }
 
+    /// Every material of the mesh files loaded so far: file, number in the
+    /// file, name (empty: unnamed), by file then number.
+    pub(crate) fn list(&self) -> Vec<(String, usize, String)> {
+        let table = self.table();
+        let mut out: Vec<(String, usize, String)> = table
+            .by_file
+            .iter()
+            .flat_map(|(file, list)| {
+                list.iter()
+                    .enumerate()
+                    .map(move |(i, (_, name))| (file.clone(), i, name.clone()))
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Forgets mesh file `file` (it was unloaded), so a scene naming its
     /// materials says it isn't loaded.
     pub(crate) fn forget_file(&self, file: &str) {

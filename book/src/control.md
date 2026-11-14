@@ -99,9 +99,10 @@ itself a link (to assets shared between games, say) is trusted:
   `screenshot` or `perf.trace` will still write. On unix such a file is
   recognized by its device and inode; on Windows only by its full path,
   so another name for it (a hard link) isn't caught there.
-- `scene.*` and `prefab.*`: a `.json` file below `assets/`. `scene.save`
-  and `prefab.save` refuse a file a `screenshot` or `perf.trace` will
-  still write, too.
+- `scene.*`, `prefab.*` and `editor.save`: a `.json` file below
+  `assets/`. `scene.save`, `prefab.save` and `editor.save` refuse a file a
+  `screenshot` or `perf.trace` will still write, too. `editor.place` takes a
+  prefab `.json` or a glTF mesh (`.glb`, `.gltf`) below `assets/`.
 - `screenshot` (`.png`) and `perf.trace` (`.json`): a new file below the
   working folder (missing folders are made), created empty when the
   request arrives and written through that handle, so they never replace a
@@ -147,6 +148,7 @@ headless game waits for requests and runs only the ticks you step.
 | `prefab.spawn` | `path`, `at` | spawns a [prefab](scenes.md) at `[x, y]`; returns `entity` (the root) and `parts` (its [children](scenes.md#prefabs-with-children)) |
 | `prefab.save` | `entity`, `path` | saves an entity, with its parts and attachments, as a prefab in `assets/` |
 | `prefab.despawn` | `entity` | despawns a prefab's root and its parts; how many entities went |
+| `editor.*` | see [below](#the-editor-from-an-agent) | the inspector's scene editing: picking, the gizmo, parenting, placing assets, undo and redo, saving |
 | `sim.pause` / `sim.resume` | | |
 | `sim.step` | `ticks?` (1) | ticks queued |
 | `sim.speed` | `speed` | |
@@ -174,6 +176,38 @@ Component values use [reflection](reflection.md): call
 `world.reflect::<T>()` for a component, `world.reflect_resource::<R>()` for
 a resource, to make it readable and writable.
 Entity ids are the numbers from `Entity::to_bits`.
+
+## The editor from an agent
+
+The `editor.*` methods make the same changes as the
+[inspector's editor](inspector.md#editing-in-3d), through the same undo
+history: an agent can build a level, a person can undo its last step in
+the inspector, and the other way round. Each change is one undo step and
+returns `can_undo` and `can_redo`. Most of them work in 3D (they need the
+`3d` feature; `capabilities` says so otherwise); `editor.parent`,
+`editor.hierarchy`, `editor.assets`, `editor.place` (of a prefab),
+`editor.delete`, `editor.duplicate`, `editor.undo`, `editor.redo` and
+`editor.save` work in 2D games too.
+
+| Method | Params | Does |
+|---|---|---|
+| `editor.pick` | `at` [x, y] | the entity under a window point (the nearest mesh bounds the mouse ray enters; `null` if none), its distance and hit point, and where the ray meets the ground |
+| `editor.transform` | `entities`, `translate?` [x, y, z], `rotate?` [x, y, z] (degrees), `scale?` (a factor or [x, y, z]), `space?` (`world` or `local`), `snap?` (`true` or `{step, angle, scale}`) | moves, turns (about the entities' middle) and scales; attached entities keep their parent, and what hangs off them follows |
+| `editor.drag` | `entities`, `mode` (`translate`, `rotate`, `scale`), `handle` (`x`, `y`, `z`, `xy`, `xz`, `yz`, `center`), `from`, `to` (window points), `space?`, `snap?` | drags a gizmo handle exactly as the mouse does |
+| `editor.parent` | `entity`, `parent` (an id or `null`) | makes it follow the parent (`Attached3D` in 3D, `Attached` in 2D) without moving it, or follow nothing; refuses loops |
+| `editor.hierarchy` | | every entity as a tree: parent, link (`attached`, `attached3d`, `joint`, `skin`, `prefab_part`), depth, children, prefab root or not, component names |
+| `editor.assets` | | glTF meshes, prefabs and scenes in `assets/`, and the materials of the mesh files loaded so far |
+| `editor.place` | `path`, `at?` [x, y, z] (or [x, y] for a 2D prefab), `screen?` [x, y], `snap?` | spawns a mesh as a model, or a prefab, at a point or where a window point's ray meets the ground (default: the middle of the view); returns the entity and its prefab parts |
+| `editor.material` | `entity`, `mesh`, `material` (a name or a number) | paints a model with a material of a loaded mesh file |
+| `editor.delete` | `entities` | despawns them with everything that hangs off them |
+| `editor.duplicate` | `entities`, `offset?` | copies them with everything that hangs off them; returns the copies |
+| `editor.undo` / `editor.redo` | | steps back or forward through the history; a new change drops what was undone |
+| `editor.save` | `path?` | saves the world as a scene, by default to the file it was loaded from or last saved to |
+| `editor.camera` | `position?`, `look_at?`, `fov?`, `turn?` [dx, dy], `fly?` [right, up, forward], `focus?` (an entity) | moves the 3D camera as the editor's fly camera does; returns where it is |
+
+Loading a scene or a save (by any means) forgets the history: its entity
+ids no longer mean what they did. The inspector's **Stop** puts the world
+back and keeps the history.
 
 ## Capabilities
 

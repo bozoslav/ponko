@@ -100,6 +100,23 @@ using attached = PonkoAttached;
 /// transform2d. Get and set it like any component; it can't be a query column (the engine stores it in a Rust
 /// layout).
 using sprite = PonkoSprite;
+// ---- 2D lights (Rust `d2::PointLight`, `d2::SpotLight`, `d2::DirectionalLight`, `d2::Occluder`).
+/// The built-in `PointLight2D` component: light from the entity's 2D transform, fading to nothing at
+/// `radius` pixels; `shadows` makes occluders in reach cast shadows. Start from point_light2d_default().
+/// Lighting turns on with the first light or an ambient light (ctx::set_ambient_light2d).
+using point_light2d = PonkoPointLight2D;
+/// A point light with the engine's defaults (Rust `d2::PointLight::default()`).
+inline point_light2d point_light2d_default() { return ponko_point_light2d_default(); }
+/// The built-in `SpotLight2D` component: a cone of light along the entity's rotation, `angle` radians to
+/// each side, its edge softened by `softness`. Start from spot_light2d_default().
+using spot_light2d = PonkoSpotLight2D;
+/// A spot light with the engine's defaults (Rust `d2::SpotLight::default()`).
+inline spot_light2d spot_light2d_default() { return ponko_spot_light2d_default(); }
+/// The built-in `DirectionalLight2D` component: light from far away (a sun or moon) shining along
+/// `direction` over the whole view; needs no transform. Start from directional_light2d_default().
+using directional_light2d = PonkoDirectionalLight2D;
+/// A directional light with the engine's defaults (Rust `d2::DirectionalLight::default()`).
+inline directional_light2d directional_light2d_default() { return ponko_directional_light2d_default(); }
 // ---- Sprite blend modes and sprite materials (Rust `BlendMode`, `SpriteShader`, `SpriteMaterial`).
 /// How a sprite combines with what's behind it (Rust `BlendMode`). Also a component: an entity with a sprite
 /// and one blends that way. Each mode is its own batch.
@@ -156,6 +173,9 @@ using quat = PonkoQuat;
 /// The built-in `Transform3D` component (Rust `Transform3D`): position, rotation and scale. A plain value and
 /// a query column; start from transform3d_at.
 using transform3d = PonkoTransform3D;
+/// The built-in `Attached3D` component (Rust `attach::Attached3D`): keeps an entity at `offset` (a transform in the
+/// other's space) from another; see attach3d_to. Same layout as Rust, so it is a query column.
+using attached3d = PonkoAttached3D;
 /// One joint of a skeleton (Rust `Joint`): its name, the joint it hangs
 /// from (an earlier index; -1 for a root) and where it sits relative to it
 /// at rest.
@@ -672,6 +692,11 @@ inline quat quat_from_rotation_z(float angle) { return ponko_quat_from_axis_angl
 /// A 3D transform at `position`, turned by `rotation`, scaled by `scale` on every axis.
 inline transform3d transform3d_at(vec3 position, quat rotation = {0, 0, 0, 1}, float scale = 1) {
     transform3d t = ponko_transform3d_at(position); t.rotation = rotation; t.scale = {scale, scale, scale}; return t;
+}
+/// Follows `to` at `offset` (in its space: turned by its rotation, stretched
+/// by its scale, chains placed parents first). Needs game::follow_attachments().
+inline attached3d attach3d_to(entity to, transform3d offset = ponko_transform3d_at({0, 0, 0})) {
+    return {entity_of(to), {0, 0}, offset};
 }
 /// `t` turned so its -Z axis points at `target`, +Y up.
 inline transform3d looking_at(const transform3d& t, vec3 target) { return ponko_transform3d_looking_at(t, target); }
@@ -1604,6 +1629,7 @@ protected:
         else if constexpr (std::is_same<T, sprite_blend>::value) status = ponko_blend_mode_component(world, &id);
         else if constexpr (std::is_same<T, sprite_material>::value) status = ponko_sprite_material_component(world, &id);
         else if constexpr (std::is_same<T, attached>::value) status = ponko_attached_component(world, &id);
+        else if constexpr (std::is_same<T, attached3d>::value) status = ponko_attached3d_component(world, &id);
         else if constexpr (std::is_same<T, animation>::value) status = ponko_animation_component(world, &id);
         else if constexpr (std::is_same<T, rigid_body>::value) status = ponko_rigid_body_component(world, &id);
         else if constexpr (std::is_same<T, collider>::value) status = ponko_collider_component(world, &id);
@@ -1621,6 +1647,9 @@ protected:
         else if constexpr (std::is_same<T, reflection_probe3d>::value) status = ponko_reflection_probe3d_component(world, &id);
         else if constexpr (std::is_same<T, decal3d>::value) status = ponko_decal3d_component(world, &id);
         else if constexpr (std::is_same<T, receives_decals>::value) status = ponko_receives_decals_component(world, &id);
+        else if constexpr (std::is_same<T, point_light2d>::value) status = ponko_point_light2d_component(world, &id);
+        else if constexpr (std::is_same<T, spot_light2d>::value) status = ponko_spot_light2d_component(world, &id);
+        else if constexpr (std::is_same<T, directional_light2d>::value) status = ponko_directional_light2d_component(world, &id);
         else if constexpr (std::is_same<T, point_light3d>::value) status = ponko_point_light3d_component(world, &id);
         else if constexpr (std::is_same<T, spot_light3d>::value) status = ponko_spot_light3d_component(world, &id);
         else if constexpr (std::is_same<T, model>::value) status = ponko_model_component(world, &id);
@@ -5508,6 +5537,57 @@ public:
     }
     /// Advances `e`'s 2D emitter by `dt` seconds by hand (headless runs skip the frame phase that does it).
     void particle_update2d(entity e, float dt) { detail::check(ponko_ctx_particle_update2d(raw_, e, dt)); }
+    /// Gives `e` (which needs a 2D transform) a `size` box occluder centred on it, replacing any old one:
+    /// it casts shadows from 2D lights with shadows on. It turns and scales with the transform.
+    void set_occluder2d_rect(entity e, vec2 size) { detail::check(ponko_ctx_set_occluder2d_rect(raw_, e, size)); }
+    /// Gives `e` a round occluder (16 sides) of `radius`, replacing any old one.
+    void set_occluder2d_circle(entity e, float radius) { detail::check(ponko_ctx_set_occluder2d_circle(raw_, e, radius)); }
+    /// Gives `e` a closed polygon occluder (`points` relative to its transform, either winding),
+    /// replacing any old one.
+    void set_occluder2d_polygon(entity e, const std::vector<vec2>& points) {
+        detail::check(ponko_ctx_set_occluder2d_polygon(raw_, e, points.data(), points.size()));
+    }
+    /// Gives `e` a thin wall from `a` to `b` as its occluder (shadows on both sides), replacing any old one.
+    void set_occluder2d_line(entity e, vec2 a, vec2 b) { detail::check(ponko_ctx_set_occluder2d_line(raw_, e, a, b)); }
+    /// Gives tile map `map` an occluder outlining its cells that show one of `solid` tiles (Rust
+    /// `TileMap::occluder`), replacing any old one. Call it again after the walls change.
+    void set_tilemap_occluder(entity map, const std::vector<std::uint16_t>& solid) {
+        detail::check(ponko_ctx_set_tilemap_occluder(raw_, map, solid.data(), solid.size()));
+    }
+    /// Takes `e`'s occluder off (fine if it has none).
+    void remove_occluder2d(entity e) { detail::check(ponko_ctx_remove_occluder2d(raw_, e)); }
+    /// How many edges `e`'s occluder has (0 without one).
+    std::size_t occluder2d_edge_count(entity e) {
+        std::size_t n = 0;
+        detail::check(ponko_ctx_occluder2d_edge_count(raw_, e, &n));
+        return n;
+    }
+    /// Sets the 2D ambient light (the light everything gets with no light near), or turns it off with
+    /// std::nullopt. Setting one turns 2D lighting on: unlit places show `ambient` times their color.
+    void set_ambient_light2d(std::optional<color> ambient) {
+        detail::check(ponko_ctx_set_ambient_light2d(raw_, ambient.has_value(), ambient.value_or(color{0, 0, 0, 1})));
+    }
+    /// The 2D ambient light, if one is set.
+    std::optional<color> ambient_light2d() {
+        bool on = false;
+        color c{0, 0, 0, 1};
+        detail::check(ponko_ctx_ambient_light2d(raw_, &on, &c));
+        if (!on) return std::nullopt;
+        return c;
+    }
+    /// Gives sprites and tiles drawn from `t` the normal map `normals` (tangent space, green up, the same
+    /// size as `t`), or takes it away with std::nullopt. 2D lights then shade their bumps.
+    void set_normal_map(texture t, std::optional<texture> normals) {
+        detail::check(ponko_ctx_set_normal_map(raw_, t, normals.has_value(), normals.value_or(t)));
+    }
+    /// `t`'s normal map, if it has one.
+    std::optional<texture> normal_map(texture t) {
+        bool has = false;
+        texture n = t;
+        detail::check(ponko_ctx_normal_map(raw_, t, &has, &n));
+        if (!has) return std::nullopt;
+        return n;
+    }
     /// Removes `e`'s 2D emitter and its particles.
     void remove_particle_emitter2d(entity e) { detail::check(ponko_ctx_remove_particle_emitter2d(raw_, e)); }
     /// Gives `e` (which needs a 3D transform) a new ribbon trail, replacing any old one.

@@ -12,8 +12,9 @@
 //! [`anim`](crate::anim) (skeletons, clips, animators, IK),
 //! [`terrain`](crate::terrain), [`particles`](crate::particles) (curves and
 //! gradients shared with 2D), [`collision`](crate::collision) (body kinds
-//! and collision events, shared with 2D) and [`nav`](crate::nav) (navigation
-//! mesh baking).
+//! and collision events, shared with 2D), [`attach`](crate::attach)
+//! (3D attachments, `Attached3D`, with the 2D ones) and [`nav`](crate::nav)
+//! (navigation mesh baking).
 //!
 //! ```
 //! use ponko::prelude::*;

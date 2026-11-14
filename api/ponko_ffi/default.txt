@@ -995,6 +995,18 @@ impl core::fmt::Debug for ponko_ffi::PonkoAttached
 pub fn ponko_ffi::PonkoAttached::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko_ffi::PonkoAttached
 impl core::marker::StructuralPartialEq for ponko_ffi::PonkoAttached
+#[repr(C)] pub struct ponko_ffi::PonkoAttached3D
+pub ponko_ffi::PonkoAttached3D::offset: ponko_ffi::PonkoTransform3D
+pub ponko_ffi::PonkoAttached3D::reserved: [u32; 2]
+pub ponko_ffi::PonkoAttached3D::to: ponko_ffi::PonkoEntity
+impl core::clone::Clone for ponko_ffi::PonkoAttached3D
+pub fn ponko_ffi::PonkoAttached3D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko_ffi::PonkoAttached3D
+pub fn ponko_ffi::PonkoAttached3D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko_ffi::PonkoAttached3D
+pub fn ponko_ffi::PonkoAttached3D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko_ffi::PonkoAttached3D
+impl core::marker::StructuralPartialEq for ponko_ffi::PonkoAttached3D
 #[repr(C)] pub struct ponko_ffi::PonkoAudioBus
 pub ponko_ffi::PonkoAudioBus::index: usize
 impl core::clone::Clone for ponko_ffi::PonkoAudioBus
@@ -1307,6 +1319,20 @@ pub fn ponko_ffi::PonkoDecal3D::clone(&self) -> Self
 impl core::fmt::Debug for ponko_ffi::PonkoDecal3D
 pub fn ponko_ffi::PonkoDecal3D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko_ffi::PonkoDecal3D
+#[repr(C)] pub struct ponko_ffi::PonkoDirectionalLight2D
+pub ponko_ffi::PonkoDirectionalLight2D::color: ponko_ffi::PonkoColor
+pub ponko_ffi::PonkoDirectionalLight2D::direction: ponko_ffi::PonkoVec2
+pub ponko_ffi::PonkoDirectionalLight2D::elevation: f32
+pub ponko_ffi::PonkoDirectionalLight2D::intensity: f32
+pub ponko_ffi::PonkoDirectionalLight2D::shadows: bool
+impl core::clone::Clone for ponko_ffi::PonkoDirectionalLight2D
+pub fn ponko_ffi::PonkoDirectionalLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko_ffi::PonkoDirectionalLight2D
+pub fn ponko_ffi::PonkoDirectionalLight2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko_ffi::PonkoDirectionalLight2D
+pub fn ponko_ffi::PonkoDirectionalLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko_ffi::PonkoDirectionalLight2D
+impl core::marker::StructuralPartialEq for ponko_ffi::PonkoDirectionalLight2D
 #[repr(C)] pub struct ponko_ffi::PonkoDrawParams
 pub ponko_ffi::PonkoDrawParams::color: ponko_ffi::PonkoColor
 pub ponko_ffi::PonkoDrawParams::has_region: bool
@@ -2123,6 +2149,21 @@ impl core::fmt::Debug for ponko_ffi::PonkoPlaying
 pub fn ponko_ffi::PonkoPlaying::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko_ffi::PonkoPlaying
 impl core::marker::StructuralPartialEq for ponko_ffi::PonkoPlaying
+#[repr(C)] pub struct ponko_ffi::PonkoPointLight2D
+pub ponko_ffi::PonkoPointLight2D::color: ponko_ffi::PonkoColor
+pub ponko_ffi::PonkoPointLight2D::falloff: f32
+pub ponko_ffi::PonkoPointLight2D::height: f32
+pub ponko_ffi::PonkoPointLight2D::intensity: f32
+pub ponko_ffi::PonkoPointLight2D::radius: f32
+pub ponko_ffi::PonkoPointLight2D::shadows: bool
+impl core::clone::Clone for ponko_ffi::PonkoPointLight2D
+pub fn ponko_ffi::PonkoPointLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko_ffi::PonkoPointLight2D
+pub fn ponko_ffi::PonkoPointLight2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko_ffi::PonkoPointLight2D
+pub fn ponko_ffi::PonkoPointLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko_ffi::PonkoPointLight2D
+impl core::marker::StructuralPartialEq for ponko_ffi::PonkoPointLight2D
 #[repr(C)] pub struct ponko_ffi::PonkoPointLight3D
 pub ponko_ffi::PonkoPointLight3D::color: ponko_ffi::PonkoColor
 pub ponko_ffi::PonkoPointLight3D::intensity: f32
@@ -2532,6 +2573,23 @@ impl core::fmt::Debug for ponko_ffi::PonkoSoundParams
 pub fn ponko_ffi::PonkoSoundParams::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for ponko_ffi::PonkoSoundParams
 impl core::marker::StructuralPartialEq for ponko_ffi::PonkoSoundParams
+#[repr(C)] pub struct ponko_ffi::PonkoSpotLight2D
+pub ponko_ffi::PonkoSpotLight2D::angle: f32
+pub ponko_ffi::PonkoSpotLight2D::color: ponko_ffi::PonkoColor
+pub ponko_ffi::PonkoSpotLight2D::falloff: f32
+pub ponko_ffi::PonkoSpotLight2D::height: f32
+pub ponko_ffi::PonkoSpotLight2D::intensity: f32
+pub ponko_ffi::PonkoSpotLight2D::radius: f32
+pub ponko_ffi::PonkoSpotLight2D::shadows: bool
+pub ponko_ffi::PonkoSpotLight2D::softness: f32
+impl core::clone::Clone for ponko_ffi::PonkoSpotLight2D
+pub fn ponko_ffi::PonkoSpotLight2D::clone(&self) -> Self
+impl core::cmp::PartialEq for ponko_ffi::PonkoSpotLight2D
+pub fn ponko_ffi::PonkoSpotLight2D::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko_ffi::PonkoSpotLight2D
+pub fn ponko_ffi::PonkoSpotLight2D::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for ponko_ffi::PonkoSpotLight2D
+impl core::marker::StructuralPartialEq for ponko_ffi::PonkoSpotLight2D
 #[repr(C)] pub struct ponko_ffi::PonkoSpotLight3D
 pub ponko_ffi::PonkoSpotLight3D::color: ponko_ffi::PonkoColor
 pub ponko_ffi::PonkoSpotLight3D::inner_angle: f32
@@ -3316,6 +3374,7 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_animation_graph_builder_free(*mut ponko_ffi::PonkoAnimationGraphBuilder)
 #[no_mangle] pub c fn ponko_ffi::ponko_animation_graph_builder_new() -> *mut ponko_ffi::PonkoAnimationGraphBuilder
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_animation_graph_free(*mut ponko_ffi::PonkoAnimationGraph)
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_attached3d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_attached_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub c fn ponko_ffi::ponko_audio_effects_default() -> ponko_ffi::PonkoAudioEffects
 #[no_mangle] pub c fn ponko_ffi::ponko_audio_settings3d_default() -> ponko_ffi::PonkoAudioSettings3D
@@ -3389,6 +3448,7 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_actions(*mut ponko_ffi::PonkoCtx, *mut ponko_ffi::PonkoActionMap) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_add_asset_source(*mut ponko_ffi::PonkoCtx, *const core::ffi::primitives::c_char, ponko_ffi::PonkoAssetReadFn, ponko_ffi::PonkoAssetContainsFn, ponko_ffi::PonkoUserFreeFn, *mut core::ffi::c_void) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_add_memory_source(*mut ponko_ffi::PonkoCtx, *const ponko_ffi::PonkoMemorySource) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_ambient_light2d(*mut ponko_ffi::PonkoCtx, *mut bool, *mut ponko_ffi::PonkoColor) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_animator_add_layer(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoAnimationGraph, u32, *const core::ffi::primitives::c_char, *mut usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_animator_crossfade(*mut ponko_ffi::PonkoCtx, u64, usize, f32, f32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_animator_layer_crossfade(*mut ponko_ffi::PonkoCtx, u64, usize, usize, f32, f32) -> ponko_ffi::PonkoStatus
@@ -3563,6 +3623,8 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_net_desync(*mut ponko_ffi::PonkoCtx, *mut bool, *mut u64, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_net_player(*mut ponko_ffi::PonkoCtx, *mut u32, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_net_state(*mut ponko_ffi::PonkoCtx, *mut u32) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_normal_map(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoTexture, *mut bool, *mut ponko_ffi::PonkoTexture) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_occluder2d_edge_count(*mut ponko_ffi::PonkoCtx, u64, *mut usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_occlusion_culling(*mut ponko_ffi::PonkoCtx, *mut bool) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_overlap_ball(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoVec2, f32, ponko_ffi::PonkoQueryFilter2D, *mut ponko_ffi::PonkoEntity, usize, *mut usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_overlap_box3d(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoVec3, ponko_ffi::PonkoVec3, ponko_ffi::PonkoQuat, ponko_ffi::PonkoQueryFilter3D, *mut ponko_ffi::PonkoEntity, usize, *mut usize) -> ponko_ffi::PonkoStatus
@@ -3605,6 +3667,7 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_later(*mut ponko_ffi::PonkoCtx, u64, u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_line3d(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_nav(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_occluder2d(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_particle_emitter2d(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_particle_emitter3d(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_remove_text3d(*mut ponko_ffi::PonkoCtx, u64) -> ponko_ffi::PonkoStatus
@@ -3627,6 +3690,7 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_send_event(*mut ponko_ffi::PonkoCtx, u32, *const core::ffi::c_void, usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_action(*mut ponko_ffi::PonkoCtx, *const core::ffi::primitives::c_char, u32, *const ponko_ffi::PonkoActionBinding, usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_actions(*mut ponko_ffi::PonkoCtx, *mut ponko_ffi::PonkoActionMap) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_ambient_light2d(*mut ponko_ffi::PonkoCtx, bool, ponko_ffi::PonkoColor) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_animator(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoAnimationGraph) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_audio_bus_volume(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoAudioBus, f32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_audio_listener(*mut ponko_ffi::PonkoCtx, *const ponko_ffi::PonkoAudioListener3D) -> ponko_ffi::PonkoStatus
@@ -3664,6 +3728,11 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_nav_carve_obstacle(*mut ponko_ffi::PonkoCtx, u64, ponko_ffi::PonkoVec3, ponko_ffi::PonkoVec3) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_nav_destination(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoVec3) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_nav_obstacle(*mut ponko_ffi::PonkoCtx, u64, ponko_ffi::PonkoVec3, ponko_ffi::PonkoVec3) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_normal_map(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoTexture, bool, ponko_ffi::PonkoTexture) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_occluder2d_circle(*mut ponko_ffi::PonkoCtx, u64, f32) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_occluder2d_line(*mut ponko_ffi::PonkoCtx, u64, ponko_ffi::PonkoVec2, ponko_ffi::PonkoVec2) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_occluder2d_polygon(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoVec2, usize) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_occluder2d_rect(*mut ponko_ffi::PonkoCtx, u64, ponko_ffi::PonkoVec2) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_occlusion_culling(*mut ponko_ffi::PonkoCtx, bool) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_particle_emitter2d(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoParticleSettings2D) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_particle_emitter3d(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoParticleSettings3D) -> ponko_ffi::PonkoStatus
@@ -3686,6 +3755,7 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_text3d(*mut ponko_ffi::PonkoCtx, u64, *const core::ffi::primitives::c_char, *const ponko_ffi::PonkoText3D) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_text_shaping(*mut ponko_ffi::PonkoCtx, u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_texture_filter(*mut ponko_ffi::PonkoCtx, ponko_ffi::PonkoTexture, bool) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_tilemap_occluder(*mut ponko_ffi::PonkoCtx, u64, *const u16, usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_trail3d(*mut ponko_ffi::PonkoCtx, u64, *const ponko_ffi::PonkoTrail3D) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_trail3d_emitting(*mut ponko_ffi::PonkoCtx, u64, bool) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_ctx_set_ui_immediate_border_width(*mut ponko_ffi::PonkoCtx, f32) -> ponko_ffi::PonkoStatus
@@ -3835,6 +3905,8 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_decal3d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub c fn ponko_ffi::ponko_decal3d_default() -> ponko_ffi::PonkoDecal3D
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_despawn(*mut ponko_ffi::PonkoWorld, u64) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_directional_light2d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub c fn ponko_ffi::ponko_directional_light2d_default() -> ponko_ffi::PonkoDirectionalLight2D
 #[no_mangle] pub c fn ponko_ffi::ponko_draw_params_default() -> ponko_ffi::PonkoDrawParams
 #[no_mangle] pub c fn ponko_ffi::ponko_entity_bits(ponko_ffi::PonkoEntity) -> u64
 #[no_mangle] pub c fn ponko_ffi::ponko_error_kind_name(u32) -> *const core::ffi::primitives::c_char
@@ -4029,6 +4101,8 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_perf_check(*const core::ffi::primitives::c_char, *const core::ffi::primitives::c_char, *mut core::ffi::primitives::c_char, usize, *mut usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_perf_compare(*const core::ffi::primitives::c_char, *const core::ffi::primitives::c_char, f32, *mut core::ffi::primitives::c_char, usize, *mut usize) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_perf_report_text(*const core::ffi::primitives::c_char, *mut core::ffi::primitives::c_char, usize, *mut usize) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_point_light2d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub c fn ponko_ffi::ponko_point_light2d_default() -> ponko_ffi::PonkoPointLight2D
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_point_light3d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_profile_begin(*const ponko_ffi::PonkoProfileScope) -> u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_profile_end(*const ponko_ffi::PonkoProfileScope, u64)
@@ -4091,6 +4165,8 @@ pub const ponko_ffi::PONKO_UI_SCREEN: u64
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_snapshot_stream_set_delay(*mut ponko_ffi::PonkoSnapshotStream, f64) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub c fn ponko_ffi::ponko_sound_params_default() -> ponko_ffi::PonkoSoundParams
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_spawn(*mut ponko_ffi::PonkoWorld, *const ponko_ffi::PonkoValue, usize, *mut u64) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub unsafe c fn ponko_ffi::ponko_spot_light2d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
+#[no_mangle] pub c fn ponko_ffi::ponko_spot_light2d_default() -> ponko_ffi::PonkoSpotLight2D
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_spot_light3d_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_sprite_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus
 #[no_mangle] pub unsafe c fn ponko_ffi::ponko_sprite_material_component(*mut ponko_ffi::PonkoWorld, *mut u32) -> ponko_ffi::PonkoStatus

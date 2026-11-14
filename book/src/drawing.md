@@ -255,6 +255,116 @@ name like a sprite's. Living particles aren't saved (a loaded emitter starts
 empty), and emitters with a `SpriteMaterial` or an image made in code aren't
 saved, as for sprites.
 
+## 2D lights and shadows
+
+Lights are components too. A `d2::PointLight` shines from its entity's
+`d2::Transform`, a `d2::SpotLight` shines a cone along the transform's
+rotation, and a `d2::DirectionalLight` (a sun or moon, no transform needed)
+lights the whole view from one direction. An ambient light
+(`ctx.gfx.set_ambient_light2d`) is what places no light reaches get. With
+`shadows: true`, a light is blocked by `d2::Occluder` shapes: a box, a
+circle, a polygon, a thin line, or the outline of a tile map's walls.
+
+<div class="lang-pair">
+<div>
+
+```rust
+# use ponko::d2::*;
+# use ponko::tilemap::TileMap;
+# let tiles = ctx.gfx.create_texture(32, 16, &[200; 32 * 16 * 4]);
+# let tile_normals = ctx.gfx.create_texture(32, 16, &[128; 32 * 16 * 4]);
+# let crate_box = tiles;
+# const WALL: u16 = 1;
+# let mut map = TileMap::new(SpriteSheet::new(tiles, 16, 16), 20, 15);
+# for y in 0..15 { for x in 0..20 {
+#     map.set(x, y, Some(if x == 0 || y == 0 || x == 19 || y == 14 { WALL } else { 0 }));
+# } }
+// Dark blue where no light reaches; this turns 2D lighting on.
+ctx.gfx.set_ambient_light2d(Some(Color::rgb(0.1, 0.11, 0.18)));
+// A warm torch whose light the walls and the crate block.
+ctx.world.spawn((
+    Transform::at(vec2(160.0, 120.0)),
+    PointLight {
+        color: Color::rgb(1.0, 0.6, 0.3),
+        radius: 250.0,
+        shadows: true,
+        ..Default::default()
+    },
+));
+// A lantern: a cone along its rotation (here, to the right).
+ctx.world.spawn((
+    Transform::at(vec2(60.0, 60.0)),
+    SpotLight { angle: 0.4, ..Default::default() },
+));
+// The walls (tile 1) of the map cast shadows; so does a crate.
+let walls = map.occluder(|tile| tile == WALL);
+ctx.world.spawn((Transform::at(Vec2::ZERO), map, walls));
+ctx.world.spawn((
+    Transform::at(vec2(220.0, 150.0)),
+    Sprite::new(crate_box),
+    Occluder::rect(vec2(16.0, 16.0)),
+));
+// Bumpy tiles: light shades their bevels.
+ctx.gfx.set_normal_map(tiles, Some(tile_normals));
+```
+
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:lights2d}}
+```
+
+</div>
+</div>
+
+The `lights2d` example (`cargo run --example lights2d`) is a tile dungeon with
+wandering coloured lights, a lantern at the mouse and normal-mapped walls and
+crates; L adds a hundred lights and N turns the normal maps off.
+
+- **What it lights**: the world: sprites, tile maps and particles. Lights
+  add up; the result multiplies what was drawn, so a light at 1.0 shows
+  sprites at their own color, and brighter lights (`intensity` above 1)
+  brighten them up to twice. Screen-space UI and text are never lit.
+- **Fading**: point and spot lights fade from full at the centre to nothing
+  at `radius` pixels; `falloff` shapes the curve (1 straight, 2 the default,
+  higher stays bright longer). A spot light covers `angle` radians to each
+  side of its rotation, with the last `softness` of that fading out.
+- **Shadows**: each light with `shadows: true` is blocked by the edges of the
+  occluders within its radius (a directional light: within the view). The
+  occluder itself stays lit; only what is behind it goes dark. Occluders
+  turn, scale and mirror with their transform, and `TileMap::occluder`
+  merges a map's walls into one outline, so a wall of a hundred tiles is a
+  few edges. Shadows are hard-edged.
+- **Normal maps**: `ctx.gfx.set_normal_map(texture, Some(normals))` gives every
+  sprite and tile drawn from `texture` a normal map: an image of the same size
+  in tangent space, green pointing up the image (the common "OpenGL" style).
+  Light then shades the bumps from its direction, using its `height` above
+  the world (and a directional light's `elevation`). Normals turn with the
+  sprite and flip when it is mirrored. Sprites without a normal map are lit
+  flat. Additive and multiply sprites and clipped (UI-masked) sprites skip
+  normal mapping.
+- **Cost**: nothing without lights. With no light component and no ambient
+  light, a frame draws exactly as before, makes no GPU resources and spends
+  only three empty component counts on the CPU. Lights without shadows are
+  one instanced draw; each shadowed light adds its shadow volumes and one
+  draw. On an Apple M4 Max (Metal, 1920x1080, 2,000 sprites; `cargo run
+  --release -p ponko_bench -- lights2d`), a frame took 0.33 ms unlit,
+  0.55 ms with 100 lights, about 1 ms with 100 shadowed lights and 200
+  occluders (0.3 ms of it CPU, 0.16 ms gathering the shadow edges), and
+  1.8 ms with normal maps on top.
+- **WebGL2**: the same on WebGL2 as on WebGPU and native; the browser smoke
+  test's `lights2d` fixture runs it on Chromium's WebGL2.
+- **From C and C++**: the light components are plain structs
+  (`ponko::point_light2d` and the others, from `point_light2d_default()`),
+  and the context has `set_occluder2d_rect` (and `_circle`, `_polygon`,
+  `_line`), `set_tilemap_occluder`, `set_ambient_light2d` and
+  `set_normal_map`.
+
+Lights are reflected as `"PointLight2D"`, `"SpotLight2D"`,
+`"DirectionalLight2D"` and `"Occluder2D"`, so the inspector, the MCP tools and
+scenes see and edit them.
+
 ## Hot reload
 
 Save an image in your editor and the running game shows the new version

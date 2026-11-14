@@ -127,9 +127,10 @@ pub fn draw_tilemaps(ctx: &mut Ctx) {
     crate::tilemap::draw_tilemaps(ctx);
 }
 
-/// Moves every entity with [`Attached`](crate::attach::Attached) to its place next to the entity it
-/// follows, on all cores, and despawns those whose entity is gone. Add it as
-/// a simulation system after the ones that move things.
+/// Moves every entity with [`Attached`](crate::attach::Attached) (and, with the `3d` feature,
+/// `Attached3D`) to its place next to the entity it follows, on all cores,
+/// and despawns those whose entity is gone. Add it as a simulation system
+/// after the ones that move things.
 pub fn follow_attachments(ctx: &mut Ctx) {
     crate::attach::follow_attachments(ctx);
 }

@@ -129,7 +129,8 @@ mod control;
 mod ctx;
 pub mod diagnostics;
 mod ecs;
-#[cfg(feature = "inspector")]
+#[cfg(feature = "3d")]
+mod edit3d;
 mod editor;
 pub mod error;
 pub mod events;
@@ -181,6 +182,7 @@ pub mod inventory;
 
 #[cfg(feature = "inspector")]
 mod inspector;
+mod light2d;
 mod logs;
 #[cfg(feature = "navmesh")]
 mod nav3d;

@@ -780,6 +780,155 @@ fn tools() -> Vec<Tool> {
             required: &["entity"],
         },
         Tool {
+            name: "pick_entity",
+            description: "What is under a window point of a 3D game, as a click in the editor picks it: the entity whose mesh bounds the camera's ray through that point enters first, with distance and hit point, and where the ray meets the ground (y = 0). Use set_camera_3d first to look at the level.",
+            writes: false,
+            params: || json!({ "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "description": "Window point [x, y] in pixels (0, 0 is the top left)" } }),
+            required: &["at"],
+        },
+        Tool {
+            name: "transform_entities",
+            description: "Move, turn and scale 3D entities the way the editor's gizmo does, as one undo step: translate by [x, y, z], rotate by degrees about each axis (about the entities' middle), scale by a factor along each entity's own axes, in world or local space, with optional snapping. Attached entities keep their parent; what hangs off them follows.",
+            writes: true,
+            params: || {
+                json!({
+                    "entities": { "type": "array", "items": { "type": "integer" }, "minItems": 1, "description": "Entity ids" },
+                    "translate": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": "World units [x, y, z] (along the first entity's own axes with space: local)" },
+                    "rotate": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": "Degrees about the X, Y and Z axes, in that order" },
+                    "scale": { "description": "A factor, or [x, y, z] factors along each entity's own axes" },
+                    "space": { "type": "string", "enum": ["world", "local"], "description": "Whose axes: the world's (default) or the first entity's own" },
+                    "snap": { "description": "true to snap to the grid (0.5 units, 15°, 0.1 scale steps), or { step, angle (degrees), scale }" }
+                })
+            },
+            required: &["entities"],
+        },
+        Tool {
+            name: "drag_gizmo",
+            description: "Drag a handle of the editor's 3D gizmo from one window point to another, exactly as the mouse does in the inspector, as one undo step: an axis (x, y, z), a plane (xy, xz, yz) or the center (move in the view plane, or scale evenly). Use it to check what a person dragging would get.",
+            writes: true,
+            params: || {
+                json!({
+                    "entities": { "type": "array", "items": { "type": "integer" }, "minItems": 1, "description": "Entity ids" },
+                    "mode": { "type": "string", "enum": ["translate", "rotate", "scale"] },
+                    "handle": { "type": "string", "enum": ["x", "y", "z", "xy", "xz", "yz", "center"] },
+                    "from": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "description": "Window point where the drag starts" },
+                    "to": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "description": "Window point where it ends" },
+                    "space": { "type": "string", "enum": ["world", "local"] },
+                    "snap": { "description": "true to snap to the grid (0.5 units, 15°, 0.1 scale steps), or { step, angle (degrees), scale }" }
+                })
+            },
+            required: &["entities", "mode", "handle", "from", "to"],
+        },
+        Tool {
+            name: "set_parent",
+            description: "Make an entity follow another in the scene hierarchy without moving it (Attached3D in 3D, Attached in 2D), or follow nothing (parent: null). Moving the parent then carries it. Refuses loops. One undo step.",
+            writes: true,
+            params: || {
+                json!({
+                    "entity": { "type": "integer", "description": "The child" },
+                    "parent": { "type": ["integer", "null"], "description": "The new parent, or null to detach" }
+                })
+            },
+            required: &["entity"],
+        },
+        Tool {
+            name: "scene_hierarchy",
+            description: "The scene as a tree, as the editor's hierarchy panel shows it: every entity with its parent and how it hangs off it (attached, attached3d, joint, skin, prefab_part), its depth and children, whether it is a prefab instance's root, and its component names.",
+            writes: false,
+            params: no_params,
+            required: &[],
+        },
+        Tool {
+            name: "list_assets",
+            description: "What the editor's asset browser offers: glTF meshes, prefabs and scenes in the game's assets/ folder, and the materials of the mesh files loaded so far (mesh, index, name), for place_asset and paint_material.",
+            writes: false,
+            params: no_params,
+            required: &[],
+        },
+        Tool {
+            name: "place_asset",
+            description: "Drop an asset into the scene as the editor's asset browser does, as one undo step: a glTF mesh becomes a model, a prefab is spawned with its parts. At a world point, or where a window point's ray meets the ground, optionally snapped to the grid. Returns the entity and its prefab parts.",
+            writes: true,
+            params: || {
+                json!({
+                    "path": { "type": "string", "description": "A .glb, .gltf or prefab .json inside assets/, e.g. models/house.glb" },
+                    "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3, "description": "World point [x, y, z] ([x, y] for a 2D prefab)" },
+                    "screen": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2, "description": "Window point to drop at (where its ray meets the ground); default the middle of the view" },
+                    "snap": { "description": "true to snap to the grid (0.5 units, 15°, 0.1 scale steps), or { step, angle (degrees), scale }" }
+                })
+            },
+            required: &["path"],
+        },
+        Tool {
+            name: "paint_material",
+            description: "Draw a model with a material of a loaded mesh file instead of its own (a ModelMaterial), as dropping a material from the asset browser does. One undo step.",
+            writes: true,
+            params: || {
+                json!({
+                    "entity": { "type": "integer" },
+                    "mesh": { "type": "string", "description": "The mesh file the material is in, from list_assets" },
+                    "material": { "description": "The material's name, or its number in the file" }
+                })
+            },
+            required: &["entity", "mesh", "material"],
+        },
+        Tool {
+            name: "delete_entities",
+            description: "Delete entities with everything that hangs off them (prefab parts, attachments), as the editor's Delete key does. One undo step: undo_edit brings them back, still linked.",
+            writes: true,
+            params: || json!({ "entities": { "type": "array", "items": { "type": "integer" }, "minItems": 1, "description": "Entity ids" } }),
+            required: &["entities"],
+        },
+        Tool {
+            name: "duplicate_entities",
+            description: "Copy entities with everything that hangs off them (links inside a copy point at the copies), moved by an offset. One undo step. Returns the copies.",
+            writes: true,
+            params: || {
+                json!({
+                    "entities": { "type": "array", "items": { "type": "integer" }, "minItems": 1, "description": "Entity ids" },
+                    "offset": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3, "description": "[x, y, z] in 3D, [x, y] in 2D" }
+                })
+            },
+            required: &["entities"],
+        },
+        Tool {
+            name: "undo_edit",
+            description: "Undo the last editor change, made by an agent or by a person in the inspector (they share one history).",
+            writes: true,
+            params: no_params,
+            required: &[],
+        },
+        Tool {
+            name: "redo_edit",
+            description: "Redo the last undone editor change.",
+            writes: true,
+            params: no_params,
+            required: &[],
+        },
+        Tool {
+            name: "save_edited_scene",
+            description: "Save the world back to the scene file it was loaded from or last saved to, as the editor's Save does (or to path, inside assets/).",
+            writes: true,
+            params: || json!({ "path": { "type": "string", "description": "Path inside assets/, e.g. levels/yard.json (default: the scene that was loaded)" } }),
+            required: &[],
+        },
+        Tool {
+            name: "set_camera_3d",
+            description: "Read or move the 3D camera as the editor's fly camera does, e.g. before pick_entity, drag_gizmo or a screenshot: position, look_at, fov (degrees), turn [dx, dy] (mouse pixels), fly [right, up, forward] (world units), focus (an entity to frame). With no arguments, just returns the camera.",
+            writes: false,
+            params: || {
+                json!({
+                    "position": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+                    "look_at": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+                    "fov": { "type": "number" },
+                    "turn": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                    "fly": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+                    "focus": { "type": "integer", "description": "An entity to frame" }
+                })
+            },
+            required: &[],
+        },
+        Tool {
             name: "quit_instance",
             description: "Ask a game to exit.",
             writes: true,
@@ -840,6 +989,20 @@ fn tool_methods(name: &str) -> Option<&'static [&'static str]> {
         "save_prefab" => &["prefab.save"],
         "despawn_prefab" => &["prefab.despawn"],
         "quit_instance" => &["game.quit"],
+        "pick_entity" => &["editor.pick"],
+        "transform_entities" => &["editor.transform"],
+        "drag_gizmo" => &["editor.drag"],
+        "set_parent" => &["editor.parent"],
+        "scene_hierarchy" => &["editor.hierarchy"],
+        "list_assets" => &["editor.assets"],
+        "place_asset" => &["editor.place"],
+        "paint_material" => &["editor.material"],
+        "delete_entities" => &["editor.delete"],
+        "duplicate_entities" => &["editor.duplicate"],
+        "undo_edit" => &["editor.undo"],
+        "redo_edit" => &["editor.redo"],
+        "save_edited_scene" => &["editor.save"],
+        "set_camera_3d" => &["editor.camera"],
         _ => return None,
     })
 }
@@ -901,6 +1064,8 @@ fn destructive(tool: &str) -> bool {
             | "load_scene"
             | "save_scene"
             | "save_prefab"
+            | "delete_entities"
+            | "save_edited_scene"
     )
 }
 
@@ -1120,6 +1285,35 @@ impl Server {
             "save_prefab" => self.instance(args)?.call("prefab.save", pass(&["entity", "path"])),
             "despawn_prefab" => self.instance(args)?.call("prefab.despawn", pass(&["entity"])),
             "quit_instance" => self.instance(args)?.call("game.quit", json!({})),
+            "pick_entity" => self.instance(args)?.call("editor.pick", pass(&["at"])),
+            "transform_entities" => self.instance(args)?.call(
+                "editor.transform",
+                pass(&["entities", "translate", "rotate", "scale", "space", "snap"]),
+            ),
+            "drag_gizmo" => self.instance(args)?.call(
+                "editor.drag",
+                pass(&["entities", "mode", "handle", "from", "to", "space", "snap"]),
+            ),
+            "set_parent" => self.instance(args)?.call("editor.parent", pass(&["entity", "parent"])),
+            "scene_hierarchy" => self.instance(args)?.call("editor.hierarchy", json!({})),
+            "list_assets" => self.instance(args)?.call("editor.assets", json!({})),
+            "place_asset" => self
+                .instance(args)?
+                .call("editor.place", pass(&["path", "at", "screen", "snap"])),
+            "paint_material" => self
+                .instance(args)?
+                .call("editor.material", pass(&["entity", "mesh", "material"])),
+            "delete_entities" => self.instance(args)?.call("editor.delete", pass(&["entities"])),
+            "duplicate_entities" => self
+                .instance(args)?
+                .call("editor.duplicate", pass(&["entities", "offset"])),
+            "undo_edit" => self.instance(args)?.call("editor.undo", json!({})),
+            "redo_edit" => self.instance(args)?.call("editor.redo", json!({})),
+            "save_edited_scene" => self.instance(args)?.call("editor.save", pass(&["path"])),
+            "set_camera_3d" => self.instance(args)?.call(
+                "editor.camera",
+                pass(&["position", "look_at", "fov", "turn", "fly", "focus"]),
+            ),
             _ => Err(format!("unknown tool `{name}`")),
         }
     }
@@ -1628,6 +1822,8 @@ mod tests {
             "despawn_entity",
             "remove_component",
             "quit_instance",
+            "delete_entities",
+            "save_edited_scene",
         ] {
             let t = tools
                 .iter()
