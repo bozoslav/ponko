@@ -2,16 +2,37 @@
 //! batch, and why. From [`Game::schedule_plan`](crate::game::Game::schedule_plan).
 //!
 //! Systems run phase after phase, and inside a phase in registration order.
-//! The plan cuts that order into **stages**: a stage is either one system
-//! that runs alone, or a **batch** of view systems (systems that take
-//! `&mut SystemView`; see [`Game::add`](crate::game::Game::add)) that are next to each other
-//! in the order and whose declarations don't conflict
+//! The plan puts them into **stages**: a stage is either one system that
+//! runs alone, or a **batch** of view systems (systems that take
+//! `&mut SystemView`; see [`Game::add`](crate::game::Game::add)) whose
+//! declarations don't conflict
 //! ([`SystemAccess::conflicts_before`](crate::access::SystemAccess::conflicts_before)).
 //! Stages run one after another; with
 //! [`Game::parallel_systems`](crate::game::Game::parallel_systems) on, the systems
-//! of a batch may run at the same time. A system never moves past another:
-//! two systems that conflict keep their registration order, because they are
-//! in different stages.
+//! of a batch may run at the same time.
+//!
+//! # Batching by dependencies
+//!
+//! Phases, explicit barriers and systems that run alone cut the order into
+//! **segments**, which nothing crosses. Inside a segment, each view system
+//! goes to the earliest stage that keeps every rule with the systems
+//! registered before it:
+//!
+//! - it runs in a **later stage** than every earlier system whose work it
+//!   must see: one it conflicts with
+//!   ([`conflicts_before`](crate::access::SystemAccess::conflicts_before)),
+//!   or one [`Game::order`](crate::game::Game::order) puts first;
+//! - it runs **no earlier** than any earlier system whose order would show
+//!   at all ([`conflicts_with`](crate::access::SystemAccess::conflicts_with):
+//!   two senders of one event type, say). It may share that system's
+//!   batch, under the barrier rules below, but not move ahead of it.
+//!
+//! So a system that interacts with nothing registered between may join an
+//! earlier stage, ahead of systems registered before it: the order of two
+//! systems that don't interact can't be observed. Two systems that
+//! conflict keep their registration order. The members of a batch need not
+//! be neighbours ([`Stage::members`]), and every system says what kept it
+//! out of the stage before its own ([`PlannedSystem::boundary`]).
 //!
 //! # Barriers
 //!
@@ -31,17 +52,19 @@
 //! never shares a batch with a later reader of it, and a system that
 //! records commands is always the last of its batch.
 //!
-//! A new stage starts ([`Boundary`]):
+//! A system is kept out of an earlier stage ([`Boundary`]):
 //!
 //! - at every [`Phase`],
 //! - before and after every system that runs alone ([`Alone`]): every
 //!   `&mut Ctx` system, and view systems that hold a service only one
 //!   system may hold, send and read the same event type, or run at an
 //!   interval,
-//! - where a system conflicts with one already in the batch,
+//! - by a system it conflicts with,
 //! - at an explicit [`Game::barrier`](crate::game::Game::barrier),
-//! - where [`Game::order`](crate::game::Game::order) says one system must see
-//!   another's work.
+//! - where [`Game::order`](crate::game::Game::order) says it must see
+//!   another's work,
+//! - by an earlier system it must not move ahead of
+//!   ([`Boundary::KeepsOrder`]).
 //!
 //! # Determinism
 //!
@@ -56,7 +79,7 @@
 //!
 //! Change ticks are the same too. Run one at a time, every system has a
 //! change tick of its own; the systems of a batch write in exactly those
-//! ticks (the world moves past them before the batch starts), so
+//! ticks, also when they run ahead of systems registered before them, so
 //! `change_tick()` reads the same number in a system, change stamps
 //! compare the same against a tick a system kept, and the world's tick
 //! after any stage is the same with the scheduler on or off.
@@ -197,10 +220,16 @@ pub struct PlannedSystem {
     pub phase: Phase,
     /// Why it runs alone; `None` for a view system that can share a batch.
     pub alone: Option<Alone>,
+    /// Why it isn't in an earlier stage: which system keeps it out of the
+    /// stage before its own, and on what. For the first system of a stage
+    /// this is the stage's [`Stage::boundary`]; the other systems of a
+    /// batch each have their own reason.
+    pub boundary: Boundary,
 }
 
 /// Why a stage starts where it does: what keeps its first system out of
-/// the stage before it.
+/// the stage before it. Also, per system ([`PlannedSystem::boundary`]),
+/// what keeps that system out of the stage before its own.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Boundary {
@@ -224,28 +253,49 @@ pub enum Boundary {
         /// The earlier system.
         after: usize,
     },
+    /// Only per system, never for a stage: the system must not run before
+    /// system `after`, registered earlier and in this same stage, because
+    /// their order would show (two senders of one event type, a sender and
+    /// a reader, ...). It may share `after`'s batch, as neighbours always
+    /// could, but not move ahead of it.
+    KeepsOrder {
+        /// The earlier system.
+        after: usize,
+        /// What makes their order visible
+        /// ([`SystemAccess::conflicts_with`]).
+        conflicts: Vec<AccessConflict>,
+    },
 }
 
-/// One stage of a [`SchedulePlan`]: systems `first..first + len` of
-/// [`SchedulePlan::systems`]. More than one system is a batch.
+/// One stage of a [`SchedulePlan`]: the systems [`members`](Self::members)
+/// of [`SchedulePlan::systems`]. More than one system is a batch.
+///
+/// The members are in registration order, but need not be neighbours: a
+/// system that doesn't interact with the systems registered before it may
+/// join an earlier stage than theirs.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Stage {
     /// The phase of its systems.
     pub phase: Phase,
-    /// Index of its first system.
+    /// Index of its first system (the first registered).
     pub first: usize,
     /// How many systems it has.
     pub len: usize,
-    /// Why it starts here.
+    /// The indexes of its systems in [`SchedulePlan::systems`], in
+    /// registration order.
+    pub members: Vec<usize>,
+    /// Why it starts here: what keeps its first system out of the stage
+    /// before it. Never [`Boundary::KeepsOrder`].
     pub boundary: Boundary,
 }
 
 impl Stage {
-    /// The indexes of its systems in [`SchedulePlan::systems`].
+    /// The indexes of its systems in [`SchedulePlan::systems`], in
+    /// registration order (the same as [`members`](Self::members)).
     #[must_use]
-    pub fn systems(&self) -> std::ops::Range<usize> {
-        self.first..self.first + self.len
+    pub fn systems(&self) -> &[usize] {
+        &self.members
     }
 
     /// `true` if more than one system shares the stage.
@@ -287,7 +337,7 @@ impl SchedulePlan {
     /// The names of `stage`'s systems, in registration order.
     #[must_use]
     pub fn names(&self, stage: &Stage) -> Vec<&'static str> {
-        self.systems[stage.systems()].iter().map(|s| s.name).collect()
+        stage.members.iter().map(|&i| self.systems[i].name).collect()
     }
 
     /// The index of the stage that runs the system named `name` (the first
@@ -314,19 +364,38 @@ impl fmt::Display for SchedulePlan {
                 (None, true) => "batch".into(),
                 (None, false) => "batch of one".into(),
             };
-            let name = |i: usize| self.systems[i].name;
-            let after = match &stage.boundary {
-                Boundary::Phase | Boundary::Alone => String::new(),
-                Boundary::Conflict { with, conflicts } => {
-                    let why: Vec<String> = conflicts.iter().map(ToString::to_string).collect();
-                    format!("; after `{}`: conflict on {}", name(*with), why.join(", "))
+            writeln!(f, "  {names} ({kind}{})", self.reason(&stage.boundary))?;
+            // The other members, where something else placed them.
+            for &m in &stage.members[1..] {
+                let why = &self.systems[m].boundary;
+                if *why != stage.boundary && !matches!(why, Boundary::Phase | Boundary::Alone | Boundary::Barrier) {
+                    writeln!(f, "    {}{}", self.systems[m].name, self.reason(why))?;
                 }
-                Boundary::Barrier => "; after a barrier".into(),
-                Boundary::Order { after } => format!("; ordered after `{}`", name(*after)),
-            };
-            writeln!(f, "  {names} ({kind}{after})")?;
+            }
         }
         Ok(())
+    }
+}
+
+impl SchedulePlan {
+    /// `boundary` as printed after a stage or system: empty, or `; ` and why.
+    fn reason(&self, boundary: &Boundary) -> String {
+        let name = |i: usize| self.systems[i].name;
+        let list = |conflicts: &[AccessConflict]| {
+            let why: Vec<String> = conflicts.iter().map(ToString::to_string).collect();
+            why.join(", ")
+        };
+        match boundary {
+            Boundary::Phase | Boundary::Alone => String::new(),
+            Boundary::Conflict { with, conflicts } => {
+                format!("; after `{}`: conflict on {}", name(*with), list(conflicts))
+            }
+            Boundary::Barrier => "; after a barrier".into(),
+            Boundary::Order { after } => format!("; ordered after `{}`", name(*after)),
+            Boundary::KeepsOrder { after, conflicts } => {
+                format!("; not ahead of `{}`: order shows on {}", name(*after), list(conflicts))
+            }
+        }
     }
 }
 
@@ -382,8 +451,14 @@ pub(crate) fn check_order(
     wrong.map_or(Ok(()), Err)
 }
 
-/// Cuts `systems` (in run order) into stages. `order` lists pairs of
-/// systems where the second must see the first's work.
+/// Cuts `systems` (in registration order) into stages. `order` lists
+/// pairs of systems where the second must see the first's work.
+///
+/// Systems that run alone, phases, lists and explicit barriers cut the
+/// order into **segments**: runs of batchable view systems. Inside a
+/// segment, each system goes to the earliest stage that keeps every rule
+/// with the systems registered before it (see [`place`]); outside, nothing
+/// moves.
 ///
 /// # Panics
 /// If a pair in `order` names two registered systems the wrong way round.
@@ -393,46 +468,163 @@ pub(crate) fn plan(systems: &[PlanInput<'_>], order: &[(SystemId, SystemId)]) ->
         panic!("{problem}");
     }
     let mut out = SchedulePlan::default();
-    // Whether the last stage is a batch that the next system may join.
-    let mut open = false;
-    for (i, s) in systems.iter().enumerate() {
+    let mut i = 0;
+    while i < systems.len() {
+        let s = &systems[i];
         let alone = why_alone(s);
-        out.systems.push(PlannedSystem {
-            name: s.name,
-            phase: s.phase,
-            alone,
-        });
         let new_phase = i == 0 || systems[i - 1].phase != s.phase || systems[i - 1].list != s.list;
-        let boundary = if new_phase {
-            Some(Boundary::Phase)
+        let cut = if new_phase {
+            Boundary::Phase
         } else if s.barrier {
-            Some(Boundary::Barrier)
-        } else if alone.is_some() || !open {
-            Some(Boundary::Alone)
+            Boundary::Barrier
         } else {
-            let stage = out.stages.last().expect("an open batch");
-            let access = s.access.expect("a batchable system is declared");
-            stage.systems().find_map(|m| {
-                if order.contains(&(systems[m].id, s.id)) {
-                    return Some(Boundary::Order { after: m });
-                }
-                let earlier = systems[m].access.expect("a batchable system is declared");
-                let conflicts = earlier.conflicts_before(access);
-                (!conflicts.is_empty()).then_some(Boundary::Conflict { with: m, conflicts })
-            })
+            Boundary::Alone
         };
-        match boundary {
-            Some(boundary) => out.stages.push(Stage {
+        if alone.is_some() {
+            out.systems.push(PlannedSystem {
+                name: s.name,
+                phase: s.phase,
+                alone,
+                boundary: cut.clone(),
+            });
+            out.stages.push(Stage {
                 phase: s.phase,
                 first: i,
                 len: 1,
-                boundary,
-            }),
-            None => out.stages.last_mut().expect("an open batch").len += 1,
+                members: vec![i],
+                boundary: cut,
+            });
+            i += 1;
+            continue;
         }
-        open = alone.is_none();
+        // The segment: `s` and the batchable view systems after it, up to
+        // the next phase, list, barrier or system that runs alone.
+        let end = (i + 1..systems.len())
+            .find(|&j| {
+                let (a, b) = (&systems[j - 1], &systems[j]);
+                a.phase != b.phase || a.list != b.list || b.barrier || why_alone(b).is_some()
+            })
+            .unwrap_or(systems.len());
+        let segment = &systems[i..end];
+        let placed = place(segment, order);
+        let stages = placed.iter().map(|p| p.stage).max().map_or(0, |m| m + 1);
+        let first_stage = out.stages.len();
+        for level in 0..stages {
+            let members: Vec<usize> = (placed.iter().enumerate())
+                .filter(|(_, p)| p.stage == level)
+                .map(|(k, _)| i + k)
+                .collect();
+            let first = members[0];
+            out.stages.push(Stage {
+                phase: s.phase,
+                first,
+                len: members.len(),
+                members,
+                boundary: Boundary::Phase,
+            });
+        }
+        for (k, (input, p)) in segment.iter().zip(placed).enumerate() {
+            let boundary = match p.why {
+                None => cut.clone(),
+                Some(why) => why.offset(i),
+            };
+            if out.stages[first_stage + p.stage].first == i + k {
+                out.stages[first_stage + p.stage].boundary = boundary.clone();
+            }
+            out.systems.push(PlannedSystem {
+                name: input.name,
+                phase: input.phase,
+                alone: None,
+                boundary,
+            });
+        }
+        i = end;
     }
     out
+}
+
+/// Where one system of a segment goes: its stage, counted from the
+/// segment's first, and why it can't go to the one before.
+struct Placed {
+    stage: usize,
+    /// `None` in the segment's first stage. Indexes are into the segment.
+    why: Option<Boundary>,
+}
+
+impl Boundary {
+    /// The same reason with its system index moved by `by`.
+    fn offset(self, by: usize) -> Boundary {
+        match self {
+            Boundary::Conflict { with, conflicts } => Boundary::Conflict {
+                with: with + by,
+                conflicts,
+            },
+            Boundary::Order { after } => Boundary::Order { after: after + by },
+            Boundary::KeepsOrder { after, conflicts } => Boundary::KeepsOrder {
+                after: after + by,
+                conflicts,
+            },
+            other => other,
+        }
+    }
+}
+
+/// Places the systems of one segment (batchable view systems, in
+/// registration order) into stages. A system `s` goes to the earliest stage
+/// that respects, for every system `t` registered before it:
+///
+/// - **after** `t`'s stage if `s` must see `t`'s work: `t` conflicts with a
+///   later `s` ([`SystemAccess::conflicts_before`]) or `order` says so;
+/// - **not before** `t`'s stage if their order is visible at all
+///   ([`SystemAccess::conflicts_with`]: moving `s` ahead of `t` would show,
+///   say two senders of one event type), so `s` may share `t`'s batch, as
+///   it could before, but never runs ahead of it.
+///
+/// Systems that don't interact at all may run in any order, so a later
+/// system may go to an earlier stage than one registered before it. The
+/// result is the fewest stages these rules allow (each system as early as
+/// it can be), and it depends only on the declarations.
+fn place(segment: &[PlanInput<'_>], order: &[(SystemId, SystemId)]) -> Vec<Placed> {
+    let mut placed: Vec<Placed> = Vec::with_capacity(segment.len());
+    for (k, s) in segment.iter().enumerate() {
+        let access = s.access.expect("a batchable system is declared");
+        let mut at = Placed { stage: 0, why: None };
+        for (j, t) in segment[..k].iter().enumerate() {
+            let earlier = t.access.expect("a batchable system is declared");
+            let stage = placed[j].stage;
+            // Only a constraint that would move `s` later matters.
+            if order.contains(&(t.id, s.id)) {
+                if stage + 1 > at.stage || at.why.is_none() {
+                    at = Placed {
+                        stage: stage + 1,
+                        why: Some(Boundary::Order { after: j }),
+                    };
+                }
+                continue;
+            }
+            if stage + 1 > at.stage || at.why.is_none() {
+                let conflicts = earlier.conflicts_before(access);
+                if !conflicts.is_empty() {
+                    at = Placed {
+                        stage: stage + 1,
+                        why: Some(Boundary::Conflict { with: j, conflicts }),
+                    };
+                    continue;
+                }
+            }
+            if stage > at.stage {
+                let conflicts = earlier.conflicts_with(access);
+                if !conflicts.is_empty() {
+                    at = Placed {
+                        stage,
+                        why: Some(Boundary::KeepsOrder { after: j, conflicts }),
+                    };
+                }
+            }
+        }
+        placed.push(at);
+    }
+    placed
 }
 
 #[cfg(test)]
@@ -684,6 +876,288 @@ mod tests {
         assert!(check(&[(id(1), id(1))]).is_err());
         // A pair that names a removed system is ignored.
         assert_eq!(check(&[(id(2), SystemId::from_bits(9999))]), Ok(()));
+    }
+
+    #[test]
+    fn a_later_system_joins_an_earlier_stage_when_nothing_between_interacts_with_it() {
+        // Producers and consumers registered in pairs: `c0` reads what
+        // `p0` writes, `c1` what `p1` writes. Neighbours alone would give
+        // `p0`, `c0+p1`, `c1`.
+        #[derive(Component)]
+        struct D;
+        let p0 = SystemAccess::new().write::<A>();
+        let c0 = SystemAccess::new().read::<A>().write::<B>();
+        let p1 = SystemAccess::new().write::<C>();
+        let c1 = SystemAccess::new().read::<C>().write::<D>();
+        let plan = plan(&[view("p", &p0), view("c", &c0), view("q", &p1), view("d", &c1)], &[]);
+        assert_eq!(stages(&plan), ["p+q", "c+d"]);
+        assert_eq!(plan.stages[0].members, [0, 2]);
+        assert_eq!((plan.stages[1].first, plan.stages[1].len), (1, 2));
+        // Each system says what kept it out of the stage before.
+        assert_eq!(plan.systems[2].boundary, Boundary::Phase);
+        assert!(matches!(plan.systems[1].boundary, Boundary::Conflict { with: 0, .. }));
+        assert!(matches!(plan.systems[3].boundary, Boundary::Conflict { with: 2, .. }));
+        // The stage's reason is its first system's.
+        assert_eq!(plan.stages[1].boundary, plan.systems[1].boundary);
+        // The second consumer was kept out by another system than the
+        // first: the printed plan names it.
+        let text = plan.to_string();
+        assert!(
+            text.contains("  c + d (batch; after `p`: conflict on component"),
+            "{text}"
+        );
+        assert!(text.contains("\n    d; after `q`: conflict on component"), "{text}");
+    }
+
+    #[test]
+    fn a_system_never_moves_ahead_of_one_whose_order_would_show() {
+        // `t` waits for `w`; `s` sends what `t` sends, so it may share
+        // `t`'s batch but not run ahead of it: the events would come out in
+        // another order.
+        let w = SystemAccess::new().write::<A>();
+        let t = SystemAccess::new().read::<A>().send_events::<Hit>();
+        let s = SystemAccess::new().write::<B>().send_events::<Hit>();
+        let plan = plan(&[view("w", &w), view("t", &t), view("s", &s)], &[]);
+        assert_eq!(stages(&plan), ["w", "t+s"]);
+        assert!(matches!(
+            &plan.systems[2].boundary,
+            Boundary::KeepsOrder { after: 1, conflicts } if conflicts == &[AccessConflict::Event(std::any::type_name::<Hit>())]
+        ));
+        assert!(
+            plan.to_string()
+                .contains("    s; not ahead of `t`: order shows on events"),
+            "{plan}"
+        );
+
+        // A sender after a reader of its events: the reader must not see
+        // them early, so the sender doesn't move ahead of it either.
+        let r = SystemAccess::new().read::<A>().read_events::<Hit>();
+        let send = SystemAccess::new().send_events::<Hit>();
+        let plan = super::plan(&[view("w", &w), view("r", &r), view("s", &send)], &[]);
+        assert_eq!(stages(&plan), ["w", "r+s"]);
+    }
+
+    #[test]
+    fn nothing_moves_ahead_of_a_command_recorder_or_behind_its_batch() {
+        let w = SystemAccess::new().write::<A>();
+        let rec = SystemAccess::new().read::<A>().commands();
+        let free = SystemAccess::new().write::<B>();
+        // `free` interacts with nobody, but sees the world's structure: it
+        // must come after the recorder's commands.
+        let plan = plan(&[view("w", &w), view("r", &rec), view("f", &free)], &[]);
+        assert_eq!(stages(&plan), ["w", "r", "f"]);
+        assert!(matches!(
+            &plan.systems[2].boundary,
+            Boundary::Conflict { with: 1, conflicts } if conflicts == &[AccessConflict::Commands]
+        ));
+        // A recorder doesn't move ahead of earlier systems either.
+        let plan = super::plan(&[view("w", &w), view("x", &rec.clone()), view("b", &free)], &[]);
+        assert_eq!(plan.stages[0].members, [0]);
+    }
+
+    #[test]
+    fn explicit_order_also_keeps_a_later_system_from_moving_ahead() {
+        let (a, b) = (SystemAccess::new().write::<A>(), SystemAccess::new().read::<A>());
+        let c = SystemAccess::new().write::<C>();
+        let systems = [view("a", &a), view("b", &b), view("c", &c)];
+        assert_eq!(stages(&plan(&systems, &[])), ["a+c", "b"]);
+        // `c` must see `b`'s work.
+        let p = plan(&systems, &[(systems[1].id, systems[2].id)]);
+        assert_eq!(stages(&p), ["a", "b", "c"]);
+        assert_eq!(p.systems[2].boundary, Boundary::Order { after: 1 });
+    }
+
+    #[test]
+    fn systems_never_move_across_a_system_that_runs_alone_or_a_barrier() {
+        let (a, b) = (SystemAccess::new().write::<A>(), SystemAccess::new().read::<A>());
+        let c = SystemAccess::new().write::<C>();
+        let mut ctx_system = view("x", &c);
+        ctx_system.view = false;
+        let plan = plan(&[view("a", &a), view("b", &b), ctx_system, view("c", &c)], &[]);
+        assert_eq!(stages(&plan), ["a", "b", "x", "c"]);
+        let mut after_barrier = view("c", &c);
+        after_barrier.barrier = true;
+        let plan = super::plan(&[view("a", &a), view("b", &b), after_barrier], &[]);
+        assert_eq!(stages(&plan), ["a", "b", "c"]);
+    }
+
+    /// A seeded generator for the randomized plan test (SplitMix64).
+    struct Rng(u64);
+
+    impl Rng {
+        fn below(&mut self, n: u64) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            (z ^ (z >> 31)) % n
+        }
+    }
+
+    fn random_access(rng: &mut Rng) -> SystemAccess {
+        struct E0;
+        struct E1;
+        struct R0;
+        let mut a = SystemAccess::new();
+        for _ in 0..1 + rng.below(3) {
+            a = match rng.below(12) {
+                0 => a.read::<A>(),
+                1 => a.write::<A>(),
+                2 => a.read::<B>(),
+                3 => a.write::<B>(),
+                4 => a.read::<C>(),
+                5 => a.write::<C>(),
+                6 => a.read_resource::<R0>(),
+                7 => a.write_resource::<R0>(),
+                8 => a.send_events::<E0>(),
+                9 => a.read_events::<E1>(),
+                10 => a.send_events::<E1>(),
+                _ => {
+                    if rng.below(3) == 0 {
+                        a.commands()
+                    } else {
+                        a.read_events::<E0>()
+                    }
+                }
+            };
+        }
+        a
+    }
+
+    /// Randomly generated schedules keep every rule: the plan is checked
+    /// against the rules themselves, pair by pair, not against another
+    /// planner.
+    #[test]
+    fn random_schedules_never_batch_or_reorder_conflicting_systems() {
+        let mut moved = 0;
+        for seed in 0..400u64 {
+            let mut rng = Rng(seed);
+            let n = 2 + rng.below(12) as usize;
+            let accesses: Vec<SystemAccess> = (0..n).map(|_| random_access(&mut rng)).collect();
+            let systems: Vec<PlanInput<'_>> = (accesses.iter().enumerate())
+                .map(|(i, a)| PlanInput {
+                    name: "s",
+                    phase: if rng.below(6) == 0 {
+                        Phase::SimLast
+                    } else {
+                        Phase::AfterPhysics
+                    },
+                    list: 0,
+                    id: SystemId::from_bits(i as u32 + 1),
+                    access: (rng.below(10) != 0).then_some(a),
+                    view: rng.below(8) != 0,
+                    interval: false,
+                    barrier: rng.below(10) == 0,
+                })
+                .collect();
+            let mut systems = systems;
+            // Phases in run order, as the game lists them.
+            systems.sort_by_key(|s| s.phase);
+            let mut order = Vec::new();
+            for _ in 0..rng.below(3) {
+                let (a, b) = (rng.below(n as u64) as usize, rng.below(n as u64) as usize);
+                if a < b && systems[a].phase == systems[b].phase {
+                    order.push((systems[a].id, systems[b].id));
+                }
+            }
+            let plan = plan(&systems, &order);
+            let ctx = |what: &str| format!("seed {seed}: {what}\n{plan}");
+
+            // Every system is in exactly one stage, members in registration
+            // order, stages in phase order.
+            let mut stage_of = vec![usize::MAX; n];
+            for (k, stage) in plan.stages.iter().enumerate() {
+                assert!(
+                    stage.members.windows(2).all(|w| w[0] < w[1]),
+                    "{}",
+                    ctx("members out of order")
+                );
+                assert_eq!((stage.first, stage.len), (stage.members[0], stage.members.len()));
+                for &m in &stage.members {
+                    assert_eq!(stage_of[m], usize::MAX, "{}", ctx("a system in two stages"));
+                    assert_eq!(systems[m].phase, stage.phase);
+                    stage_of[m] = k;
+                }
+                assert!(
+                    !matches!(stage.boundary, Boundary::KeepsOrder { .. }),
+                    "{}",
+                    ctx("stage kept")
+                );
+            }
+            assert!(
+                stage_of.iter().all(|&k| k != usize::MAX),
+                "{}",
+                ctx("a system in no stage")
+            );
+
+            // Segments: a phase, a barrier or a system that runs alone cuts.
+            let batchable = |i: usize| why_alone(&systems[i]).is_none();
+            let mut segment = vec![0usize; n];
+            for i in 1..n {
+                let cut = systems[i].phase != systems[i - 1].phase
+                    || systems[i].barrier
+                    || !batchable(i)
+                    || !batchable(i - 1);
+                segment[i] = segment[i - 1] + usize::from(cut);
+            }
+            for s in 0..n {
+                let alone = why_alone(&systems[s]).is_some();
+                if alone {
+                    assert_eq!(
+                        plan.stages[stage_of[s]].len,
+                        1,
+                        "{}",
+                        ctx("a system that runs alone in a batch")
+                    );
+                }
+                for t in 0..s {
+                    let (st, ss) = (stage_of[t], stage_of[s]);
+                    // Anything between them that cuts the order keeps them in
+                    // order: a phase, a barrier, a system that runs alone.
+                    if segment[t] != segment[s] {
+                        assert!(st < ss, "{}", ctx(&format!("{s} moved across a cut before {t}")));
+                        continue;
+                    }
+                    let (a, b) = (systems[t].access.unwrap(), systems[s].access.unwrap());
+                    let ordered = order.contains(&(systems[t].id, systems[s].id));
+                    if ordered || !a.conflicts_before(b).is_empty() {
+                        assert!(st < ss, "{}", ctx(&format!("{s} must see {t}'s work")));
+                    } else if !a.conflicts_with(b).is_empty() {
+                        assert!(st <= ss, "{}", ctx(&format!("{s} moved ahead of {t}")));
+                    }
+                    if ss < st {
+                        moved += 1;
+                    }
+                }
+                // As early as allowed: the system's reason names a system
+                // that really keeps it out of the stage before.
+                let k = stage_of[s];
+                match &plan.systems[s].boundary {
+                    Boundary::Conflict { with, conflicts } => {
+                        assert_eq!(stage_of[*with] + 1, k, "{}", ctx("conflict not in the stage before"));
+                        let (a, b) = (systems[*with].access.unwrap(), systems[s].access.unwrap());
+                        assert_eq!(&a.conflicts_before(b), conflicts);
+                    }
+                    Boundary::Order { after } => {
+                        assert_eq!(stage_of[*after] + 1, k);
+                        assert!(order.contains(&(systems[*after].id, systems[s].id)));
+                    }
+                    Boundary::KeepsOrder { after, conflicts } => {
+                        assert_eq!(stage_of[*after], k);
+                        assert!(*after < s);
+                        let (a, b) = (systems[*after].access.unwrap(), systems[s].access.unwrap());
+                        assert_eq!(&a.conflicts_with(b), conflicts);
+                    }
+                    // The first stage of its segment.
+                    Boundary::Phase | Boundary::Alone | Boundary::Barrier => {
+                        let first = (0..n).filter(|&j| segment[j] == segment[s]).map(|j| stage_of[j]).min();
+                        assert_eq!(first, Some(k), "{}", ctx(&format!("{s} could have gone earlier")));
+                    }
+                }
+            }
+        }
+        // The generator must make systems move, or nothing was tested.
+        assert!(moved > 50, "only {moved} systems moved ahead");
     }
 
     #[test]

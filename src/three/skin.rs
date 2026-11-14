@@ -455,6 +455,10 @@ pub(crate) struct SkinDraw {
     /// For a renderer of a [`LodGroup`]: its place in the group's
     /// renderers (see `LodGroup::first_renderer`). [`NOT_LOD`] for a model.
     pub lod: u32,
+    /// Whether its pose (skin matrices or morph weights) changed since the
+    /// last frame, which posed it too: its motion vectors then follow the
+    /// pose, from `SkinFrame::previous` and `previous_weights`.
+    pub posed_motion: bool,
 }
 
 /// [`SkinDraw::lod`] of a skinned model that is not in a [`LodGroup`].
@@ -476,6 +480,16 @@ pub(crate) struct SkinFrame {
     /// skinned renderers get a draw (each camera picks its own level), but
     /// only those a view draws are skinned on the GPU.
     pub lod_groups: Vec<(Entity, u32, u32)>,
+    /// Whether the last frame's poses are kept, for motion vectors (TAA or
+    /// temporal AO on): set before [`collect`](Self::collect).
+    pub motion: bool,
+    /// With `motion`: each draw's skin matrices and morph weights in the
+    /// last frame, laid out as `matrices` and `weights` (this frame's where
+    /// the draw has no past: new, another mesh, or not posed last frame).
+    pub previous: Vec<Mat4>,
+    pub previous_weights: Vec<f32>,
+    /// The last frame's poses, by draw key (see [`PoseKey`]).
+    history: PoseHistory,
     attached: Vec<(Entity, AttachToJoint)>,
     moved: Vec<(Entity, Transform3D)>,
     shared: Vec<(Model, Entity, Entity)>,
@@ -629,6 +643,54 @@ impl SkinFrame {
                 );
             }
         }
+        self.remember();
+    }
+
+    /// Matches this frame's draws with the last frame's poses (with
+    /// `motion` on), and keeps this frame's for the next.
+    fn remember(&mut self) {
+        let history = &mut self.history;
+        self.previous.clear();
+        self.previous_weights.clear();
+        if !self.motion {
+            history.clear();
+            return;
+        }
+        self.previous.extend_from_slice(&self.matrices);
+        self.previous_weights.extend_from_slice(&self.weights);
+        let n = self.draws.len();
+        for i in 0..n {
+            let end = self.draws.get(i + 1).map_or(self.matrices.len(), |d| d.first as usize);
+            let d = &mut self.draws[i];
+            let (first, wf, wc) = (d.first as usize, d.morph_first as usize, d.morph_count as usize);
+            let Some(&last) = history.by_key.get(&(d.entity, d.lod)) else {
+                continue;
+            };
+            if last.mesh != d.mesh || last.count as usize != end - first || last.morph_count as usize != wc {
+                continue;
+            }
+            let matrices = &history.matrices[last.first as usize..][..end - first];
+            let weights = &history.weights[last.morph_first as usize..][..wc];
+            d.posed_motion = matrices != &self.matrices[first..end] || weights != &self.weights[wf..wf + wc];
+            self.previous[first..end].copy_from_slice(matrices);
+            self.previous_weights[wf..wf + wc].copy_from_slice(weights);
+        }
+        history.clear();
+        history.matrices.extend_from_slice(&self.matrices);
+        history.weights.extend_from_slice(&self.weights);
+        for (i, d) in self.draws.iter().enumerate() {
+            let end = self.draws.get(i + 1).map_or(self.matrices.len(), |d| d.first as usize);
+            history.by_key.insert(
+                (d.entity, d.lod),
+                LastPose {
+                    mesh: d.mesh,
+                    first: d.first,
+                    count: end as u32 - d.first,
+                    morph_first: d.morph_first,
+                    morph_count: d.morph_count,
+                },
+            );
+        }
     }
 
     /// Whether any level-of-detail group has posed draws this frame.
@@ -649,6 +711,39 @@ impl SkinFrame {
             }
             Err(_) => (0, &[]),
         }
+    }
+}
+
+/// What tells a posed draw apart from frame to frame: its entity (bits)
+/// and its place among a level-of-detail group's renderers ([`NOT_LOD`]
+/// for a model). Every level of a group is posed every frame, so a level
+/// that comes into view has the last frame's pose of the same skeleton.
+type PoseKey = (u64, u32);
+
+/// Where a draw's pose was in the last frame's lists.
+#[derive(Clone, Copy)]
+struct LastPose {
+    mesh: u32,
+    first: u32,
+    count: u32,
+    morph_first: u32,
+    morph_count: u32,
+}
+
+/// The last frame's skin matrices and morph weights, and where each draw's
+/// are (kept between frames: no allocation once warm).
+#[derive(Default)]
+struct PoseHistory {
+    by_key: std::collections::HashMap<PoseKey, LastPose, std::hash::BuildHasherDefault<super::motion::IdHasher>>,
+    matrices: Vec<Mat4>,
+    weights: Vec<f32>,
+}
+
+impl PoseHistory {
+    fn clear(&mut self) {
+        self.by_key.clear();
+        self.matrices.clear();
+        self.weights.clear();
     }
 }
 
@@ -755,6 +850,7 @@ fn add(
             _ => (0, 0),
         },
         lod: NOT_LOD,
+        posed_motion: false,
     });
 }
 
@@ -785,6 +881,74 @@ mod tests {
                 rest: Transform3D::at(vec3(0.0, 1.0, 0.0)),
             },
         ])
+    }
+
+    /// A frame of one posed model (`entity`, `mesh`) with these skin
+    /// matrices and morph weights, matched with the last frame's poses.
+    fn posed(frame: &mut SkinFrame, entity: u64, mesh: u32, matrices: &[Mat4], weights: &[f32]) -> SkinDraw {
+        frame.draws.clear();
+        frame.draws.push(SkinDraw {
+            mesh,
+            instance: Instance3D {
+                model: Mat4::IDENTITY.to_cols_array_2d(),
+                color: [1.0; 4],
+            },
+            entity,
+            matrix: Mat4::IDENTITY,
+            scale: 1.0,
+            bounds: (Vec3::ZERO, 1.0),
+            first: 0,
+            morph_first: 0,
+            morph_count: weights.len() as u32,
+            material: u32::MAX,
+            parts: (0, 0),
+            lod: NOT_LOD,
+            posed_motion: false,
+        });
+        frame.matrices = matrices.to_vec();
+        frame.weights = weights.to_vec();
+        frame.remember();
+        frame.draws[0]
+    }
+
+    #[test]
+    fn the_last_frames_pose_is_kept_per_model_while_motion_is_on() {
+        let (a, b, c) = (
+            Mat4::IDENTITY,
+            Mat4::from_rotation_z(0.3),
+            Mat4::from_translation(vec3(0.0, 1.0, 0.0)),
+        );
+        let mut frame = SkinFrame {
+            motion: true,
+            ..Default::default()
+        };
+        // The first frame has no past: its own pose, no motion.
+        assert!(!posed(&mut frame, 7, 0, &[a, b], &[0.5]).posed_motion);
+        assert_eq!(
+            (&frame.previous[..], &frame.previous_weights[..]),
+            (&[a, b][..], &[0.5][..])
+        );
+        // A joint turned: the last pose is the one before.
+        assert!(posed(&mut frame, 7, 0, &[a, c], &[0.5]).posed_motion);
+        assert_eq!(frame.previous, [a, b]);
+        // Only a morph weight changed: motion too.
+        assert!(posed(&mut frame, 7, 0, &[a, c], &[0.75]).posed_motion);
+        assert_eq!(frame.previous_weights, [0.5]);
+        // Held: no motion.
+        assert!(!posed(&mut frame, 7, 0, &[a, c], &[0.75]).posed_motion);
+        // Another mesh, or another entity: no past.
+        assert!(!posed(&mut frame, 7, 1, &[a, b], &[0.75]).posed_motion);
+        assert_eq!(frame.previous, [a, b]);
+        assert!(!posed(&mut frame, 8, 1, &[c, c], &[0.75]).posed_motion);
+        // Another number of joints: no past.
+        assert!(!posed(&mut frame, 8, 1, &[c, c, c], &[0.75]).posed_motion);
+        // Motion off: nothing kept, and the frame it comes back has no past.
+        frame.motion = false;
+        posed(&mut frame, 8, 1, &[a, a, a], &[0.75]);
+        assert!(frame.previous.is_empty() && frame.previous_weights.is_empty());
+        frame.motion = true;
+        assert!(!posed(&mut frame, 8, 1, &[c, c, c], &[0.75]).posed_motion);
+        assert_eq!(frame.previous, [c, c, c]);
     }
 
     #[test]

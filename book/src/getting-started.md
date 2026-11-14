@@ -41,6 +41,7 @@ cd my_game
 cargo test               # headless tests: no window, no GPU
 cargo run                # the game, in a window
 ponko package            # the download for players: release build, assets, licenses, archive
+ponko textures           # GPU-compressed .ktx2 textures from your images (see Drawing)
 ```
 
 `ponko_cli` is new in 0.2; until that release, install it from the
@@ -207,8 +208,13 @@ game.run(); // or run_headless(ticks)
   the plugin was added.
 - Commands recorded in a callback are applied when it returns, so the next
   callback and the first system see what it spawned.
-- Add systems and options first: after the first `setup`, the builder only
-  takes more `setup` and `plugin` calls and the `run` methods.
+- Add systems and options first: after the first `setup`, the builder
+  takes more `setup` and `plugin` calls, the `run` methods, and what a test
+  adds to a finished game without changing it: `headless_frames`,
+  `input_scenario` and `run_headless_scenario(scenario)`, `data_dir`,
+  `seed`, and systems of its own (`system`, `sim_system`). So the tests of a
+  `ponko new` project can drive its menus with frames and keep its saves in
+  a folder of their own while `game()` stays as it is.
 - A game whose startup is all in its [plugins](systems.md#plugins) and
   systems has no `setup` to add: `.configured()` gives it the same
   `run()` and `run_headless(ticks)` (C++ already has `run()` and

@@ -36,23 +36,34 @@ OTHER_IMAGES="image-webp gif tiff qoi exr"
 # types alone also come with the inspector's egui, so builds that may have
 # the inspector forbid only the adapter (ACCESS); builds without a window or
 # an inspector forbid the data types too (ACCESS_ALL).
+# Compressed textures are opt-in (`compressed-textures`, `basis-universal`).
+TEXTURES="ktx2 ruzstd texture2ddecoder basis-universal"
 ACCESS="accesskit_macos accesskit_consumer"
 ACCESS_ALL="$ACCESS accesskit"
+# Text shaping is opt-in (`text-shaping`); the inspector's egui brings the
+# shaper itself (harfrust) but not the bidirectional, line-break and script
+# tables, so builds that may have the inspector forbid only those (SHAPING);
+# builds without it forbid the shaper too (SHAPING_ALL). System fonts
+# (`system-fonts`) are opt-in on top.
+SHAPING="unicode-bidi unicode-linebreak unicode-script fontdb"
+SHAPING_ALL="$SHAPING harfrust read-fonts"
 
 # name | cargo package and feature arguments | forbidden crates
 CONTRACTS=(
-  "headless|-p ponko --no-default-features|$RENDER $AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS_ALL $JPEG $OTHER_IMAGES"
-  "headless with audio|-p ponko --no-default-features --features audio|$RENDER $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS_ALL $JPEG $OTHER_IMAGES"
-  "window-only 2D|-p ponko --no-default-features --features window|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $JPEG $OTHER_IMAGES"
+  "headless|-p ponko --no-default-features|$RENDER $AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS_ALL $JPEG $OTHER_IMAGES $SHAPING_ALL $TEXTURES"
+  "headless with audio|-p ponko --no-default-features --features audio|$RENDER $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS_ALL $JPEG $OTHER_IMAGES $SHAPING_ALL $TEXTURES"
+  "window-only 2D|-p ponko --no-default-features --features window|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $JPEG $OTHER_IMAGES $SHAPING_ALL $TEXTURES"
   # A 2D game with JPEG backgrounds and WebP tiles: image decoders, no 3D.
-  "2D with image formats|-p ponko --no-default-features --features window,image-jpeg,image-webp|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS"
-  "default|-p ponko|$MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $OTHER_IMAGES"
+  "2D with image formats|-p ponko --no-default-features --features window,image-jpeg,image-webp|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $SHAPING_ALL $TEXTURES"
+  "default|-p ponko|$MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $OTHER_IMAGES $SHAPING $TEXTURES"
+  # A localized 2D game: the shaper and its Unicode tables, nothing else.
+  "2D with text shaping|-p ponko --no-default-features --features window,text-shaping|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $JPEG $OTHER_IMAGES fontdb $TEXTURES"
   # The C library always turns on the engine's `3d` and `navmesh` features:
   # its 3D and navigation functions are exported unconditionally (the C
   # header declares them all). So its smallest build carries glTF and Recast,
   # but nothing else optional. Making them optional changes the native
   # interface and is separate work.
-  "C library, no defaults|-p ponko_ffi --no-default-features|$RENDER $AUDIO $INSPECTOR $GAMEPAD $PHYSICS $TOOLS $STEAM $ACCESS_ALL"
+  "C library, no defaults|-p ponko_ffi --no-default-features|$RENDER $AUDIO $INSPECTOR $GAMEPAD $PHYSICS $TOOLS $STEAM $ACCESS_ALL $TEXTURES"
 )
 
 # The crate names in one build, sorted and unique.

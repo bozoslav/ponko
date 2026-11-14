@@ -16,9 +16,10 @@ needs no engine change, does as well (in the layout measured here, with
 room left to make it faster). Integrating a second storage would
 touch nearly every part of the ECS, the C ABI and the tools, and would give
 users two storages with opposite performance profiles to choose between.
-What the measurements do show is a cost inside archetype storage that is
-worth fixing there: empty archetypes are never reclaimed (see
-[Follow-ups](#follow-ups-inside-archetype-storage)).
+What the measurements did show is a cost inside archetype storage that was
+worth fixing there: empty archetypes were never reclaimed. That is fixed
+since (issues #347 and #348, see
+[Empty archetypes](#empty-archetypes-skipped-and-reclaimed-347-348)).
 
 This is about which storage holds sparse data. Issue #144 asks a different
 question: how fast an archetype answers "do you have component X, and in
@@ -395,6 +396,104 @@ Keep archetype storage only. Reasons, from the measurements:
   ids rejected by chunk and C queries with a clear error, `with`/`without`
   on sparse components as row filters, and the C gap recorded.
 
+## Empty archetypes: skipped and reclaimed (#347, #348)
+
+Two follow-ups from this investigation, done on 2026-11-14 and described in
+`crates/ponko_ecs/src/slots.rs`:
+
+- **#348, skipping empty archetypes in queries.** While a world has many
+  empty archetypes (more than 16, and more than one per four with
+  entities), a scanning query visits a list of the archetypes with
+  entities, rebuilt from occupancy bits when it is first needed after a
+  structural change, and handed to the query loop the way the archetype
+  index hands it its lists. Testing a bit in that loop instead was measured
+  first and rejected: scans of 1,024 archetypes with 1,000 entities each
+  (`query-cache/1024/1000/*/scan`) got 12 to 23 % slower, and
+  `iter/ponko-iter` went from 0.81 to 1.97 ms because `Query::iter`
+  compiled differently.
+- **#347, reclaiming empty archetypes.** A world keeps at most 64 empty
+  archetypes, or as many as it has archetypes with entities if that is more.
+  Past that, a second-chance sweep over the slots reclaims those empty
+  longest; the slot is reused for the next new component set, with the
+  reclaimed storage (id lists, column headers, edge maps, and pooled column
+  buffers and entity lists). Edges to a reclaimed archetype go stale with
+  its slot's generation.
+
+**Setup.** Same machine and toolchain as above (rustc 1.99.1), engine `main`
+at `3b8b1c17` against this branch, benchmark code of this branch in both
+binaries (the `before` binary is it built against `main`'s
+`crates/ponko_ecs`). The machine was busy, load averages 19 to 36 during the
+final runs and up to 83 during earlier ones. Timings: three full runs per
+binary, alternating, median of the per-run medians with the lowest single
+measurement in parentheses. Between runs, the same case moved by up to 10 %
+for most query rows, by up to 2.4× for the 20 % `churn` and `frame` rows,
+and one run of `dense/20pct/arch` and `data/5pct/arch-scan` each was 3 to
+5× slower than the other two (a busy core; the median drops it). Counts (archetypes, bytes, allocations) are exact and the same in
+every run.
+
+**Archetypes, memory and allocations** (`sparse-set/mem`, which now also
+prints heap allocations per tick since the previous checkpoint, and runs the
+`arch` world to tick 9,600):
+
+| Density | Archetypes at tick 600 / 2,400 / 9,600, before | after | KiB at tick 600 / 9,600, before | after | Allocations per tick, ticks 300–600 / 4,800–9,600, before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 % | 864 / 1,332 / 2,304 | 407 / 418 / 418 | 4,103 / 5,050 | 3,816 / 3,834 | 5.1 / 1.8 | 0.83 / 0.00 |
+| 5 % | 8,080 / 11,506 / 16,408 | 2,750 / 2,750 / 2,750 | 12,062 / 18,915 | 8,132 / 8,363 | 105 / 11.6 | 2.2 / 0.10 |
+| 20 % | 56,057 / 61,600 / 64,213 | 26,430 / 26,524 / 26,527 | 65,909 / 75,083 | 37,522 / 37,897 | 679 / 20.1 | 18.6 / 0.02 |
+
+The archetype count levels off at about twice the archetypes with entities
+(177, 1,293 and 13,115 at tick 600), and the bytes with it. Before, both
+kept growing. Allocations fall to nothing or nearly: what is left is an
+archetype outgrowing every buffer the world has kept of that size, which
+`main` does too, since buffers never shrink. In the timed `churn` and
+`frame` cases (ticks 66 to 95, right after settling), the allocations per
+tick went from 33, 278 and 3,375 to 1.4, 9.9 and 97 (1, 5 and 20 %).
+
+A world that walks through more component sets than it keeps empty
+archetypes for allocates nothing once settled
+(`walking_through_more_component_sets_than_are_kept_stops_allocating` in
+`crates/ponko_ecs/tests/archetype_alloc.rs`: 6 entities walking through all
+256 sets of 8 optional components, beside 100 that stay put, in fewer than
+256 archetype slots).
+
+**Timings, milliseconds** (`arch` and `arch-scan`; `sset` and `flags` don't
+change):
+
+| Case | Before | After |
+| --- | --- | --- |
+| `dense/20pct/arch` | 0.137 (0.128) | 0.113 (0.100) |
+| `dense/20pct/arch-scan` | 0.144 (0.131) | 0.100 (0.087) |
+| `data/20pct/arch-scan` | 1.493 (1.418) | 1.222 (1.064) |
+| `and/20pct/arch-scan` | 1.459 (1.354) | 1.073 (0.958) |
+| `without/20pct/arch` | 0.840 (0.764) | 0.699 (0.556) |
+| `without/20pct/arch-scan` | 0.873 (0.730) | 0.632 (0.581) |
+| `data/5pct/arch-scan` | 0.065 (0.061) | 0.055 (0.052) |
+| `churn/20pct/arch` | 6.32 (4.65) | 7.97 (4.18) |
+| `frame/20pct/arch` | 7.81 (7.28) | 9.95 (7.92) |
+| `frame/20pct/arch-scan` | 11.50 (9.29) | 9.99 (7.96) |
+| `churn/5pct/arch` | 0.523 (0.413) | 0.494 (0.416) |
+| `frame/5pct/arch` | 0.719 (0.666) | 0.733 (0.658) |
+
+Scans of worlds with many empty archetypes are faster: the dense loop at
+20 % takes about 0.7 to 0.8 of the time (minimums 0.100 against 0.128 and
+0.087 against 0.131 ms), and the `arch-scan` filters about 0.7 to 0.8.
+Queries that use the archetype index (`data`, `and` with `arch`) don't
+change beyond noise, nor does anything at 1 %. `churn` and `frame` at 20 %
+are ties within their noise: their medians are 1.26× and 1.27× but their
+minimums 0.90× and 1.09×, and `frame` with `arch-scan` is faster; a world
+that reclaims rebuilds about 670 archetypes per tick there (the ones its
+entities come back to after they were reclaimed), where `main` mostly
+follows old edges, and allocates instead of rebuilding when a set is new.
+`iter/` ties everywhere (ratios 0.98 to 1.00, and `iter/ponko-iter` 0.823
+→ 0.765 ms, which the earlier runs of this work did not repeat), and so does `membership/` (`crates/ponko_bench/MEMBERSHIP.md`).
+
+Two designs were measured and dropped on the way. Removing the edges to a
+reclaimed archetype from its neighbours, eagerly, touched the edge maps of
+about 20 archetypes scattered over the world per reclaim: `churn/20pct/arch`
+went from 3.9–4.9 ms (minimums, before) to 4.9–8.0 ms. And a queue of empty
+archetypes, oldest first, cost about 3 ns on every move that empties an
+archetype (`membership/transition/n2-sparse/warm-1-edge`, 15.3 → 19 ns).
+
 ## Follow-ups inside archetype storage
 
 Not done in this investigation (no default storage changes here):
@@ -402,11 +501,9 @@ Not done in this investigation (no default storage changes here):
 - **Reclaim empty archetypes**, or at least their column buffers, so a
   churning world doesn't keep every combination it ever had (864, 8,080 and
   56,057 archetypes after 600 ticks for 177, 1,293 and 13,115 live ones) or
-  allocate on every tick. Archetype indices are used as stable ids by the
-  query index and the transition edges, so this is a design change of its
-  own.
+  allocate on every tick. Done in #347 (above).
 - **Skip empty archetypes cheaply in queries**: at 20 %, the dense loop
   reads about 40,000 archetype structs (128 bytes each) to find 13,000 with
-  entities.
+  entities. Done in #348 (above).
 - **Batch structural changes** that move many entities between the same
   two archetypes (`add-remove` above: 100,000 single moves).

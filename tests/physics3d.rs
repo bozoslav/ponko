@@ -901,6 +901,119 @@ fn scenes_make_mesh_colliders_from_mesh_files_and_save_them_by_file() {
     }
 }
 
+#[test]
+fn load_collision_mesh_makes_a_gltf_file_solid_in_one_call() {
+    use ponko::d3::CollisionMeshOptions;
+    let saved = TempAsset::new("test-load-collision-mesh-saved.json");
+    let saved_name = saved.name().to_string();
+    let (tops, handles, missing) = query_after(
+        1,
+        Vec3::ZERO,
+        move |ctx| {
+            let house = ctx.load_collision_mesh("models/house.glb").unwrap();
+            let tall = CollisionMeshOptions {
+                scale: vec3(1.0, 3.0, 1.0),
+                ..Default::default()
+            };
+            let hull = CollisionMeshOptions { convex: true, ..tall };
+            let tall = ctx.load_collision_mesh_with("models/house.glb", tall).unwrap();
+            let hull = ctx.load_collision_mesh_with("models/house.glb", hull).unwrap();
+            for (x, mesh) in [(0.0, house), (10.0, tall), (20.0, hull)] {
+                ctx.world.spawn((
+                    Transform3D::at(vec3(x, 0.0, 0.0)),
+                    RigidBody3D::fixed(),
+                    Collider3D::mesh(mesh),
+                ));
+            }
+            ctx.assets.save_scene(&ctx.world, &saved_name).unwrap();
+            // Each file and options once: loading again, or a scene naming the
+            // same file, gives the same mesh.
+            let again = ctx.load_collision_mesh("models/house.glb").unwrap();
+            let defaults = CollisionMeshOptions::default();
+            let same = ctx.load_collision_mesh_with("models/house.glb", defaults).unwrap();
+            ctx.world.insert_resource(vec![house, again, same, tall, hull]);
+            let missing = ctx.load_collision_mesh("models/no-such-file.glb").unwrap_err();
+            ctx.world.insert_resource(missing.path().map(str::to_string));
+        },
+        |ctx| {
+            let top = |x: f32| {
+                ctx.physics3d
+                    .cast_ray(vec3(x, 50.0, 0.0), -Vec3::Y, 100.0, QueryFilter3D::default())
+                    .map(|hit| hit.point.y)
+            };
+            let tops = [top(0.0), top(10.0), top(20.0), top(30.0)];
+            let handles = ctx.world.resource::<Vec<CollisionMesh>>().clone();
+            let missing = ctx.world.resource::<Option<String>>().clone();
+            (tops, handles, missing)
+        },
+    );
+    // The house's walls are 1.6 m and its roof 2.7 m high.
+    let house = tops[0].expect("the ray hits the house");
+    assert!((1.5..=2.8).contains(&house), "{tops:?}");
+    for top in &tops[1..3] {
+        let y = top.expect("the ray hits the tall house");
+        assert!((4.7..=8.2).contains(&y), "made 3 times taller: {tops:?}");
+    }
+    assert_eq!(tops[3], None, "nothing beside the houses");
+    assert_eq!(handles[0], handles[1], "made once");
+    assert_eq!(handles[0], handles[2], "the default options are the plain call");
+    assert_ne!(handles[0], handles[3]);
+    assert_ne!(handles[3], handles[4]);
+    assert!(missing.unwrap().contains("no-such-file.glb"));
+
+    // Saved by its file, as a scene's mesh collider is.
+    let json: serde_json::Value = serde_json::from_str(&saved.read()).unwrap();
+    let shapes: Vec<_> = json["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["components"]["Collider3D"]["shape"]["Mesh"].clone())
+        .collect();
+    assert_eq!(
+        shapes,
+        vec![
+            serde_json::json!({ "file": "models/house.glb" }),
+            serde_json::json!({ "file": "models/house.glb", "scale": [1.0, 3.0, 1.0] }),
+            serde_json::json!({ "file": "models/house.glb", "scale": [1.0, 3.0, 1.0], "convex": true }),
+        ]
+    );
+}
+
+#[test]
+fn a_scene_and_load_collision_mesh_share_one_mesh() {
+    let file = TempAsset::new("test-shared-mesh-collider.json");
+    let scene = serde_json::json!({
+        "format": "ponko-world",
+        "version": 1,
+        "entities": [{ "entity": 0, "components": {
+            "Transform3D": { "position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0] },
+            "RigidBody3D": { "kind": "Fixed" },
+            // The defaults written out: the same mesh as the plain call.
+            "Collider3D": { "shape": { "Mesh": { "file": "models/house.glb", "scale": [1.0, 1.0, 1.0], "convex": false } } },
+        } }],
+        "resources": {},
+    });
+    file.write(&serde_json::to_string(&scene).unwrap());
+    let name = file.name().to_string();
+    let (from_scene, from_code) = query_after(
+        0,
+        Vec3::ZERO,
+        move |ctx| {
+            ctx.load_scene(&name).unwrap();
+            let mesh = ctx.load_collision_mesh("models/house.glb").unwrap();
+            ctx.world.insert_resource(mesh);
+        },
+        |ctx| {
+            let shape = ctx.world.query::<&Collider3D>().iter().next().unwrap().shape;
+            (shape, *ctx.world.resource::<CollisionMesh>())
+        },
+    );
+    assert_eq!(
+        format!("{from_scene:?}"),
+        format!("{:?}", ponko::d3::Shape::Mesh(from_code))
+    );
+}
+
 /// A crowd big enough to plan its moves in parallel lands in exactly the same
 /// places on every run.
 #[test]

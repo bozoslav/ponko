@@ -24,11 +24,23 @@ struct Rig {
     textures: Vec<GpuTexture>,
     renderer: Renderer3D,
     ctx: Ctx,
+    /// Screen effects to run: (effect, material).
+    effects: Vec<(u32, u32)>,
 }
 
 impl Rig {
     /// `None` without a GPU.
     fn new(samples: u32) -> Option<Self> {
+        Self::build(samples, false)
+    }
+
+    /// A rig whose renderer reads the scene depth as the GL backend does
+    /// (WebGL2): as a float texture, with a copy for transparent surfaces.
+    fn gl_depth(samples: u32) -> Option<Self> {
+        Self::build(samples, true)
+    }
+
+    fn build(samples: u32, gl_depth: bool) -> Option<Self> {
         let gpu = crate::render::render_test_support::gpu_with(|_| Ok(wgpu::DeviceDescriptor::default()))?;
         let (device, queue) = (gpu.device, gpu.queue);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -112,7 +124,9 @@ impl Rig {
             view_formats: &[],
         });
         let target = output.create_view(&Default::default());
+        FORCE_FLOAT_DEPTH.set(gl_depth);
         let renderer = Renderer3D::new(&device, &layout, output.format(), 0, &white, samples, true);
+        FORCE_FLOAT_DEPTH.set(false);
         let mut ctx = Ctx::new(1.0 / 60.0, Vec2::new(SIZE as f32, SIZE as f32));
         ctx.scene3d.sky.atmosphere = false;
         Some(Self {
@@ -123,6 +137,7 @@ impl Rig {
             textures,
             renderer,
             ctx,
+            effects: Vec::new(),
         })
     }
 
@@ -149,6 +164,7 @@ impl Rig {
         let ctx = &mut self.ctx;
         let mut frame = Frame3D::default();
         frame.lod = ctx.scene3d.lod;
+        frame.effects.clone_from(&self.effects);
         frame.collect(
             &mut ctx.world,
             &ctx.gfx.assets3d,
@@ -286,4 +302,77 @@ fn a_single_sample_frame_draws_every_pass_like_the_multisampled_one() {
             );
         }
     }
+}
+
+/// A screen effect that paints what is nearer than 5.5 units green (the
+/// cube, seen through the glass) and leaves the rest: it reads the depth.
+const NEAR_GREEN: &str = "
+fn effect(p: Pixel) -> vec3<f32> {
+    return select(p.color, vec3<f32>(0.0, 1.0, 0.0), !p.sky && p.distance < 5.5);
+}";
+
+/// The GL backend's depth reads (WebGL2: the scene depth as a float texture
+/// sampled through a non-filtering sampler, and a copy of it for the
+/// transparent pass) draw the frame the depth binding does, here on this
+/// machine's GPU: the depth-fading glass and a depth-reading screen effect.
+#[test]
+fn gl_depth_reads_draw_the_frame_the_depth_binding_does() {
+    for samples in [1, 4] {
+        let (Some(mut gl), Some(mut native)) = (Rig::gl_depth(samples), Rig::new(samples)) else {
+            return;
+        };
+        for rig in [&mut gl, &mut native] {
+            scene(rig);
+            let effect = rig.renderer.create_effect(&rig.device, "near", NEAR_GREEN).unwrap();
+            rig.effects.push((effect, 0));
+        }
+        let scope = gl.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let ours = gl.draw();
+        assert!(
+            pollster::block_on(scope.pop()).is_none(),
+            "{samples} samples: no validation error"
+        );
+        assert_eq!(
+            gl.renderer.copies_scene_depth(),
+            (true, true),
+            "{samples} samples: the GL path, with the transparent pass's copy"
+        );
+        assert_eq!(native.renderer.copies_scene_depth(), (false, false));
+        let theirs = native.draw();
+        // The effect saw the depth: green on the cube, the sky beside it.
+        let c = pixel(&ours, SIZE / 2, SIZE / 2);
+        assert!(c[1] > 200 && c[0] < 40, "{samples} samples: the cube is near: {c:?}");
+        assert_ne!(pixel(&ours, 4, 4)[1], 255, "{samples} samples: the sky is far");
+        let differing = ours.iter().zip(&theirs).filter(|(a, b)| a.abs_diff(**b) > 1).count();
+        assert_eq!(
+            differing, 0,
+            "{samples} samples: {differing} bytes differ from the depth binding's frame"
+        );
+    }
+}
+
+/// The negative control of the test above: a depth that reads as 0 (what
+/// WebGL2 returned for a depth texture loaded without a `NEAREST` filter)
+/// changes the picture, so the comparison would catch it.
+#[test]
+fn a_depth_read_as_zero_changes_the_frame() {
+    let (Some(mut broken), Some(mut native)) = (Rig::new(1), Rig::new(1)) else {
+        return;
+    };
+    for rig in [&mut broken, &mut native] {
+        scene(rig);
+    }
+    // Depth 0 is the near plane everywhere: nothing is sky, everything near.
+    let zero = NEAR_GREEN.replace("!p.sky && p.distance < 5.5", "true");
+    assert_ne!(zero, NEAR_GREEN);
+    let effect = broken.renderer.create_effect(&broken.device, "zero", &zero).unwrap();
+    broken.effects.push((effect, 0));
+    let effect = native
+        .renderer
+        .create_effect(&native.device, "near", NEAR_GREEN)
+        .unwrap();
+    native.effects.push((effect, 0));
+    let (a, b) = (broken.draw(), native.draw());
+    let differing = a.iter().zip(&b).filter(|(x, y)| x.abs_diff(**y) > 1).count();
+    assert!(differing > 0, "a wrong depth must show");
 }

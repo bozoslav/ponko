@@ -29,10 +29,11 @@ fn walker(world: &World) -> (Vec3, bool) {
 fn play(scenario: InputScenario, start: Vec3) -> World {
     let (world, report) = game()
         .headless_frames(true)
-        .run_headless_scenario(scenario, move |ctx: &mut Ctx| {
+        .setup(move |ctx| {
             let e = ctx.world.resource::<Player>().entity;
             ctx.world.get_mut::<Transform>(e).unwrap().position = start;
-        });
+        })
+        .run_headless_scenario(scenario);
     report.assert_passed();
     world
 }
@@ -131,10 +132,55 @@ fn lighting_every_lantern_opens_the_panel_and_play_again_starts_over() {
     let (mut world, report) = game()
         .headless_frames(true)
         .sim_system(visit)
-        .run_headless_scenario(scenario, |_| {});
+        .run_headless_scenario(scenario);
     report.assert_passed();
     assert_eq!(lanterns_lit(&mut world), (0, 5));
     let (at, _) = walker(&world);
     assert!(at.distance(START) < 0.2, "back at the start: {at}");
 }
 // ANCHOR_END: all_lit
+
+/// Lights every lantern at once, so the panel opens on the first frame.
+fn light_all(ctx: &mut Ctx) {
+    let posts: Vec<Entity> = ctx.world.query::<(Entity, &Lantern)>().iter().map(|(e, _)| e).collect();
+    for post in posts {
+        set_lit(ctx, post, true);
+    }
+}
+
+#[test]
+fn escape_closes_the_panel_and_leaves_the_counter_up() {
+    // Escape closes the panel (and starts over); the counter, a HUD, stays.
+    let scenario = InputScenario::new()
+        .expect(3, ScenarioCheck::ui("hud.done").shown(true))
+        .expect(3, ScenarioCheck::ui("hud.count").shown(true))
+        .at(5, InputEvent::Key(Key::Escape, true))
+        .at(6, InputEvent::Key(Key::Escape, false))
+        .expect(5, ScenarioCheck::ui("hud.done").shown(false))
+        .expect(
+            6,
+            ScenarioCheck::ui("hud.count").shown(true).text("Lanterns lit: 0 / 5"),
+        )
+        .duration(10);
+    let (_world, report) = game()
+        .headless_frames(true)
+        .setup(light_all)
+        .run_headless_scenario(scenario);
+    report.assert_passed();
+}
+
+#[test]
+fn the_panel_opens_on_play_again_so_enter_starts_over() {
+    let scenario = InputScenario::new()
+        .expect(3, ScenarioCheck::ui("hud.done").shown(true))
+        .at(5, InputEvent::Key(Key::Enter, true))
+        .at(6, InputEvent::Key(Key::Enter, false))
+        .expect(5, ScenarioCheck::ui("hud.done").shown(false))
+        .expect(5, ScenarioCheck::ui("hud.count").text("Lanterns lit: 0 / 5"))
+        .duration(8);
+    let (_world, report) = game()
+        .headless_frames(true)
+        .setup(light_all)
+        .run_headless_scenario(scenario);
+    report.assert_passed();
+}

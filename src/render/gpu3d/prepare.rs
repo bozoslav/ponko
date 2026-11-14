@@ -110,6 +110,9 @@ impl Renderer3D {
             cache: None,
         });
         self.particles = super::super::particles::Particles::new(device, &self.texture_layout, samples);
+        if self.depth_copy.is_some() {
+            self.depth_copy = Some(super::depth_copy::DepthCopy::new(device, samples));
+        }
         self.gi = None; // Its capture attachments also use the scene's count.
         self.render_targets.views.clear();
         self.shadow_cache.invalidate();
@@ -579,6 +582,9 @@ impl Renderer3D {
                 Some((&m.buffers.as_ref()?.0, m.skin.as_ref()?))
             },
             |k| drawn[k],
+            // Poses that moved are posed as they were too, for the motion
+            // pass (only when it draws something: not on a reset frame).
+            self.screen.velocity_on && !frame.motion.runs.is_empty(),
         );
         self.lists.skin_drawn = drawn;
         self.order_runs();

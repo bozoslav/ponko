@@ -19,9 +19,14 @@ crate; `branding/` does not.
 | `tutorial_2d/coin.wav`, `tutorial_2d/flag.wav` | The 2D tutorial's two sound effects | Made for the engine (#372): square and sine tones synthesized by a script |
 | `tutorial_3d/yard.glb` | The glTF scene of the 3D tutorial (`tutorial_3d` example): ground, walls, a platform with a ramp, stairs and a pillar | Made for the engine (#372): boxes and a wedge written by a script |
 | `shaders/*.wgsl` | Custom material shaders for the 3D examples | Written for the engine (#54) |
+| `fonts/NotoSansArabic-Subset.ttf`, `fonts/NotoSansDevanagari-Subset.ttf`, `fonts/NotoSansJP-Subset.otf` | Arabic, Devanagari and Japanese fonts for the text-shaping tests and reference images, cut down with fontTools to the characters those tests draw (a few KB each) | Subsets of Noto Sans Arabic 2.013, Noto Sans Devanagari 2.007 and Noto Sans JP 2.004 by the Noto Project Authors and Adobe, under the SIL Open Font License 1.1 (not the repository's license); copyright lines and the license text in `fonts/OFL.txt` (#409) |
 
 Files written for the engine are under the repository's license (MIT or
 Apache-2.0, at your option; see `LICENSE-MIT`, `LICENSE-APACHE` and `NOTICE`
 at the root).
+
+The fonts in `fonts/` are the exception: they stay under the SIL Open Font
+License 1.1 (`fonts/OFL.txt`), which lets them be used, subset and
+redistributed, bundled with software too, but not sold on their own.
 
 The logo in `branding/` has its own note in `branding/README.md`.

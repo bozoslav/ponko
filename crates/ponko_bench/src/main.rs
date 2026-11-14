@@ -35,6 +35,7 @@ mod schedule;
 mod sparse_set;
 mod sprites;
 mod streaming;
+mod text;
 mod tilemap;
 
 use bevy_ecs::component::Component;
@@ -234,6 +235,7 @@ fn main() {
     schedule::run(&mut b);
     streaming::run(&mut b);
     tilemap::run(&mut b);
+    text::run(&mut b);
     sparse_set::run(&mut b);
     sprites::run(&mut b);
     particles2d::run(&mut b);

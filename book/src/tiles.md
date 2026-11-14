@@ -84,6 +84,21 @@ let boom = Animation::new(sheet, 8..16, 24.0).once(); // stops on the last frame
 can despawn the explosion. In C++, `ponko::animation` is a plain struct, so
 an `each` can take `ponko::animation&` like `ponko::transform2d&`.
 
+Animations are [reflected](reflection.md) as `"Animation"`, so prefabs and
+scenes can give a sprite one, and world saves keep how far each one got
+(its frame). In a file it names the sheet's image and frame size like a
+sprite names its image; the rest has defaults (the frames from `first` to
+the end of the sheet, looping, from the start):
+
+```json
+"Sprite": { "texture": "units.png", "region": { "min": [0, 0], "max": [32, 32] } },
+"Animation": { "texture": "units.png", "frame_size": [32, 32], "first": 0, "frames": 8, "fps": 12 }
+```
+
+A prefab with both spawns animating. Saves also write the sheet's grid
+(`columns`, `len`), `looping` and `time`; an animation whose image was
+made in code has no file to name and isn't saved, like its sprite.
+
 ## Tilemaps
 
 A `TileMap` is a grid of sheet frames on an entity with a `Transform2D`
@@ -253,9 +268,51 @@ let options = LevelOptions::default()
   tiles with a boolean `solid` or `collides` property, and tiles with
   collision shapes. `without_colliders()` spawns none.
 - `ctx.despawn_level(root)` removes everything a level spawned.
+- `without_saved_objects()` spawns none of the prefab objects, for
+  [loading a save](#levels-and-saves).
 - `ctx.assets.load_level(path, &options)` reads a level without spawning it,
   for tools or your own spawning: its tilesets, layers, objects and
   properties as plain data (`Level`).
+
+### Levels and saves
+
+The level file can rebuild its tiles, colliders and plain objects, so world
+saves leave them out: `spawn_level` marks everything it spawns with
+`NotSaved` (`ponko::reflect::NotSaved`; give it to your own entities too),
+except the objects it spawns as prefabs. Those are the game's state, a
+chest opened or a coin collected, and the save holds them. To load, load the
+save, then spawn the level around it without the prefab objects:
+
+<div class="lang-pair">
+<div>
+
+```rust
+# use ponko::d2::LevelOptions;
+let options = LevelOptions::default().prefab("Chest", "prefabs/chest.json");
+ctx.spawn_level_with("levels/meadow.tmx", Vec2::ZERO, options.clone()).expect("level");
+// ... play ...
+ctx.storage.save_world(&ctx.world, "meadow").expect("saved"); // the chests and the player
+
+// Later, or in the next run:
+ctx.load_world("meadow").expect("loaded"); // the saved chests and player, as they were...
+let options = options.without_saved_objects(); // ...and the level around them
+ctx.spawn_level_with("levels/meadow.tmx", Vec2::ZERO, options).expect("level");
+```
+
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:level_saves}}
+```
+
+</div>
+</div>
+
+In C, `ponko_ctx_spawn_level_without_saved_objects` spawns a level that way,
+and `ponko_world_set_saved` / `ponko_world_is_saved` (C++ `world.set_saved`,
+`world.saved`) mark any entity. The platformer [Ember Hop](ember-hop.md)
+saves its runs like this.
 
 With [hot reload](drawing.md#hot-reload) on, saving the level in the editor (or a
 tileset or template it uses) spawns it again in place; a file that doesn't

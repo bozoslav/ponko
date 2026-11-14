@@ -441,6 +441,10 @@ static void three_d() {
             temporal.ao_temporal = true;
             ctx.set_post(temporal);
             ctx.reset_temporal_history();
+            auto mover = ctx.world().spawn(ponko::transform3d_at({0, 0, 0}));
+            ctx.reset_motion(mover);
+            ctx.world().despawn(mover);
+            throws_invalid([&] { ctx.reset_motion(mover); }, "no such entity");
             CHECK(ctx.post().anti_aliasing == 3 && ctx.post().taa_sharpness == 0.5f);
             ctx.set_post(post);
         }
@@ -2777,6 +2781,10 @@ static void headless_wrapper_calls() {
             CHECK(std::fabs(std::sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z) - 1.0f) < 1e-4f);
             CHECK(ctx.models_drawn() == 0);
             ctx.set_gravity({0, 10});
+            ctx.set_physics_paused(true);
+            CHECK(ctx.is_physics_paused());
+            ctx.set_physics_paused(false);
+            CHECK(!ctx.is_physics_paused());
             ctx.set_gravity3d({0, -1, 0});
             throws([&] { ctx.set_gravity({NAN, 0}); });
             ctx.warm_render_pipelines(); // nothing to build without a renderer
@@ -3163,10 +3171,181 @@ static void levels_and_tilemaps() {
         CHECK(rects.size() == 2);
         CHECK(ponko::tilemap_spawn_colliders(ctx, map, {2, 3, 4, 8}) == 2);
 
+        // Saves leave the level out; a game's entity is saved unless left out.
+        CHECK(!world.saved(root) && !world.saved(ground) && world.saved(map));
+        world.set_saved(map, false);
+        CHECK(!world.saved(map));
+        world.set_saved(map, true);
+        ponko::level_options after_load = options;
+        after_load.without_saved_objects = true; // meadow has no prefab objects: all of it again
+        const ponko::entity again = ponko::spawn_level(ctx, "levels/meadow.tmx", {0, 0}, after_load);
+        CHECK(ponko::level_entities(ctx, again).size() == ponko::level_entities(ctx, root).size());
+        CHECK(ponko::despawn_level(ctx, again));
+
         CHECK(ponko::despawn_level(ctx, root));
         CHECK(!ponko::despawn_level(ctx, root));
         throws([&] { (void)ponko::spawn_level(ctx, "levels/nowhere.tmx", {0, 0}); });
     });
+}
+
+// The bindings of 0.2 that were Rust-only (#387): action read-back and set_action, built-ins and their
+// declarations, LOD hysteresis and instance levels, scene compute passes and target effects, keyed audio
+// curves, save slots, the immediate UI's font, border and scale, and the ECS diagnostics.
+static void remaining_bindings() {
+    // An action map reads back by name.
+    ponko::action_map map;
+    map.set("jump", ponko::action::button({ponko::action_binding::key(PONKO_KEY_SPACE), ponko::action_binding::mouse(PONKO_MOUSE_LEFT)}));
+    map.set("move", ponko::action::axis2({ponko::action_binding::keys2(PONKO_KEY_A, PONKO_KEY_D, PONKO_KEY_W, PONKO_KEY_S)}));
+    CHECK(map.size() == 2);
+    CHECK((map.names() == std::vector<std::string>{"jump", "move"}));
+    auto jump = map.get("jump");
+    CHECK(jump && jump->kind == 0 && jump->bindings.size() == 2 && jump->bindings[0].first == static_cast<std::uint32_t>(PONKO_KEY_SPACE));
+    CHECK(map.get("move")->bindings[0].fourth == static_cast<std::uint32_t>(PONKO_KEY_S));
+    CHECK(!map.get("fire"));
+
+    // Built-ins: their declarations, and adding one back where you want it.
+    auto navmesh = ponko::access::builtin(ponko::systems::step_navmesh3d);
+    CHECK(navmesh.conflicts_before(ponko::access(), false) == 0);
+    ponko::access copy = navmesh;
+    CHECK(copy.conflicts_before(navmesh, false) == navmesh.conflicts_before(navmesh, false) && copy.conflicts_before(navmesh, false) > 0);
+    CHECK(ponko::access::builtin(ponko::systems::draw_sprites).conflicts_before(ponko::access(), false) > 0);
+    throws_invalid([] { ponko::access::builtin(ponko::system_id{999}); }, "PONKO_SYSTEM_");
+    auto g = ponko::game("bindings", 1, 1);
+    g.remove(ponko::systems::draw_tilemaps).add_builtin(ponko::phase::late, ponko::systems::draw_tilemaps);
+    const std::string plan = g.schedule_plan();
+    CHECK(plan.find("Late\n  ponko::tilemap::draw_tilemaps") != std::string::npos);
+    throws_invalid([&] { g.add_builtin(ponko::phase::late, ponko::system_id{999}); }, "PONKO_SYSTEM_");
+
+    // LOD levels for an instance batch.
+    const auto near = ponko::lod_renderer_of(ponko::mesh{4});
+    const auto far = ponko::lod_renderer_of(ponko::mesh{5});
+    const float fov = 1.0f;
+    auto levels = ponko::lod_instance_levels(2.0f, {{0.2f, 0, {near}, false, {}}, {0.05f, 0, {far}, false, {}}}, 1.0f, fov, {1.0f, true});
+    CHECK(levels && levels->size() == 2 && (*levels)[0].mesh.id == 4);
+    CHECK((*levels)[0].max_distance == ponko::lod_distance_at(2.0f, 0.2f, fov));
+    auto tinted = near; tinted.color.g = 0.5f;
+    CHECK(!ponko::lod_instance_levels(2.0f, {{0.2f, 0, {tinted}, false, {}}}, 1.0f, fov, {1.0f, true}));
+
+    int diagnosed = 0;
+    g.add(ponko::phase::after_physics, [&](ponko::ctx& ctx) {
+        const std::string json = ctx.ecs_diagnostics();
+        diagnosed += json.find("\"entities\":1") != std::string::npos && json.find("\"name\":\"diagnose\"") != std::string::npos;
+    }, "diagnose");
+    const auto dir = std::filesystem::temp_directory_path() / "ponko-cpp-remaining-bindings";
+    std::filesystem::remove_all(dir);
+    g.data_dir(dir.string().c_str());
+    g.run_headless(1, [](ponko::ctx& ctx) {
+        // set_action: one action changes, its id stays, the others stay.
+        ctx.set_actions(jump_map());
+        const auto id = ctx.action_id("jump");
+        ctx.set_action("jump", ponko::action::button({ponko::action_binding::key(PONKO_KEY_J)}));
+        CHECK(ctx.action_id("jump") == id);
+        CHECK(ctx.actions().get("jump")->bindings[0].first == static_cast<std::uint32_t>(PONKO_KEY_J));
+        throws_invalid([&] { ctx.set_action("jump", ponko::action{0, {ponko::action_binding::keys(PONKO_KEY_A, PONKO_KEY_D).raw}}); }, "match");
+
+        // LOD hysteresis.
+        auto e = ctx.world().spawn(Pos{0, 0});
+        CHECK(ctx.lod_hysteresis(e) == 0.0f);
+        ctx.set_lod_hysteresis(e, 0.1f);
+        CHECK(ctx.lod_hysteresis(e) == 0.1f);
+        throws_invalid([&] { ctx.set_lod_hysteresis(e, 2.0f); }, "between 0 and 1");
+
+        // Scene compute passes and target effects.
+        auto light = ctx.create_render_target(16, 9);
+        auto meter = ctx.create_compute("meter", "fn compute(c: Cell) -> vec4<f32> { return vec4<f32>(scene_color(c.uv * frame.screen.xy), 1.0); }");
+        ctx.set_scene_compute_passes({ponko::compute_pass_of(meter, light)});
+        CHECK(ctx.scene_compute_passes().size() == 1 && ctx.compute_passes().empty());
+        auto far_effect = ctx.create_effect("far", "fn effect(p: Pixel) -> vec3<f32> { return vec3<f32>(p.distance); }");
+        auto mask = ctx.create_render_target(32, 32);
+        ctx.set_target_effects({ponko::target_effect_of(far_effect, mask)});
+        auto effects = ctx.target_effects();
+        CHECK(effects.size() == 1 && effects[0].target.id == mask.id && !effects[0].has_material);
+        CHECK(ctx.effects().empty());
+
+        // Keyed distance curves and the audio lock.
+        std::vector<float> samples(800, 0.1f);
+        auto beep = ctx.create_sound(8000, samples.data(), samples.size());
+        const std::vector<ponko::audio_key> curve{{0.0f, 1.0f}, {0.5f, 0.3f}, {1.0f, 0.0f}};
+        ctx.play_sound_at(beep, {3, 0, 0}, ponko::audio_settings3d_defaults(), curve);
+        auto speaker = ctx.world().spawn(ponko::transform3d_at({3, 0, 0}));
+        ctx.set_audio_source3d(speaker, beep, ponko::audio_settings3d_defaults(), curve);
+        throws_invalid([&] { ctx.play_sound_at(beep, {0, 0, 0}, ponko::audio_settings3d_defaults(), {{0.5f, 1.0f}, {0.0f, 0.0f}}); }, "sorted");
+        CHECK(ctx.audio_unlocked());
+
+        // Save slots.
+        ctx.save_world("b");
+        ctx.save_world("a");
+        CHECK((ctx.storage_world_slots() == std::vector<std::string>{"a", "b"}));
+        ctx.delete_world("a");
+        CHECK((ctx.storage_world_slots() == std::vector<std::string>{"b"}));
+        CHECK(ctx.storage_is_persistent() && !ctx.storage_is_saving());
+
+        // The immediate widgets.
+        CHECK(ctx.ui_immediate_font().id == 0);
+        ctx.set_ui_immediate_font(ponko::font{});
+        ctx.set_ui_immediate_border_width(2.0f);
+        CHECK(ctx.ui_immediate_border_width() == 2.0f);
+        ctx.ui_retained().set_scale(2.0f);
+        CHECK(ctx.ui_immediate_scale() == 2.0f);
+        ctx.world().despawn(speaker);
+    });
+    CHECK(diagnosed == 1);
+    std::filesystem::remove_all(dir);
+}
+
+// A menu that opens on Play, a HUD that Escape leaves up, and a glTF floor
+// made solid in one call.
+static void focus_huds_and_collision_files() {
+    const auto file = std::filesystem::temp_directory_path() / "ponko-cpp-solid-floor.gltf";
+    std::ofstream(file) << R"({"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}],
+        "nodes": [{"mesh": 0}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+        "buffers": [{"byteLength": 60, "uri": "data:application/octet-stream;base64,AAAAwAAAAAAAAABAAAAAQAAAAAAAAABAAAAAQAAAAAAAAADAAAAAwAAAAAAAAADAAAABAAIAAAACAAMA"}],
+        "bufferViews": [{"buffer": 0, "byteLength": 48}, {"buffer": 0, "byteOffset": 48, "byteLength": 12}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [-2, 0, -2], "max": [2, 0, 2]},
+            {"bufferView": 1, "componentType": 5123, "count": 6, "type": "SCALAR"}]})";
+    const std::string path = file.string();
+    ponko::game("focus and huds", 1, 1).physics3d({0, -9.81f, 0}).run_headless(0, [&](ponko::ctx& ctx) {
+        auto ui = ctx.ui_retained();
+        const ponko::vec2 window{800, 600};
+        namespace u = ponko::ui;
+        auto hud = ui.add_panel(u::none, u::layout().size(300, 40));
+        auto count = ui.add_label(hud, "0 / 5", u::layout().size(120, 30));
+        ui.show_hud(hud);
+        CHECK(ui.is_hud(hud) && ui.is_shown(count) && !ui.wants_keyboard());
+        throws([&] { ui.push_screen(hud); });
+
+        auto menu = ui.add_panel(u::none, u::layout().column().size(300, 200));
+        auto quit = ui.add_button(menu, "Quit", u::layout().size(120, 40).shrink(0));
+        auto play = ui.add_button(menu, "Play", u::layout().size(120, 40).shrink(0));
+        ui.set_initial_focus(play);
+        ui.push_screen(menu, true);
+        CHECK(ui.focus() == play);
+        auto enter = u::default_input();
+        enter.confirm = true;
+        ui.frame(window, enter);
+        auto events = ui.events();
+        CHECK(events.size() == 1 && events[0].kind == u::event_kind::clicked && events[0].node == play);
+        ui.set_focus(quit);
+        CHECK(ui.focus() == quit);
+        throws([&] { ui.set_focus(count); });
+        ui.clear_focus();
+        CHECK(!ui.focus());
+
+        auto escape = u::default_input();
+        escape.cancel = true;
+        ui.frame(window, escape);
+        CHECK(!ui.is_shown(play) && ui.is_shown(count));
+        ui.hide_hud(hud);
+        CHECK(!ui.is_hud(hud) && !ui.is_shown(count));
+
+        auto floor = ctx.load_collision_mesh(path.c_str());
+        CHECK(ctx.load_collision_mesh(path.c_str()).id == floor.id);
+        CHECK(ctx.load_collision_mesh(path.c_str(), {2, 1, 2}).id != floor.id);
+        throws([&] { ctx.load_collision_mesh(path.c_str(), {1, 1, 1}, true); });
+        throws([&] { ctx.load_collision_mesh("no/such.glb"); });
+    });
+    std::filesystem::remove(file);
 }
 
 int main() {
@@ -3230,5 +3409,7 @@ int main() {
     native_coverage();
     wrapper_coverage();
     headless_frames_ui();
+    remaining_bindings();
+    focus_huds_and_collision_files();
     std::cout << "C++ wrapper tests passed\n";
 }

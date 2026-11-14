@@ -138,7 +138,16 @@ fn surface_at(in: VertexOut, front: bool) -> Surface {
         let t = dp2perp * duv1.x + dp1perp * duv2.x;
         let b = dp2perp * duv1.y + dp1perp * duv2.y;
         let inv = inverseSqrt(max(max(dot(t, t), dot(b, b)), 1e-20));
-        var m = textureSample(normal_texture, material_sampler, in.uv).xyz * 2.0 - 1.0;
+        let texel = textureSample(normal_texture, material_sampler, in.uv);
+        var m = texel.xyz * 2.0 - 1.0;
+        // Two-channel normal maps (BC5, EAC; 3: X and Y in red and alpha)
+        // store no Z: it is the rest of the unit length.
+        if material.maps.x >= 2u {
+            if material.maps.x == 3u {
+                m.y = texel.a * 2.0 - 1.0;
+            }
+            m.z = sqrt(max(1.0 - dot(m.xy, m.xy), 0.0));
+        }
         m = vec3<f32>(m.xy * material.params.z, m.z);
         // glTF's texture coordinates run down the image: flip the bitangent.
         n = normalize(t * inv * m.x - b * inv * m.y + n * m.z);
@@ -331,10 +340,12 @@ fn transparent_color(in: VertexOut, front: bool) -> vec4<f32> {
 // Models that moved since last frame are drawn again, over the depth the
 // opaque pass left, to say where each pixel was: the same vertices through
 // last frame's model matrix (the `vertex` function still sees this frame's
-// time, so animation inside it is not part of the motion). A buffer-driven
-// mesh (see `Vertex.instance_index`) gets the entity's rigid motion: both
-// matrices see the same buffer element, so what the buffer does per element
-// is not part of the motion either.
+// time, so animation inside it is not part of the motion). A skinned or
+// morphing model whose pose changed brings its last pose's positions in
+// `previous_position`; every other mesh brings its own positions again.
+// A buffer-driven mesh (see `Vertex.instance_index`) gets the entity's
+// rigid motion: both matrices see the same buffer element, so what the
+// buffer does per element is not part of the motion either.
 struct VelocityIn {
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
@@ -351,6 +362,7 @@ struct VelocityIn {
     @location(11) p1: vec4<f32>,
     @location(12) p2: vec4<f32>,
     @location(13) p3: vec4<f32>,
+    @location(14) previous_position: vec3<f32>,
 };
 
 struct VelocityOut {
@@ -380,6 +392,7 @@ fn vs_velocity(in: VelocityIn) -> VelocityOut {
     b.m1 = in.p1;
     b.m2 = in.p2;
     b.m3 = in.p3;
+    b.position = in.previous_position;
     let now = world_vertex(a);
     let before = world_vertex(b);
     var out: VelocityOut;

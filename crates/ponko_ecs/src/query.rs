@@ -973,17 +973,20 @@ impl<'w, Q: QueryData> Query<'w, Q> {
         // entity table and the archetypes through raw pointers while this
         // query loops, and a `&mut World` made here would end them.
         // The whole cost of the index for a world it doesn't apply to.
+        // In a world with many empty archetypes, a scan visits the list of
+        // those with entities (`World::slots`).
+        let scan = self.world.slots.scan();
         if self.cache == QueryCache::Never || self.world.archetypes.len() < self.world.query_matches.min_archetypes() {
             return Archetypes {
                 all: &self.world.archetypes,
-                indices: None,
+                indices: scan.map(<[u32]>::iter),
                 next: 0,
             };
         }
         let key = cache::signature::<Q>(&self.ids, &self.filters);
         self.world
             .query_matches
-            .archetypes(&self.world.archetypes, &key, self.cache)
+            .archetypes(&self.world.archetypes, &key, self.cache, scan)
     }
 
     /// Index this query's signature in the world now, instead of leaving it

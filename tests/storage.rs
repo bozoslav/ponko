@@ -199,3 +199,29 @@ fn the_guide_example_keeps_options_and_a_quick_save_between_runs() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_save_slot_keeps_an_animations_frame() {
+    let dir = temp_dir("animation");
+    let mut crab = None;
+    Game::new("t", 1, 1).data_dir(&dir).run_headless(0, |ctx| {
+        let sheet = SpriteSheet::new(ctx.load_texture("crab.png"), 16, 16);
+        let mut walk = ponko::d2::Animation::new(sheet, 0..4, 10.0);
+        walk.time = 0.25; // frame 2
+        crab = Some(
+            ctx.world
+                .spawn((ponko::d2::Transform::default(), sheet.sprite(2), walk)),
+        );
+        ctx.storage.save_world(&ctx.world, "slot1").unwrap();
+    });
+    let crab = crab.unwrap();
+    let world = Game::new("t", 1, 1).data_dir(&dir).run_headless(0, |ctx| {
+        ctx.load_world("slot1").unwrap();
+    });
+    let walk = world
+        .get::<ponko::d2::Animation>(crab)
+        .expect("the animation is in the save");
+    assert_eq!((walk.time, walk.current_frame(), walk.looping), (0.25, 2, true));
+    assert_eq!(walk.sheet.frame_size, vec2(16.0, 16.0));
+    let _ = std::fs::remove_dir_all(dir);
+}

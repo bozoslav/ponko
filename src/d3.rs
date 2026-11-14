@@ -76,10 +76,10 @@ pub use crate::particles::{ParticleCurve, ParticleGradient, ParticleSpace};
 #[doc(no_inline)]
 pub use crate::physics3d::{
     Character3D as Character, Collider3D as Collider, ColliderFocus, CollisionGroups, CollisionMesh, CollisionMeshData,
-    ContactModifier3D as ContactModifier, ContactPair3D as ContactPair, FrictionCurve, Hit3D as Hit, Joint3D as Joint,
-    JointAxis3D as JointAxis, JointDrive3D as JointDrive, JointMotion3D as JointMotion, Physics3D as Physics,
-    QueryFilter3D as QueryFilter, Ragdoll3D as Ragdoll, RagdollBone, RigidBody3D as RigidBody, Shape3D as Shape,
-    TerrainCollider, Vehicle3D as Vehicle, Velocity3D as Velocity, Wheel3D as Wheel,
+    CollisionMeshOptions, ContactModifier3D as ContactModifier, ContactPair3D as ContactPair, FrictionCurve,
+    Hit3D as Hit, Joint3D as Joint, JointAxis3D as JointAxis, JointDrive3D as JointDrive, JointMotion3D as JointMotion,
+    Physics3D as Physics, QueryFilter3D as QueryFilter, Ragdoll3D as Ragdoll, RagdollBone, RigidBody3D as RigidBody,
+    Shape3D as Shape, TerrainCollider, Vehicle3D as Vehicle, Velocity3D as Velocity, Wheel3D as Wheel,
 };
 #[doc(no_inline)]
 pub use crate::render::{

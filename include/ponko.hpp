@@ -305,6 +305,11 @@ using compute_pass = PonkoComputePass;
 using effect = PonkoEffect;
 /// One screen effect run over the lit 3D frame (Rust `ScreenEffect`); see screen_effect_of.
 using screen_effect = PonkoScreenEffect;
+/// An effect over the lit 3D frame that writes a render target instead of the frame (Rust `TargetEffect`).
+using target_effect = PonkoTargetEffect;
+/// One key of a keyed distance curve for positional sound (Rust `AudioRolloff::Keyed`): `gain` at
+/// `distance`, 0 at min_distance and 1 at max_distance.
+using audio_key = PonkoAudioKey;
 /// The latest compile or hot reload of one of the game's shaders (Rust
 /// `ShaderStatus`; ctx::shader_status). `info.kind` is PONKO_SHADER_MATERIAL,
 /// _EFFECT, _COMPUTE or _SPRITE; `info.outcome` PONKO_SHADER_COMPILED, _RELOADED,
@@ -402,6 +407,9 @@ using rect = PonkoRect;
 using font = PonkoFont;
 /// Alignment within a world text block.
 enum class text_align3d : uint32_t { left = 0, center = 1, right = 2 };
+/// Which strings are shaped (Rust `TextShaping`), for ctx::set_text_shaping: `automatic` shapes every
+/// non-ASCII string and keeps ASCII on the per-character fast path; `always` shapes ASCII too (ligatures).
+enum class text_shaping : uint32_t { automatic = PONKO_TEXT_SHAPING_AUTO, always = PONKO_TEXT_SHAPING_ALWAYS };
 /// Where a system runs in the loop, in this order. `input` through `sim_last`
 /// run once per fixed tick (also headless); `frame` through `draw` once per
 /// rendered frame. sim_system uses after_physics, system frame, late_system late.
@@ -836,6 +844,12 @@ inline compute_pass buffer_compute_pass(compute c, gpu_buffer b, material m) { r
 inline compute_pass compute_pass_of(compute c, texture target) { return {false, {}, c, target, false, {}}; }
 inline compute_pass compute_pass_of(compute c, texture target, material m) { return {false, {}, c, target, true, m}; }
 ///@}
+/// Runs `e` over the lit frame into render target `target`, reading its values and textures from `m`
+/// (or from the default material when `m` is left out).
+///@{
+inline target_effect target_effect_of(effect e, texture target) { return {e, target, false, {}}; }
+inline target_effect target_effect_of(effect e, texture target, material m) { return {e, target, true, m}; }
+///@}
 /// `c` drawing into render target `target` (ctx::create_render_target),
 /// with no clip plane.
 inline target_camera target_camera_of(const camera3d& c, texture target) { return {c, target, false, {0, 0, 0, 0}}; }
@@ -989,6 +1003,28 @@ inline void check_abi_version() {
     check_abi_version(PONKO_ABI_VERSION, loaded);
 }
 }  // namespace detail
+
+/// The levels of an instance batch drawing copies of a LOD group the way the group would (Rust
+/// `LodGroup::instance_levels`): `levels` as for ctx::set_lod_group, each copy scaled by `scale`, for a
+/// camera of vertical field of view `fov_y`, under `settings`. std::nullopt when the group can't be a
+/// batch (off-center, offset or tinted renderers, or nothing drawn). Give the result to
+/// ctx::create_instance_batch_levels.
+inline std::optional<std::vector<instance_level>> lod_instance_levels(float size, const std::vector<lod_level>& levels,
+    float scale, float fov_y, lod_settings settings, vec3 center = {0, 0, 0}) {
+    std::vector<PonkoLodLevel> raw;
+    raw.reserve(levels.size());
+    for (const lod_level& l : levels) {
+        raw.push_back(PonkoLodLevel{l.screen_height, l.fade_width, l.renderers.data(), l.renderers.size(),
+                                     l.custom_shadow, l.shadow_casters.data(), l.shadow_casters.size()});
+    }
+    std::size_t n = 0;
+    const PonkoStatus status = ponko_lod_instance_levels(size, center, raw.data(), raw.size(), scale, fov_y, settings, nullptr, 0, &n);
+    if (status == PONKO_NOT_FOUND) return std::nullopt;
+    detail::check(status);
+    std::vector<instance_level> out(n);
+    detail::check(ponko_lod_instance_levels(size, center, raw.data(), raw.size(), scale, fov_y, settings, out.data(), out.size(), &n));
+    return out;
+}
 
 /// What the `try_` loaders return, Rust's `Result<T, ponko::error::Error>`: the
 /// value, or the error that kept it from loading. Nothing is thrown until
@@ -1456,6 +1492,91 @@ public:
     /// entity lost its map.
     void apply() { detail::check(ponko_tilemap_update(world_, e_, &map_)); }
 };
+namespace detail {
+/// A C++ conversion for a save migration, owned by the world (freed by `free`).
+struct json_convert {
+    std::function<std::string(const std::string&)> fn;
+    std::string result;
+    static std::uint32_t call(void* user, const char* json, const char** out_json) {
+        auto* self = static_cast<json_convert*>(user);
+        try {
+            self->result = self->fn(json);
+            *out_json = self->result.c_str();
+            return PONKO_OK;
+        } catch (const std::exception& e) {
+            self->result = e.what();
+            *out_json = self->result.c_str();
+        } catch (...) {
+            *out_json = nullptr;
+        }
+        return PONKO_INVALID_ARGUMENT;
+    }
+    static void free(void* user) { delete static_cast<json_convert*>(user); }
+};
+} // namespace detail
+
+/// The changes from one game save version to the next (Rust
+/// `ponko::reflect::Migration`), from world_view::migration. Each call adds a
+/// change at once; they run in the order added. Names are the JSON ones: a
+/// component's reflected name and its field names. Conversions take a saved
+/// value's JSON text and return the new one's; an exception fails the load
+/// with its message.
+class save_migration {
+    PonkoWorld* world_;
+    std::uint32_t from_;
+    using convert = std::function<std::string(const std::string&)>;
+    template<class F> save_migration& with(convert fn, F add) {
+        auto* box = new detail::json_convert{std::move(fn), {}};
+        detail::check(add(&detail::json_convert::call, static_cast<void*>(box), &detail::json_convert::free));
+        return *this;
+    }
+    friend class world_view;
+    save_migration(PonkoWorld* world, std::uint32_t from) : world_(world), from_(from) {}
+public:
+    /// Component `from` is called `to` now.
+    save_migration& rename_component(const char* from, const char* to) { detail::check(ponko_save_migration_rename_component(world_, from_, from, to)); return *this; }
+    /// Component `name` is gone (an entity left with nothing is dropped).
+    save_migration& remove_component(const char* name) { detail::check(ponko_save_migration_remove_component(world_, from_, name)); return *this; }
+    /// Field `from` of `component` is called `to` now.
+    save_migration& rename_field(const char* component, const char* from, const char* to) { detail::check(ponko_save_migration_rename_field(world_, from_, component, from, to)); return *this; }
+    /// `component` has a new field: older saves get `value_json` for it.
+    save_migration& add_field(const char* component, const char* field, const char* value_json) { detail::check(ponko_save_migration_add_field(world_, from_, component, field, value_json)); return *this; }
+    /// `component` lost its field `field`.
+    save_migration& remove_field(const char* component, const char* field) { detail::check(ponko_save_migration_remove_field(world_, from_, component, field)); return *this; }
+    /// Component `from` became several: `parts_json` is `[["Regen", ["hp_regen"]], ...]`.
+    save_migration& split_component(const char* from, const char* parts_json) { detail::check(ponko_save_migration_split_component(world_, from_, from, parts_json)); return *this; }
+    /// Components `from` became one, `into`, with all their fields.
+    save_migration& merge_components(std::initializer_list<const char*> from, const char* into) {
+        std::vector<const char*> names(from);
+        detail::check(ponko_save_migration_merge_components(world_, from_, names.data(), names.size(), into));
+        return *this;
+    }
+    /// Resource `from` is called `to` now.
+    save_migration& rename_resource(const char* from, const char* to) { detail::check(ponko_save_migration_rename_resource(world_, from_, from, to)); return *this; }
+    /// Resource `name` is gone.
+    save_migration& remove_resource(const char* name) { detail::check(ponko_save_migration_remove_resource(world_, from_, name)); return *this; }
+    /// Field `field` of `component` changed its type or meaning: `fn` turns each saved value into the new one.
+    save_migration& convert_field(const char* component, const char* field, convert fn) {
+        return with(std::move(fn), [&](PonkoJsonConvertFn f, void* u, PonkoUserFreeFn free) { return ponko_save_migration_convert_field(world_, from_, component, field, f, u, free); });
+    }
+    /// Replaces each value of `component` with what `fn` makes of it.
+    save_migration& convert_component(const char* component, convert fn) {
+        return with(std::move(fn), [&](PonkoJsonConvertFn f, void* u, PonkoUserFreeFn free) { return ponko_save_migration_convert_component(world_, from_, component, f, u, free); });
+    }
+    /// Replaces the saved value of resource `resource` with what `fn` makes of it.
+    save_migration& convert_resource(const char* resource, convert fn) {
+        return with(std::move(fn), [&](PonkoJsonConvertFn f, void* u, PonkoUserFreeFn free) { return ponko_save_migration_convert_resource(world_, from_, resource, f, u, free); });
+    }
+    /// `fn` gets each entity's components (a JSON object by name) and returns them changed.
+    save_migration& change_entities(convert fn) {
+        return with(std::move(fn), [&](PonkoJsonConvertFn f, void* u, PonkoUserFreeFn free) { return ponko_save_migration_change_entities(world_, from_, f, u, free); });
+    }
+    /// `fn` gets the whole save's JSON and returns it changed: the last resort.
+    save_migration& change_save(convert fn) {
+        return with(std::move(fn), [&](PonkoJsonConvertFn f, void* u, PonkoUserFreeFn free) { return ponko_save_migration_change_save(world_, from_, f, u, free); });
+    }
+};
+
 /// The entities and their components (Rust `World`). Components are plain
 /// structs, found by their C++ type: no registration needed. A view given to
 /// a system must not escape the call.
@@ -1720,6 +1841,12 @@ public:
     void despawn(entity e) { valid(); detail::check(ponko_despawn(raw_, e)); }
     /// Whether `e` is alive (a despawned id stays dead, even after its slot is reused).
     bool alive(entity e) const { valid(); bool result = false; detail::check(ponko_is_alive(raw_, e, &result)); return result; }
+    /// Whether world saves hold `e` (Rust `NotSaved`): false leaves it out of
+    /// saves, scenes and save slots, true puts it back. Levels mark everything
+    /// but their prefab objects. Throws if `e` is dead.
+    void set_saved(entity e, bool saved) { valid(); detail::check(ponko_world_set_saved(raw_, e, saved)); }
+    /// Whether world saves hold `e` (see set_saved). Throws if `e` is dead.
+    bool saved(entity e) const { valid(); bool result = false; detail::check(ponko_world_is_saved(raw_, e, &result)); return result; }
     /// How many entities are alive.
     std::size_t size() const { valid(); std::size_t result = 0; detail::check(ponko_world_len(raw_, &result)); return result; }
     /// A copy of `e`'s `T`; throws if `e` is dead or has no `T` (see try_get).
@@ -2009,6 +2136,24 @@ public:
     void describe_resource(const char* name, const char* schema) {
         valid();
         detail::check(ponko_world_describe_resource(raw_, name, schema));
+    }
+
+    // ---- save migrations ----
+    /// Sets the game's save version (Rust `SaveMigrations`): what save()
+    /// records as "game_version", and the newest a load accepts (saves
+    /// without one are version 0). Raise it, with a migration() from the old
+    /// version, whenever a change to the game's components breaks older saves.
+    void set_save_version(std::uint32_t version) { valid(); detail::check(ponko_world_set_save_version(raw_, version)); }
+    /// The game's save version (0 before set_save_version).
+    std::uint32_t save_version() const { valid(); std::uint32_t v = 0; detail::check(ponko_world_save_version(raw_, &v)); return v; }
+    /// The changes from save version `from` to `from + 1`, which every load
+    /// of an older save runs (set_save_version above `from` first).
+    save_migration migration(std::uint32_t from) { valid(); return save_migration(raw_, from); }
+    /// `json` (a world save) as the game's version would have written it.
+    /// Throws for a save of a newer game version (kind PONKO_ERROR_UNSUPPORTED).
+    std::string migrate_save(const std::string& json) const {
+        valid();
+        return detail::read_text([&](char* b, std::size_t c, std::size_t* n) { return ponko_world_migrate_save(raw_, json.c_str(), b, c, n); });
     }
 
     // ---- the rest ----
@@ -3460,6 +3605,18 @@ public:
     bool is_shown(id node) const { bool s = false; detail::check(ponko_ctx_ui_is_shown(raw_, target_, node, &s)); return s; }
     /// The focused node, if any.
     std::optional<id> focus() const { id n = none; detail::check(ponko_ctx_ui_focus(raw_, target_, &n)); return maybe(n); }
+    /// Focuses `node` (an enabled, shown button, text input, toggle or slider on the top screen), as Tab would.
+    void set_focus(id node) { detail::check(ponko_ctx_ui_set_focus(raw_, target_, node)); }
+    /// Takes the focus away.
+    void clear_focus() { detail::check(ponko_ctx_ui_clear_focus(raw_, target_)); }
+    /// Marks `node` as the one its screen opens on: every push_screen of it focuses `node`.
+    void set_initial_focus(id node, bool on = true) { detail::check(ponko_ctx_ui_set_initial_focus(raw_, target_, node, on)); }
+    /// Shows the tree under `root` as a HUD: drawn below every screen, never closed by Escape, never takes input.
+    void show_hud(id root) { detail::check(ponko_ctx_ui_show_hud(raw_, target_, root)); }
+    /// Takes a HUD off the screen; its nodes stay.
+    void hide_hud(id root) { detail::check(ponko_ctx_ui_hide_hud(raw_, target_, root)); }
+    /// Whether `node` is a HUD's root.
+    bool is_hud(id node) const { bool b = false; detail::check(ponko_ctx_ui_is_hud(raw_, target_, node, &b)); return b; }
     /// The topmost node under `point` (window points), as of the last layout.
     std::optional<id> hit_test(vec2 point) const { id n = none; detail::check(ponko_ctx_ui_hit_test(raw_, target_, point, &n)); return maybe(n); }
     /// A scale on top of the window's own, from 0.25 to 8.
@@ -3977,6 +4134,28 @@ public:
     void set(const char* name, const action& a) { detail::check(ponko_action_map_set(raw_, name, a.kind, a.bindings.data(), a.bindings.size())); }
     /// Removes action `name` (nothing if there is none).
     void remove(const char* name) { detail::check(ponko_action_map_remove(raw_, name)); }
+    /// The number of actions (Rust `ActionMap::len`).
+    std::size_t size() const { std::size_t n = 0; detail::check(ponko_action_map_count(raw_, &n)); return n; }
+    /// Every action's name, in name order (Rust `ActionMap::iter`): with get(), how a rebinding screen
+    /// lists the actions and their sources.
+    std::vector<std::string> names() const {
+        std::vector<std::string> list(size());
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            list[i] = detail::read_text([&](char* b, std::size_t c, std::size_t* n) { return ponko_action_map_name(raw_, i, b, c, n); });
+        }
+        return list;
+    }
+    /// The bindings of action `name` (Rust `ActionMap::get`), or std::nullopt if there is none.
+    std::optional<action> get(const char* name) const {
+        action a{0, {}};
+        std::size_t n = 0;
+        const PonkoStatus status = ponko_action_map_get(raw_, name, &a.kind, nullptr, 0, &n);
+        if (status == PONKO_NOT_FOUND) return std::nullopt;
+        detail::check(status);
+        a.bindings.resize(n);
+        detail::check(ponko_action_map_get(raw_, name, &a.kind, a.bindings.data(), a.bindings.size(), &n));
+        return a;
+    }
     /// The bindings in the versioned JSON format Rust and tools read (Rust `ActionMap::to_json`).
     std::string to_json() const {
         std::size_t len = 0;
@@ -4010,11 +4189,20 @@ public:
     access() : raw_(ponko_access_new()) { if (!raw_) throw std::runtime_error(ponko_last_error()); }
     ~access() { ponko_access_free(raw_); }
     /// A copy of `other`.
-    access(const access& other) : access() { *this = other; }
+    access(const access& other) { detail::check(ponko_access_clone(other.raw_, &raw_)); }
     /// Replaces this declaration with a copy of `other`.
     access& operator=(const access& other) {
-        if (this != &other) { access fresh; std::swap(raw_, fresh.raw_); names_.clear(); copy_from(other); }
+        if (this != &other) { access copy(other); std::swap(raw_, copy.raw_); }
         return *this;
+    }
+    /// What built-in system `id` (systems::physics, systems::step_navmesh3d, ...) declares it touches
+    /// (Rust `systems::step_physics_access` and the others); the built-ins without a declaration of their
+    /// own are exclusive. Compare yours with it (conflicts_before) to see whether a system could run
+    /// beside the step. Throws ponko::error for an unknown id or a physics step the library lacks.
+    static access builtin(system_id id) {
+        PonkoAccess* raw = nullptr;
+        detail::check(ponko_builtin_access(id.bits, &raw));
+        return access(raw);
     }
     /// Takes `other`'s declaration; `other` is left empty.
     access(access&& other) noexcept : raw_(std::exchange(other.raw_, nullptr)) {}
@@ -4033,23 +4221,23 @@ public:
     /// Sends T events (doesn't cover reading them).
     template<class T> access& send_events() { return send_events(detail::type_name<T>().c_str()); }
     /// Reads the component registered under `name`.
-    access& read_component(const char* name) { names_.push_back({0, name}); return step(ponko_access_read_component(raw_, name)); }
+    access& read_component(const char* name) { return step(ponko_access_read_component(raw_, name)); }
     /// Reads and writes the component registered under `name`.
-    access& write_component(const char* name) { names_.push_back({1, name}); return step(ponko_access_write_component(raw_, name)); }
+    access& write_component(const char* name) { return step(ponko_access_write_component(raw_, name)); }
     /// Reads the resource registered under `name`.
-    access& read_resource(const char* name) { names_.push_back({2, name}); return step(ponko_access_read_resource(raw_, name)); }
+    access& read_resource(const char* name) { return step(ponko_access_read_resource(raw_, name)); }
     /// Reads and writes the resource registered under `name`.
-    access& write_resource(const char* name) { names_.push_back({3, name}); return step(ponko_access_write_resource(raw_, name)); }
+    access& write_resource(const char* name) { return step(ponko_access_write_resource(raw_, name)); }
     /// Reads events registered under `name`.
-    access& read_events(const char* name) { names_.push_back({4, name}); return step(ponko_access_read_events(raw_, name)); }
+    access& read_events(const char* name) { return step(ponko_access_read_events(raw_, name)); }
     /// Sends events registered under `name`.
-    access& send_events(const char* name) { names_.push_back({5, name}); return step(ponko_access_send_events(raw_, name)); }
+    access& send_events(const char* name) { return step(ponko_access_send_events(raw_, name)); }
     /// Records commands (ctx::*_later).
-    access& commands() { names_.push_back({6, {}}); return step(ponko_access_commands(raw_)); }
+    access& commands() { return step(ponko_access_commands(raw_)); }
     /// Uses `s`: reading it, or also changing it.
-    access& read_service(service s) { names_.push_back({7, {}, static_cast<std::uint32_t>(s)}); return step(ponko_access_service(raw_, static_cast<std::uint32_t>(s), false)); }
+    access& read_service(service s) { return step(ponko_access_service(raw_, static_cast<std::uint32_t>(s), false)); }
     /// Uses and changes service `s`.
-    access& write_service(service s) { names_.push_back({8, {}, static_cast<std::uint32_t>(s)}); return step(ponko_access_service(raw_, static_cast<std::uint32_t>(s), true)); }
+    access& write_service(service s) { return step(ponko_access_service(raw_, static_cast<std::uint32_t>(s), true)); }
     /// Number of reasons this system, registered before `later`, can't share
     /// a parallel batch with it (0: it could). `ordered = false` checks
     /// either order.
@@ -4061,23 +4249,7 @@ public:
     /// The C declaration, for the C API. Owned by this object.
     const PonkoAccess* raw() const noexcept { return raw_; }
 private:
-    struct entry { int kind; std::string name; std::uint32_t service = 0; };
-    std::vector<entry> names_;
-    void copy_from(const access& other) {
-        for (const auto& e : other.names_) {
-            switch (e.kind) {
-            case 0: read_component(e.name.c_str()); break;
-            case 1: write_component(e.name.c_str()); break;
-            case 2: read_resource(e.name.c_str()); break;
-            case 3: write_resource(e.name.c_str()); break;
-            case 4: read_events(e.name.c_str()); break;
-            case 5: send_events(e.name.c_str()); break;
-            case 6: commands(); break;
-            case 7: read_service(static_cast<service>(e.service)); break;
-            default: write_service(static_cast<service>(e.service)); break;
-            }
-        }
-    }
+    explicit access(PonkoAccess* raw) noexcept : raw_(raw) {}
 };
 
 /// One input that went down this frame (ctx::pressed_this_frame): a key, mouse button, gamepad
@@ -4423,6 +4595,12 @@ public:
     ponko::perf_report perf_report() const {
         return ponko::perf_report(detail::read_text([&](char* b, std::size_t c, std::size_t* n) { return ponko_ctx_perf_report(raw_, b, c, n); }));
     }
+    /// A snapshot of the world and the schedule as JSON (Rust `Ctx::ecs_diagnostics`, the `ecs.diagnostics`
+    /// control method): entities, memory, archetypes, components, and every system with its phase, declared
+    /// access, stage and timings.
+    std::string ecs_diagnostics() const {
+        return detail::read_text([&](char* b, std::size_t c, std::size_t* n) { return ponko_ctx_ecs_diagnostics(raw_, b, c, n); });
+    }
     /// Records the next `frames` frames as a Chrome/Perfetto trace at `path`.
     void record_trace(const char* path, std::uint32_t frames) { detail::check(ponko_ctx_record_trace(raw_, path, frames)); }
     /// The window's size in pixels.
@@ -4488,6 +4666,11 @@ public:
     void set_actions(const action_map& map) { detail::check(ponko_ctx_set_actions(raw_, map.raw())); }
     /// A copy of the installed bindings.
     action_map actions() const { action_map map; detail::check(ponko_ctx_actions(raw_, map.raw())); return map; }
+    /// Adds or replaces one installed action, leaving the others alone (Rust `Input::set_action`): the name
+    /// keeps its id, held sources fire no pressed edge. Throws ponko::error for an invalid binding.
+    void set_action(const char* name, const action& a) {
+        detail::check(ponko_ctx_set_action(raw_, name, a.kind, a.bindings.data(), a.bindings.size()));
+    }
     /// Everything that went down this frame (keys, mouse buttons, gamepad buttons, and gamepad axes
     /// past `axis_threshold`, 0 for the default of PONKO_PRESS_THRESHOLD), in a fixed order: keys,
     /// mouse, gamepad buttons, axes. What a rebinding screen binds, instead of polling every key.
@@ -4663,6 +4846,28 @@ public:
     void save_world(const char* slot) { detail::check(ponko_ctx_save_world(raw_, slot)); }
     /// Replaces the world with save slot `slot` (as load_scene does).
     void load_world(const char* slot) { detail::check(ponko_ctx_load_world(raw_, slot)); }
+    /// Loads every old save (`*.json`) in the folder `folder` through the
+    /// game's migrations, saves and loads each again, and returns how many
+    /// loaded (Rust `Ctx::check_old_saves`). Throws naming every file that failed.
+    std::size_t check_old_saves(const char* folder) { std::size_t n = 0; detail::check(ponko_ctx_check_old_saves(raw_, folder, &n)); return n; }
+    /// The save slots save_world wrote, sorted (Rust `Storage::world_slots`).
+    std::vector<std::string> storage_world_slots() {
+        const std::string text = detail::read_text([&](char* b, std::size_t c, std::size_t* n) { return ponko_ctx_storage_world_slots(raw_, b, c, n); });
+        std::vector<std::string> slots;
+        std::size_t start = 0;
+        while (start < text.size()) {
+            const std::size_t end = std::min(text.find('\n', start), text.size());
+            slots.emplace_back(text, start, end - start);
+            start = end + 1;
+        }
+        return slots;
+    }
+    /// Deletes save slot `slot` and its backup (a missing slot is fine).
+    void delete_world(const char* slot) { detail::check(ponko_ctx_delete_world(raw_, slot)); }
+    /// Whether stored files outlive the run: true for a folder; on the web when the page's database opened.
+    bool storage_is_persistent() { bool p = false; detail::check(ponko_ctx_storage_is_persistent(raw_, &p)); return p; }
+    /// Whether writes are still on their way to the disk (on the web); always false on the desktop.
+    bool storage_is_saving() { bool s = false; detail::check(ponko_ctx_storage_is_saving(raw_, &s)); return s; }
 private:
     /// Reads bytes a C function writes into a buffer (asks for the size, then
     /// fills it; asks again if it grew); nothing for PONKO_NOT_FOUND.
@@ -4962,6 +5167,32 @@ public:
     void set_compute_passes(const std::vector<compute_pass>& list) {
         detail::check(ponko_ctx_set_compute_passes(raw_, list.data(), list.size()));
     }
+    /// The scene-stage compute passes (Rust `ctx.scene3d.passes.scene_compute`): after the surfaces, before
+    /// the effects, reading this frame's lit image and depth (`scene_color`, `scene_position`, `scene_distance`).
+    std::vector<compute_pass> scene_compute_passes() const {
+        std::size_t n = 0;
+        detail::check(ponko_ctx_scene_compute_passes(raw_, nullptr, 0, &n));
+        std::vector<compute_pass> list(n);
+        detail::check(ponko_ctx_scene_compute_passes(raw_, list.data(), list.size(), &n));
+        return list;
+    }
+    /// Replaces the scene-stage compute passes (empty: none).
+    void set_scene_compute_passes(const std::vector<compute_pass>& list) {
+        detail::check(ponko_ctx_set_scene_compute_passes(raw_, list.data(), list.size()));
+    }
+    /// The target effects (Rust `ctx.scene3d.passes.target_effects`): effects over the lit frame that write
+    /// render targets instead of the frame, before the screen effects.
+    std::vector<target_effect> target_effects() const {
+        std::size_t n = 0;
+        detail::check(ponko_ctx_target_effects(raw_, nullptr, 0, &n));
+        std::vector<target_effect> list(n);
+        detail::check(ponko_ctx_target_effects(raw_, list.data(), list.size(), &n));
+        return list;
+    }
+    /// Replaces the target effects (empty: none). Throws ponko::error for a target that isn't a render target.
+    void set_target_effects(const std::vector<target_effect>& list) {
+        detail::check(ponko_ctx_set_target_effects(raw_, list.data(), list.size()));
+    }
     /// A texture target cameras draw the 3D world into (linear HDR light);
     /// materials use it like any texture.
     texture create_render_target(std::uint32_t w, std::uint32_t h) {
@@ -5103,6 +5334,11 @@ public:
     lod_settings lod() const { lod_settings s{}; detail::check(ponko_ctx_lod_settings(raw_, &s)); return s; }
     /// bias 0 or more: 2 keeps detail twice as far, 0.5 drops it at half the distance.
     void set_lod(const lod_settings& s) { detail::check(ponko_ctx_set_lod_settings(raw_, s)); }
+    /// Holds each level of `e`'s LOD group until it is `fraction` (0 to 1) past the level's range (Rust
+    /// `LodHysteresis`), so a camera resting near a threshold doesn't switch every frame. 0: none.
+    void set_lod_hysteresis(entity e, float fraction) { detail::check(ponko_ctx_set_lod_hysteresis(raw_, e, fraction)); }
+    /// `e`'s LOD hysteresis; 0 when it has none.
+    float lod_hysteresis(entity e) const { float f = 0; detail::check(ponko_ctx_lod_hysteresis(raw_, e, &f)); return f; }
     /// Puts a skeleton of `joints`, at rest, on `e` (Rust `Skeleton::new`).
     void set_skeleton(entity e, const std::vector<joint>& joints) {
         std::vector<PonkoJoint> raw;
@@ -5596,6 +5832,10 @@ public:
     /// after a camera cut or an object teleport. (Resizes and big camera jumps
     /// reset by themselves.)
     void reset_temporal_history() { detail::check(ponko_ctx_reset_temporal_history(raw_)); }
+    /// Gives `e`'s model no motion on the next drawn frame, keeping the rest of
+    /// the temporal history: call it after teleporting one object, or when its
+    /// animation snaps to another pose with no blend.
+    void reset_motion(entity e) { detail::check(ponko_ctx_reset_motion(raw_, e)); }
     /// Saves this frame as a PNG at `path` once it is drawn. Does nothing in headless runs.
     void save_screenshot(const char* path) { detail::check(ponko_ctx_save_screenshot(raw_, path)); }
     /// texture_filter::nearest keeps pixel art square.
@@ -5649,12 +5889,46 @@ public:
     /// The size in pixels draw_text would cover with font `f` at `size`. Throws ponko::error for an unknown
     /// or freed font.
     vec2 measure_text(const char* text, font f, float size) { vec2 v{}; detail::check(ponko_ctx_measure_text_ex(raw_, text, f, size, &v)); return v; }
+    /// Sets the fonts tried, in order, for characters `f` has no glyph for (Rust `set_font_fallbacks`); an
+    /// empty list turns fallback off. Throws ponko::error for a font this game didn't load.
+    void set_font_fallbacks(font f, const std::vector<font>& fallbacks) { detail::check(ponko_ctx_set_font_fallbacks(raw_, f, fallbacks.data(), fallbacks.size())); }
+    /// `f`'s fallback chain, with the system fonts found for it (Rust `font_fallbacks`).
+    std::vector<font> font_fallbacks(font f) const {
+        std::size_t n = 0;
+        detail::check(ponko_ctx_font_fallbacks(raw_, f, nullptr, 0, &n));
+        std::vector<font> out(n);
+        if (n > 0) detail::check(ponko_ctx_font_fallbacks(raw_, f, out.data(), out.size(), &n));
+        return out;
+    }
+    /// Sets which strings are shaped (Rust `set_text_shaping`); needs the library's `text-shaping` feature,
+    /// on by default.
+    void set_text_shaping(ponko::text_shaping mode) { detail::check(ponko_ctx_set_text_shaping(raw_, static_cast<std::uint32_t>(mode))); }
+    /// Which strings are shaped; text_shaping::automatic unless set.
+    ponko::text_shaping text_shaping() const { std::uint32_t m = 0; detail::check(ponko_ctx_text_shaping(raw_, &m)); return static_cast<ponko::text_shaping>(m); }
+    /// Loads a font installed on the computer by family name ("Arial"); throws ponko::error (kind not_found,
+    /// or unsupported without the library's `system-fonts` feature) if it can't.
+    font load_system_font(const char* family) { return try_load_system_font(family).value(); }
+    /// Loads a system font, or says why not, without throwing (Rust `try_load_system_font`).
+    result<font> try_load_system_font(const char* family) { font f{}; const PonkoStatus status = ponko_ctx_try_load_system_font(raw_, family, &f); return detail::attempt(status, f); }
+    /// With `on`, characters no loaded font has are looked up among the computer's fonts (Rust
+    /// `set_system_font_fallback`). Returns whether this build can search them.
+    bool set_system_font_fallback(bool on) { bool available = false; detail::check(ponko_ctx_set_system_font_fallback(raw_, on, &available)); return available; }
 
     // UI widgets (screen space), styled by ui_style().
     /// The immediate-mode UI style.
     ponko::ui_style ui_style() const { ponko::ui_style s{}; detail::check(ponko_ctx_ui_style(raw_, &s)); return s; }
     /// Changes the UI style for widgets drawn after this call.
     void set_ui_style(const ponko::ui_style& s) { detail::check(ponko_ctx_set_ui_style(raw_, &s)); }
+    /// The font of the immediate labels and buttons (Rust `ctx.ui.immediate.font`): the theme's unless set.
+    font ui_immediate_font() const { font f{}; detail::check(ponko_ctx_ui_immediate_font(raw_, &f)); return f; }
+    /// Sets the immediate widgets' font; it stays through a later theme change.
+    void set_ui_immediate_font(font f) { detail::check(ponko_ctx_set_ui_immediate_font(raw_, f)); }
+    /// The thickness of an immediate button's border in UI units (Rust `ctx.ui.immediate.border_width`).
+    float ui_immediate_border_width() const { float w = 0; detail::check(ponko_ctx_ui_immediate_border_width(raw_, &w)); return w; }
+    /// Sets the immediate buttons' border thickness, in UI units (0: none).
+    void set_ui_immediate_border_width(float width) { detail::check(ponko_ctx_set_ui_immediate_border_width(raw_, width)); }
+    /// The scale the immediate widgets are drawn at (Rust `UiImmediate::scale`): the screen's UI scale.
+    float ui_immediate_scale() const { float sc = 0; detail::check(ponko_ctx_ui_immediate_scale(raw_, &sc)); return sc; }
     /// Whether the mouse is over UI drawn this frame or the last, so clicks on a panel don't also act on the
     /// world behind it.
     bool mouse_over_ui() const { bool b = false; detail::check(ponko_ctx_mouse_over_ui(raw_, &b)); return b; }
@@ -5735,6 +6009,19 @@ public:
     void set_audio_source3d(entity e, sound s, const audio_settings3d& settings = audio_settings3d_defaults()) {
         detail::check(ponko_ctx_set_audio_source3d(raw_, e, s, &settings));
     }
+    /// play_sound_at with a keyed distance curve instead of the settings' rolloff (Rust
+    /// `AudioRolloff::Keyed`): keys sorted by distance, 0 at min_distance, 1 at max_distance. Each distinct
+    /// curve is kept for the rest of the program: make curves once.
+    playing play_sound_at(sound s, vec3 position, const audio_settings3d& settings, const std::vector<audio_key>& curve) {
+        playing p{}; detail::check(ponko_ctx_play_sound_at_keyed(raw_, s, position, &settings, curve.data(), curve.size(), &p)); return p;
+    }
+    /// set_audio_source3d with a keyed distance curve, as for play_sound_at.
+    void set_audio_source3d(entity e, sound s, const audio_settings3d& settings, const std::vector<audio_key>& curve) {
+        detail::check(ponko_ctx_set_audio_source3d_keyed(raw_, e, s, &settings, curve.data(), curve.size()));
+    }
+    /// Whether sound can play yet (Rust `Audio::unlocked`): on the web false until the first click or key;
+    /// always true on the desktop.
+    bool audio_unlocked() const { bool u = false; detail::check(ponko_ctx_audio_unlocked(raw_, &u)); return u; }
     /// Stops `e`'s positional sound and takes it off; nothing if it has none.
     void remove_audio_source3d(entity e) { detail::check(ponko_ctx_remove_audio_source3d(raw_, e)); }
     /// Puts the ears somewhere other than the camera; std::nullopt follows the camera again.
@@ -5811,6 +6098,15 @@ public:
     // Physics (game::physics), as of the last physics step. Not inside query callbacks.
     /// Changes gravity for every dynamic 2D body, in pixels per second².
     void set_gravity(vec2 gravity) { detail::check(ponko_ctx_set_gravity(raw_, gravity)); }
+    /// Holds the 2D physics step (`true`) or lets it run again; every other system keeps
+    /// running. While held, bodies stay put and no collision events are sent.
+    void set_physics_paused(bool paused) { detail::check(ponko_ctx_set_physics_paused(raw_, paused)); }
+    /// Whether `set_physics_paused` holds the 2D physics step.
+    bool is_physics_paused() {
+        bool paused = false;
+        detail::check(ponko_ctx_is_physics_paused(raw_, &paused));
+        return paused;
+    }
     /// The first collider a ray from `origin` towards `direction` hits within `max_distance`.
     std::optional<ray_hit> cast_ray(vec2 origin, vec2 direction, float max_distance) {
         bool found = false;
@@ -5903,6 +6199,14 @@ public:
         collision_mesh m{};
         detail::check(ponko_ctx_physics3d_trimesh(raw_, vertices.data(), vertices.size(), indices.data(), indices.size(), &m));
         return m;
+    }
+    /// Makes a glTF file (under assets/) solid in one call (Rust
+    /// `Ctx::load_collision_mesh`): its triangles, scaled by `scale`, or a
+    /// convex hull around them with `convex`, for mesh_collider(it) on a
+    /// fixed body. What a scene's mesh collider makes; each file and options
+    /// is read once.
+    collision_mesh load_collision_mesh(const char* path, vec3 scale = {1.0f, 1.0f, 1.0f}, bool convex = false) {
+        collision_mesh m{}; detail::check(ponko_ctx_load_collision_mesh(raw_, path, scale, convex, &m)); return m;
     }
     /// Lets go of a collision mesh; colliders using it keep it until removed.
     void free_collision_mesh(collision_mesh m) { detail::check(ponko_ctx_physics3d_free_mesh(raw_, m)); }
@@ -6296,6 +6600,10 @@ public:
     /// systems::draw_sprites (every instance of it). An id that names
     /// nothing is not an error.
     game& remove(system_id id) { return check(ponko_game_remove(raw_, id.bits)); }
+    /// Adds built-in system `id` (systems::draw_tilemaps, ...) to phase `p` (Rust: a function of
+    /// `ponko::systems` with `Game::add`): remove() it first to move it, or add one the engine never adds by
+    /// itself (systems::follow_attachments). Physics and navigation steps come with their declarations.
+    game& add_builtin(phase p, system_id id) { return check(ponko_game_add_builtin(raw_, static_cast<std::uint32_t>(p), id.bits)); }
     /// Removes systems by name, e.g. "ponko::ecs::draw_sprites". Kept for
     /// existing code: prefer remove(systems::draw_sprites).
     game& remove_system(const char* name) { return check(ponko_game_remove_system(raw_, name)); }
@@ -6418,6 +6726,9 @@ struct level_options {
     bool no_colliders = false;
     /// The z of the objects' layer; layers below get one less each, above one more.
     float z = 0.0f;
+    /// Spawn none of the objects a world save holds (the prefab objects): for
+    /// spawning the level again after load_world, which brings them back.
+    bool without_saved_objects = false;
 };
 /// A spawned level object's data: where it is, its shape, its tile.
 using level_object = PonkoLevelObject;
@@ -6433,7 +6744,9 @@ inline entity spawn_level(ctx& c, const char* path, vec2 at, const level_options
     PonkoLevelOptions o{classes.data(), paths.data(), classes.size(), solid.data(), solid.size(),
                         options.level.empty() ? nullptr : options.level.c_str(), options.no_colliders, options.z};
     entity root = 0;
-    detail::check(ponko_ctx_spawn_level(c.raw(), path, at, &o, &root));
+    detail::check(options.without_saved_objects
+                      ? ponko_ctx_spawn_level_without_saved_objects(c.raw(), path, at, &o, &root)
+                      : ponko_ctx_spawn_level(c.raw(), path, at, &o, &root));
     return root;
 }
 /// Despawns a level and everything it spawned; false if `root` was gone.

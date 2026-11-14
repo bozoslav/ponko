@@ -22,9 +22,11 @@ use serde::{Deserialize, Serialize};
 /// The window title.
 pub const TITLE: &str = "Crab Cove";
 
-/// The whole game: one plugin per step of the tutorial.
-pub fn game() -> Game {
+/// The whole game: one plugin per step of the tutorial, ready to `run()`
+/// in a window or `run_headless(ticks)`.
+pub fn game() -> ConfiguredGame {
     Game::new(TITLE, 960, 540)
+        .configured() // the plugins hold all of the setup
         .plugin(Level) // step 1: sprites and a level
         .plugin(Controls) // step 2: input actions
         .plugin(Pickups) // step 3: collisions and sound
@@ -375,6 +377,7 @@ impl Plugin for Menu {
             .button(screen, "Play")
             .layout(UiLayout::row(44.0))
             .name("menu.play")
+            .focused() // the screen opens on Play: Enter starts the game
             .id();
         let quit = ui
             .button(screen, "Quit")

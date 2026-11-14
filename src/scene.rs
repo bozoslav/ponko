@@ -171,9 +171,11 @@ impl Ctx {
     /// Replaces the world with `save`, as [`load_scene`](Self::load_scene)
     /// describes: its assets first, then the entities, then the services
     /// that follow entity ids.
-    fn replace_world_now(&mut self, save: &Value) -> Result<(), crate::error::Error> {
-        self.load_scene_assets(save)?;
-        self.world.load(save)?;
+    pub(crate) fn replace_world_now(&mut self, save: &Value) -> Result<(), crate::error::Error> {
+        // Migrated first, so the assets are found under the current names.
+        let save = crate::reflect::migrate_save(&self.world, save)?;
+        self.load_scene_assets(&save)?;
+        self.world.load(&save)?;
         self.commands = ponko_ecs::Commands::new();
         self.scene_loads += 1;
         #[cfg(feature = "physics")]

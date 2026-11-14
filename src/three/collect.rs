@@ -562,6 +562,8 @@ impl Frame3D {
         // batch together and the rest keep the plain per-mesh path. Only
         // the entities that have an override are visited.
         let real_meshes = assets.bounds.len() as u32;
+        // Posed models whose pose changed have motion of their own.
+        motion.posed(real_meshes, skins.draws.iter().map(|d| d.posed_motion));
         let override_base = real_meshes + skins.draws.len() as u32;
         self.override_base = override_base;
         let overrides = &mut self.material_overrides;

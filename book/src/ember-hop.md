@@ -111,10 +111,10 @@ Sparks, drips, hazards, braziers and the way out are sensors; their
 stomps it and bounces. Drips are kinematic bodies that turn at walls and
 ledges, found with rays.
 
-The pause screen holds the physics step: the game replaces the built-in
-physics system with one that calls `ponko::systems::step_physics` unless it is
-paused, because `ctx.time.pause()` would also stop the rules that read the
-unpause, and headless runs ignore it ([#439](https://github.com/ponkoengine/ponko/issues/439)).
+The pause screen holds only the physics step: a system before the step calls
+`ctx.physics.set_paused` unless the hero is playing, dying or between levels
+([Pausing only physics](sim-clock.md#pausing-only-physics)).
+`ctx.time.pause()` would also stop the rules that read the unpause.
 
 ## Saves, the title scene and progress
 
@@ -124,13 +124,17 @@ unpause, and headless runs ignore it ([#439](https://github.com/ponkoengine/ponk
 - **The run** is saved in the save slot `run` with
   `ctx.storage.save_world` when a level starts and when a brazier is lit. A
   loss, and "continue" on the title, load it with `ctx.load_world`. The game
-  keeps the run's numbers (`Run`, a reflected resource) and its own components
-  in the save; the level's tiles aren't reflected and come back from the level
-  file. After a load, `rehydrate` keeps the hero, sparks, drips and braziers
-  from the save, despawns the rest, spawns the level again and removes the
-  level's own copies of those objects. Leaving level geometry out of saves is
-  [#437](https://github.com/ponkoengine/ponko/issues/437); animations, which
-  saves and prefabs drop, are added back by `decorate` ([#438](https://github.com/ponkoengine/ponko/issues/438)).
+  keeps the run's numbers (`Run`, a reflected resource), its own components
+  and the engine's (sprites with their animations, bodies, particle emitters)
+  in the save. The level isn't in it: `ctx.spawn_level_with` marks its tiles,
+  colliders and plain objects `NotSaved`, so the save holds only the hero and
+  the prefab objects (sparks still to collect, drips, braziers, the way out)
+  as they were. After a load, `rehydrate` spawns the level again with
+  `LevelOptions::without_saved_objects`, which leaves out the objects the save
+  brought back, and starts the hero from rest.
+- **Animations** are in the files: the spark, drip and way-out prefabs and
+  the title scene give their sprites an `"Animation"` next to the `"Sprite"`,
+  so they spawn animating and saves keep each one's frame.
 - **Progress** (runs finished, best time, most sparks) is a small versioned
   JSON file written with `ctx.storage.write_json`. A damaged file is set
   aside and the game starts fresh, with a note on the title.
@@ -209,20 +213,16 @@ web/build.sh --features physics ember_hop && python3 -m http.server -d target/we
 builds it for the browser, and CI builds it in the `web-smoke` job. Like
 Coin Dash, the game publishes its state on `<html data-smoke>` (ticks,
 frames, the hero picture's size, the screen, the cave, the sparks, the
-storage), so the browser runner of `web/smoke` and the planned web gallery
-([#373](https://github.com/ponkoengine/ponko/issues/373)) can drive and check
-it; its browser run comes with the gallery. In a browser the music starts
+storage), so the browser runner of `web/smoke` can drive and check it, and
+the [web gallery](web.md#the-gallery-of-examples) lists it with the other examples. In a browser the
+music starts
 at the player's first click or key press ([Audio](audio.md#in-a-browser)).
 
 ## Gap list
 
 | Gap | Where it is tracked |
 |---|---|
-| World saves include the level's geometry; the game sorts loaded entities and respawns the level (`rehydrate`). | [#437](https://github.com/ponkoengine/ponko/issues/437) |
-| `Animation` isn't reflected: prefabs, scenes and saves drop it (`decorate` adds it back). | [#438](https://github.com/ponkoengine/ponko/issues/438) |
-| No way to hold only the physics step; `ctx.time.pause()` is ignored headless. | [#439](https://github.com/ponkoengine/ponko/issues/439) |
 | Sprites have no flip; the hero uses a negative scale. | [#440](https://github.com/ponkoengine/ponko/issues/440) |
-| No browser run of this game yet, and no gallery page. | [#373](https://github.com/ponkoengine/ponko/issues/373) |
 | Rust only; no C or C++ counterpart. | No native port planned yet |
 
 ## Assets and licenses

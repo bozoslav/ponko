@@ -699,6 +699,23 @@ fn format_unavailable(format: image::ImageFormat, what: &str, path: &str, by_mag
 /// cargo feature to enable; bytes that aren't a readable image with
 /// [`ErrorKind::Decode`](crate::error::ErrorKind::Decode).
 pub(crate) fn decode_image(bytes: &[u8], path: &str, what: &str) -> Result<Image, crate::error::Error> {
+    // KTX2 and DDS of GPU blocks, decoded on the CPU for loaders that need
+    // pixels (textures themselves upload as blocks, see `Graphics::texture_from_file`).
+    #[cfg(feature = "compressed-textures")]
+    if let Some(image) = crate::compressed::decode_rgba(bytes, path, what) {
+        return image;
+    }
+    #[cfg(not(feature = "compressed-textures"))]
+    if bytes.starts_with(&[0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB]) {
+        return Err(crate::error::Error::new(
+            crate::error::ErrorKind::Unsupported,
+            format!(
+                "{what} is a KTX2 texture, but this build of ponko doesn't read KTX2: \
+                 turn on its `compressed-textures` cargo feature"
+            ),
+        )
+        .with_path(path));
+    }
     let by_magic = image::guess_format(bytes).ok();
     let format = by_magic.or_else(|| image::ImageFormat::from_path(path).ok());
     if let Some(format) = format.filter(|f| !f.reading_enabled()) {
@@ -1176,6 +1193,20 @@ impl Assets {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(feature = "compressed-textures"))]
+    #[test]
+    fn ktx2_files_without_the_feature_name_it() {
+        let header = [
+            0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n',
+        ];
+        let Err(err) = decode_image(&header, "rock.ktx2", "rock.ktx2") else {
+            panic!("decoded");
+        };
+        assert_eq!(err.kind(), crate::error::ErrorKind::Unsupported);
+        assert!(err.to_string().contains("rock.ktx2"), "{err}");
+        assert!(err.message().contains("compressed-textures"), "{err}");
+    }
 
     #[test]
     fn missing_asset_error_names_file_and_folders() {

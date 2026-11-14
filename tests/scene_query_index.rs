@@ -53,7 +53,12 @@ fn answers(world: &mut World) -> [Vec<(Entity, u32)>; 3] {
             QueryCache::Never => q.uncached(),
             _ => q,
         };
-        q.iter().map(|(e, h)| (e, h.0)).collect()
+        // Sorted: query order follows archetype slots, which a world that
+        // reclaims empty archetypes reuses in its own order, and isn't part
+        // of the API (STABILITY.md).
+        let mut rows: Vec<(Entity, u32)> = q.iter().map(|(e, h)| (e, h.0)).collect();
+        rows.sort_unstable();
+        rows
     };
     [
         rows(QueryCache::Always, world),

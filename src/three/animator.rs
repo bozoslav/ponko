@@ -1105,6 +1105,9 @@ impl Animator {
         self.pending = Some((state.0, duration, normalized_offset));
     }
     /// Queue an immediate state change at a normalized time; applied on update.
+    /// The pose snaps: with TAA or temporal AO on, call
+    /// [`Graphics::reset_motion`](crate::gfx::Graphics::reset_motion) for the
+    /// posed model on that frame, so its jump is not read as motion.
     /// ```
     /// # use ponko::prelude::*;
     /// # let s = ponko::anim::AnimationState::new(ponko::anim::Motion::Clip(ponko::anim::AnimationClip::new("idle", &ponko::anim::Skeleton::new(vec![]), vec![])));

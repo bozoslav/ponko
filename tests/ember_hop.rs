@@ -411,6 +411,39 @@ fn a_lit_brazier_saves_the_run_and_a_loss_returns_there() {
         serde_json::from_slice(&std::fs::read(dir.join("saves/run.json")).expect("a save slot")).unwrap();
     assert_eq!(save["format"], "ponko-world");
     assert_eq!(save["resources"]["Run"]["sparks"], 1);
+    // It holds the hero and the prefab objects, not the level's tiles and
+    // colliders (the engine leaves those out), and their animations.
+    for e in save["entities"].as_array().unwrap() {
+        let c = &e["components"];
+        let ours = [
+            "Player",
+            "Spark",
+            "Drip",
+            "Checkpoint",
+            "Exit",
+            "Attached",
+            "ParticleEmitter2D",
+        ];
+        assert!(
+            ours.iter().any(|name| c.get(name).is_some()),
+            "level geometry saved: {c}"
+        );
+        if c.get("Spark").is_some() || c.get("Player").is_some() {
+            assert!(c.get("Animation").is_some(), "the animation is saved: {c}");
+        }
+    }
+    // After the load: the level once, the lit brazier still burning.
+    assert_eq!(world.query::<&LevelRoot>().iter().count(), 1);
+    let brazier_frames: Vec<(u32, u32)> = world
+        .query::<(&Checkpoint, &ponko::d2::Animation)>()
+        .iter()
+        .map(|(_, a)| (a.first, a.frames))
+        .collect();
+    assert_eq!(
+        brazier_frames,
+        [(1, 2)],
+        "the lit brazier's flames came back with the save"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -17,7 +17,7 @@ use super::{ChangesSeen, Run, System, run_one};
 use crate::ctx::Ctx;
 use crate::events::EventSlot;
 use crate::random::Random;
-use crate::schedule::{DEFAULT_PARALLEL_THRESHOLD, SchedulePlan};
+use crate::schedule::{Boundary, DEFAULT_PARALLEL_THRESHOLD, SchedulePlan};
 use crate::system_view::{Shared, ViewRunner};
 
 /// Turns the scheduler on or off whatever the game says: `1`, `0`, or
@@ -76,11 +76,26 @@ pub(super) fn resolve(on: bool, threshold: Option<Duration>, value: Option<&str>
     }
 }
 
-/// One stage of one system list: systems `first..first + len` of the list.
+/// One stage of one system list.
+///
+/// The plan cuts each list into **segments** (runs of batchable view
+/// systems between systems that run alone, phases and barriers) and puts
+/// each system of a segment into a stage. Every system writes in the change
+/// tick it would have had run one at a time: the segment's first tick plus
+/// its position in the segment.
 struct Stage {
-    first: usize,
-    len: usize,
-    /// For a batch: the proof that its view states may share the world.
+    /// The systems, as indexes into the list, in registration order.
+    members: Vec<usize>,
+    /// Index of the first system of the stage's segment.
+    segment: usize,
+    /// It is the first stage of its segment.
+    starts: bool,
+    /// One system that runs exactly where it would run one at a time (no
+    /// later system of its segment ran before it): it runs alone, through
+    /// the usual path. Every other stage has a `group`.
+    in_order: bool,
+    /// For the other stages: the proof that its view states may share the
+    /// world.
     group: Option<ViewGroup>,
 }
 
@@ -127,20 +142,18 @@ impl Exec {
             let mut offset = 0;
             for (list, systems) in lists.into_iter().enumerate() {
                 let end = offset + systems.len();
-                for stage in plan.stages.iter().filter(|s| (offset..end).contains(&s.first)) {
-                    let first = stage.first - offset;
-                    let members = &systems[first..first + stage.len];
-                    // If the states can't be shown to be disjoint (the plan
-                    // says they are), the systems simply run alone.
-                    let group = (stage.len > 1)
-                        .then(|| ViewGroup::new(members.iter().filter_map(runner).map(|r| &r.state)).ok())
-                        .flatten()
-                        .filter(|g| g.len() == stage.len);
-                    stages[list].push(Stage {
-                        first,
-                        len: stage.len,
-                        group,
-                    });
+                let mut planned = plan
+                    .stages
+                    .iter()
+                    .filter(|s| (offset..end).contains(&s.first))
+                    .peekable();
+                while let Some(first) = planned.next() {
+                    // One segment: this stage and the ones that continue it.
+                    let mut segment = vec![first];
+                    while let Some(next) = planned.next_if(|s| continues(s)) {
+                        segment.push(next);
+                    }
+                    build_segment(&segment, offset, systems, &mut stages[list]);
                 }
                 offset = end;
             }
@@ -178,22 +191,91 @@ impl Exec {
             }
             return;
         };
+        // The change tick the running segment's first system has.
+        let mut segment_tick = 0;
         for stage in &built.stages[list] {
-            let members = &mut systems[stage.first..stage.first + stage.len];
-            match &stage.group {
-                Some(group) => {
+            if stage.starts {
+                segment_tick = ctx.world.change_tick().to_bits();
+            }
+            match (&stage.group, stage.in_order) {
+                (Some(group), false) => {
                     if tick.is_some() {
                         ctx.set_sim_steps(1);
                     }
-                    run_batch(members, group, ctx, base + stage.first, built.settings, runners, slots);
+                    let ticks = Ticks {
+                        segment: stage.segment,
+                        first: segment_tick,
+                    };
+                    run_batch(systems, stage, group, ctx, base, ticks, built.settings, runners, slots);
                 }
-                None => {
-                    for (i, s) in members.iter_mut().enumerate() {
-                        alone(s, ctx, base + stage.first + i);
-                    }
+                _ => {
+                    let i = stage.members[0];
+                    alone(&mut systems[i], ctx, base + i);
                 }
             }
         }
+    }
+}
+
+/// `true` if plan stage `stage` continues the segment of the stage before
+/// it: it starts there because of a conflict or an order, not because of a
+/// phase, a barrier or a system that runs alone.
+fn continues(stage: &crate::schedule::Stage) -> bool {
+    matches!(stage.boundary, Boundary::Conflict { .. } | Boundary::Order { .. })
+}
+
+/// Builds the stages of one segment, given its plan stages, whose indexes
+/// are `offset` more than the list's `systems`.
+fn build_segment(segment: &[&crate::schedule::Stage], offset: usize, systems: &[System], out: &mut Vec<Stage>) {
+    let first = segment[0].first - offset;
+    let len: usize = segment.iter().map(|s| s.len).sum();
+    let mut built = Vec::with_capacity(segment.len());
+    // The next system that would run one at a time.
+    let mut next = first;
+    for (k, stage) in segment.iter().enumerate() {
+        let members: Vec<usize> = stage.members.iter().map(|&m| m - offset).collect();
+        let in_order = members.len() == 1 && members[0] == next;
+        next = next.max(members[members.len() - 1] + 1);
+        let group = (!in_order)
+            .then(|| ViewGroup::new(members.iter().filter_map(|&m| runner(&systems[m])).map(|r| &r.state)).ok())
+            .flatten()
+            .filter(|g| g.len() == members.len());
+        if !in_order && group.is_none() {
+            // The states can't be shown to be disjoint (the plan says they
+            // are): the segment's systems simply run alone, in order.
+            out.extend((first..first + len).map(|m| Stage {
+                members: vec![m],
+                segment: first,
+                starts: m == first,
+                in_order: true,
+                group: None,
+            }));
+            return;
+        }
+        built.push(Stage {
+            members,
+            segment: first,
+            starts: k == 0,
+            in_order,
+            group,
+        });
+    }
+    out.extend(built);
+}
+
+/// The change ticks of a segment's systems: the system at list index `i`
+/// writes in tick `first + (i - segment)`, as it would run one at a time.
+#[derive(Clone, Copy)]
+struct Ticks {
+    /// Index of the segment's first system.
+    segment: usize,
+    /// The change tick of that system.
+    first: u64,
+}
+
+impl Ticks {
+    fn of(self, i: usize) -> u64 {
+        self.first + (i - self.segment) as u64
     }
 }
 
@@ -215,14 +297,17 @@ fn recycle(mut slots: Vec<EventSlot<'_>>) -> Vec<EventSlot<'static>> {
         .collect()
 }
 
-/// Runs the batch `systems` (all view systems, checked by `group`), whose
-/// first system has timing index `base`.
+/// Runs `stage` of the list `systems` (all view systems, checked by
+/// `group`); the list's first system has timing index `base`.
 #[allow(clippy::vec_box)] // see `Exec::runners`
+#[allow(clippy::too_many_arguments)]
 fn run_batch(
     systems: &mut [System],
+    stage: &Stage,
     group: &ViewGroup,
     ctx: &mut Ctx,
     base: usize,
+    ticks: Ticks,
     settings: Settings,
     runners: &mut Vec<Box<ViewRunner>>,
     slot_store: &mut Vec<EventSlot<'static>>,
@@ -231,19 +316,25 @@ fn run_batch(
     let tick = ctx.time.sim_tick();
     let profiling = ctx.perf.state.on;
     // Run one at a time, every system has a change tick of its own. The
-    // batch keeps that: its systems write in the ticks they would have had
-    // (the world moves past all but the last first), so change stamps and
-    // the world's tick are the same as with the scheduler off.
-    let first_tick = ctx.world.change_tick().to_bits();
-    for _ in 1..systems.len() {
+    // batch keeps that: its systems write in the ticks they would have had,
+    // so change stamps and the world's tick are the same as with the
+    // scheduler off. The world moves on to the last of them, unless a
+    // later system of the segment already took it there; then this stage
+    // only has systems registered before that one, none of which records
+    // commands (a recorder is never followed by an earlier stage).
+    let last = ticks.of(stage.members[stage.members.len() - 1]);
+    let moves_on = ctx.world.change_tick().to_bits() <= last;
+    while ctx.world.change_tick().to_bits() < last {
         ctx.world.advance_change_tick();
     }
+    let members = &stage.members;
     runners.clear();
     let mut slots: Vec<EventSlot<'_>> = std::mem::take(slot_store);
     // What the batch could save by using other threads: everything but its
     // slowest system, which this thread would run anyway.
     let (mut work_us, mut slowest_us) = (0.0f32, 0.0f32);
-    for (i, s) in systems.iter_mut().enumerate() {
+    for &i in members {
+        let s = &mut systems[i];
         let Run::View(taken) = &mut s.run else {
             unreachable!("a batch only has view systems");
         };
@@ -256,7 +347,7 @@ fn run_batch(
             .override_changes_since(Some(s.changes_seen.in_world(&ctx.world)));
         runner
             .state
-            .override_change_tick(Some(ponko_ecs::Tick::from_bits(first_tick + i as u64)));
+            .override_change_tick(Some(ponko_ecs::Tick::from_bits(ticks.of(i))));
         // The events it may read: what is kept now. Nothing reaches the
         // store before the batch ends.
         let first = slots.len();
@@ -279,7 +370,7 @@ fn run_batch(
     // one at a time can be charged what they allocate.
     let parallel = settings.threads && !profiling && work_us - slowest_us >= settings.threshold_us;
     // Two counters per batch, for `Ctx::ecs_diagnostics`.
-    if let Some(d) = ctx.perf.dispatch.get_mut(base) {
+    if let Some(d) = ctx.perf.dispatch.get_mut(base + members[0]) {
         if parallel {
             d.threaded_runs += 1;
         } else {
@@ -318,32 +409,36 @@ fn run_batch(
         // the last system's tick ends. Then give the systems back and pass
         // the panic on; the game is whole if someone catches it.
         let world_id = ctx.world.id();
-        for (i, (s, mut runner)) in systems.iter_mut().zip(runners.drain(..)).enumerate() {
+        for (&i, mut runner) in members.iter().zip(runners.drain(..)) {
+            let s = &mut systems[i];
             runner.task.commands.clear();
             runner.task.outbox.clear();
             runner.task.read.clear();
             if runner.task.finished {
                 s.changes_seen = ChangesSeen {
                     world: world_id,
-                    tick: ponko_ecs::Tick::from_bits(first_tick + i as u64),
+                    tick: ponko_ecs::Tick::from_bits(ticks.of(i)),
                 };
             }
             s.run = Run::View(Some(runner));
         }
-        ctx.world.advance_change_tick();
+        if moves_on {
+            ctx.world.advance_change_tick();
+        }
         resume_unwind(panic);
     }
 
     // The barrier. Everything below happens in registration order.
     // First every system's read positions: the store still holds exactly
     // the events the batch saw.
-    for (s, runner) in systems.iter().zip(runners.iter()) {
+    for (&i, runner) in members.iter().zip(runners.iter()) {
         for &id in &runner.task.read {
-            ctx.events.mark_read(id, s.id);
+            ctx.events.mark_read(id, systems[i].id);
         }
     }
     let world_id = ctx.world.id();
-    for (i, (s, mut runner)) in systems.iter_mut().zip(runners.drain(..)).enumerate() {
+    for (&i, mut runner) in members.iter().zip(runners.drain(..)) {
+        let s = &mut systems[i];
         let task = &mut runner.task;
         task.outbox.flush(&mut ctx.events);
         let mut ms = task.last_ms;
@@ -351,7 +446,7 @@ fn run_batch(
         // them again, every later system will.
         s.changes_seen = ChangesSeen {
             world: world_id,
-            tick: ponko_ecs::Tick::from_bits(first_tick + i as u64),
+            tick: ponko_ecs::Tick::from_bits(ticks.of(i)),
         };
         if !task.commands.is_empty() {
             // Only the last system of a batch records commands, and the
@@ -375,6 +470,8 @@ fn run_batch(
         s.run = Run::View(Some(runner));
     }
     // The last system's tick ends here, as after a system that ran alone.
-    ctx.world.advance_change_tick();
+    if moves_on {
+        ctx.world.advance_change_tick();
+    }
     ctx.perf.entities = ctx.world.len();
 }

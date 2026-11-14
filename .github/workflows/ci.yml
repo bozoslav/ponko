@@ -275,6 +275,11 @@ jobs:
           - name: engine with every image format
             scope: -p ponko
             args: --no-default-features --features window,image-formats
+          # Text shaping without the inspector (whose egui otherwise brings
+          # the same shaper in), with the system font lookup.
+          - name: engine with text shaping and system fonts
+            scope: -p ponko
+            args: --no-default-features --features window,system-fonts
           # On Linux this lints the feature's shared code and the path that
           # does nothing; the macOS adapter itself is linted in the feature
           # tests' macOS leg (a second macOS runner per pull request would
@@ -282,6 +287,11 @@ jobs:
           - name: accessibility feature
             scope: -p ponko
             args: --features accessibility
+          # KTX2/DDS block-compressed textures with the Basis Universal
+          # transcoder (C++), and the GPU test and benchmark of them.
+          - name: compressed textures
+            scope: -p ponko
+            args: --features 3d,basis-universal
           # The offscreen rendering benchmarks (`render/scene`, `render/record`).
           - name: benchmarks with the renderer
             scope: -p ponko_bench
@@ -412,7 +422,7 @@ jobs:
       # These features match the workspace test union from FFI and benchmarks.
       # Shards reuse these binaries and runtime DLLs without recompiling.
       - name: Archive unit and render tests
-        run: cargo nextest archive -p ponko --lib --features physics,physics3d,navmesh --archive-file target/windows-unit.tar.zst
+        run: cargo nextest archive -p ponko --lib --features physics,physics3d,navmesh,text-shaping --archive-file target/windows-unit.tar.zst
       - uses: actions/upload-artifact@v7
         with:
           name: windows-unit-tests
@@ -588,6 +598,23 @@ jobs:
         run: |
           cargo test -p ponko --no-fail-fast --features image-formats --test image_formats
           cargo test -p ponko --no-fail-fast --features image-formats --lib assets::
+      # KTX2 and DDS textures: loading, streaming, arrays and hot reload,
+      # and transcoding Basis Universal UASTC (without the feature, a KTX2
+      # file's error names it: the no-default-features run above).
+      - name: Tests, engine with compressed textures
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test -p ponko --no-fail-fast --features 3d,compressed-textures --test compressed_textures
+          cargo test -p ponko --no-fail-fast --features 3d,basis-universal --test compressed_textures
+          cargo test -p ponko --no-fail-fast --features 3d,basis-universal --lib compressed::
+          cargo test -p ponko_ffi --no-fail-fast --features compressed-textures --test compressed_textures
+      # Shaped text, fallback chains and the system font search, with the
+      # offscreen reference images of shaped text where a GPU is found.
+      - name: Tests, text shaping and system fonts
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test -p ponko --no-fail-fast --features 3d,system-fonts --test text_shaping
+          cargo test -p ponko --no-fail-fast --features 3d,system-fonts --lib text
       # Systems called through subsecond's jump table (no dx attached) behave the same.
       - name: Tests, engine with hotpatch
         if: ${{ !cancelled() }}
@@ -920,8 +947,14 @@ jobs:
       # The tutorials' games (book/src/tutorial-*.md) need physics; they must
       # keep building for the browser.
       - run: cargo clippy -p ponko --target wasm32-unknown-unknown --features physics,physics3d --example tutorial_2d --example tutorial_3d
+      # Compressed textures build for the browser; Basis Universal (C++) is
+      # left out there, so UASTC files are an Unsupported error on the web.
+      - run: cargo clippy -p ponko --target wasm32-unknown-unknown --features 3d,basis-universal
       # The accessibility feature has no web adapter: it must build and do nothing.
       - run: cargo check -p ponko --target wasm32-unknown-unknown --features accessibility
+      # Shaping works in the browser; system fonts build and report that the
+      # web has none.
+      - run: cargo check -p ponko --target wasm32-unknown-unknown --features system-fonts
       - name: Find the wasm-bindgen version in Cargo.lock
         run: echo "WASM_BINDGEN=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print }' Cargo.lock)" >> "$GITHUB_ENV"
       - uses: taiki-e/install-action@v2
@@ -1062,10 +1095,13 @@ jobs:
       # The web gallery (web/gallery/README.md) with two of its examples and a
       # demo that needs WebGPU, which must show its message on WebGL2: the
       # pages, their loader and the check the release runs on every example.
+      # Also the 3D demos that read the scene depth (a lake, screen and target
+      # effects) and a texture array's mipmaps, which need the renderer's
+      # WebGL2 paths for them.
       - name: Web gallery pages (Chromium, WebGL2)
         if: ${{ !cancelled() }}
         run: |
-          node web/gallery/build.mjs --only sprites,3d,compute
+          node web/gallery/build.mjs --only sprites,3d,compute,terrain,shaders,target_effect
           node web/smoke/gallery.mjs --browser chromium --backend webgl2
       # Every run, with what it asked for, what ran, the adapter the engine
       # reported and why anything was unsupported (also in the artifact).

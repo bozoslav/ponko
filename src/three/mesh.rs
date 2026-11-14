@@ -301,6 +301,21 @@ impl MeshData {
         mesh
     }
 
+    /// The triangles: [`indices`](Self::indices) three at a time, the
+    /// shape [`Physics::trimesh`](crate::d3::Physics::trimesh) takes. Extra
+    /// indices at the end that make no whole triangle are left out.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// let quad = ponko::render::MeshData::plane(1.0);
+    /// assert_eq!(quad.triangles().len(), 2);
+    /// assert_eq!(quad.triangles()[0], [quad.indices[0], quad.indices[1], quad.indices[2]]);
+    /// ```
+    #[must_use]
+    pub fn triangles(&self) -> &[[u32; 3]] {
+        self.indices.as_chunks::<3>().0
+    }
+
     /// Checks the data fits together: whole triangles, indices in range,
     /// one normal and texture coordinate per corner when given, and finite
     /// numbers.

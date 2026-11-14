@@ -518,6 +518,11 @@ pub(super) const MOVED_ATTRIBUTES: [wgpu::VertexAttribute; 9] = wgpu::vertex_att
     10 => Float32x4, 11 => Float32x4, 12 => Float32x4, 13 => Float32x4, // last frame's matrix
 ];
 
+/// For the motion pass, in a third vertex buffer: where each corner was in
+/// the last frame, before the model matrix (a posed model's last pose; any
+/// other mesh's own positions, read from its vertex buffer again).
+pub(super) const PREVIOUS_POSITION_ATTRIBUTES: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![14 => Float32x3];
+
 pub(super) struct GpuMesh {
     /// Dedicated buffers for deformable meshes and arena-limit fallback.
     pub(super) buffers: Option<(wgpu::Buffer, wgpu::Buffer)>,

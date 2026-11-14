@@ -3,11 +3,15 @@
 //! One subcommand per job, each in its own module: `ponko new` makes a
 //! project from a template ([`new`]); `ponko package` builds and packages a
 //! game for players, and `ponko notices` writes a library's third-party
-//! notices ([`package`]). Arguments are parsed by hand.
+//! notices ([`package`]); `ponko textures` compresses a folder's images
+//! into KTX2 textures ([`textures`], feature `textures`). Arguments are
+//! parsed by hand.
 
 mod new;
 mod package;
 mod templates;
+#[cfg(feature = "textures")]
+mod textures;
 
 use std::process::ExitCode;
 
@@ -18,6 +22,7 @@ Usage:
   ponko new <path> [--2d | --3d | --headless] [--path <engine> | --git <url>]
   ponko package [--bin <name> | --example <name>] [--web] [--format <list>] [...]
   ponko notices --out <file> [-p <package>] [...]
+  ponko textures [<folder>] [--out <folder>] [--force] [--check]
   ponko help [<command>]
   ponko --version
 
@@ -25,6 +30,7 @@ Commands:
   new      Make a new game project from a template
   package  Build the game and package it for players (zip, app, dmg, tar.gz, web)
   notices  Write THIRD-PARTY-NOTICES.txt for a crate
+  textures Compress images into GPU textures (KTX2: BC7, BC5, BC4, UASTC)
 
 Guide: https://ponko.dev/guide/getting-started.html";
 
@@ -74,11 +80,30 @@ fn run(args: &[String]) -> Result<String, String> {
                 package::notices_command(&options, &dir)
             }
         }
+        "textures" => {
+            #[cfg(feature = "textures")]
+            {
+                if rest.iter().any(|a| a == "-h" || a == "--help") {
+                    return Ok(textures::USAGE.to_string());
+                }
+                let options = textures::Options::parse(rest)?;
+                let dir = std::env::current_dir().map_err(|e| format!("can't read the current folder: {e}"))?;
+                textures::textures_command(&options, &dir)
+            }
+            #[cfg(not(feature = "textures"))]
+            Err(
+                "this ponko was built without `ponko textures`: install it with its default features \
+                 (`cargo install ponko_cli`)"
+                    .into(),
+            )
+        }
         "help" | "-h" | "--help" => match rest.first().map(String::as_str) {
             None => Ok(USAGE.to_string()),
             Some("new") => Ok(new::USAGE.to_string()),
             Some("package") => Ok(package::USAGE.to_string()),
             Some("notices") => Ok(package::NOTICES_USAGE.to_string()),
+            #[cfg(feature = "textures")]
+            Some("textures") => Ok(textures::USAGE.to_string()),
             Some(other) => Err(format!("no command `{other}`\n\n{USAGE}")),
         },
         "-V" | "--version" => Ok(format!("ponko {}", env!("CARGO_PKG_VERSION"))),

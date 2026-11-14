@@ -9,9 +9,13 @@
 //! can only narrow which archetypes are looked at, in the same ascending
 //! order a scan uses.
 //!
-//! Archetypes are append-only and never change their component set, so an
-//! entry stays valid for the life of the world: it only has to match the
-//! archetypes created since it last looked.
+//! Archetype slots are never removed, and an entry only has to match the
+//! slots created since it last looked. An empty archetype may be reclaimed
+//! and its slot reused for another component set (see `slots.rs`): a
+//! reclaimed slot can stay in a list, since loops skip empty archetypes,
+//! and when the slot is reused, [`MatchCache::reused`] adds it to or removes
+//! it from every list before any query runs again. So an indexed entry
+//! always lists every matching archetype below its generation.
 //!
 //! Queries that hold the world exclusively ([`World::query`], chunk
 //! queries) build and extend the index. Queries of a
@@ -496,8 +500,9 @@ enum State {
 
 struct MatchEntry {
     state: State,
-    /// Archetypes are append-only: their count is a non-wrapping generation.
-    /// Empty archetypes stay listed: later spawns can populate them again.
+    /// Archetype slots are never removed: their count is a non-wrapping
+    /// generation. Empty archetypes stay listed: later spawns can populate
+    /// them again, and a reused slot is updated by [`MatchCache::reused`].
     generation: usize,
     /// Ascending, so candidates come in scan order.
     indices: Vec<u32>,
@@ -569,17 +574,19 @@ impl MatchCache {
     }
 
     /// The archetypes to visit for a query with signature `key`: the indexed
-    /// candidates, or all of them.
+    /// candidates, or `scan` (the world's archetypes with entities, if it
+    /// lists them), or all of them.
     #[inline]
     pub(crate) fn archetypes<'a>(
         &'a mut self,
         all: &'a [Archetype],
         key: &MatchKey,
         hint: QueryCache,
+        scan: Option<&'a [u32]>,
     ) -> Archetypes<'a> {
         Archetypes {
             all,
-            indices: self.candidates(all, key, hint).map(<[u32]>::iter),
+            indices: self.candidates(all, key, hint).or(scan).map(<[u32]>::iter),
             next: 0,
         }
     }
@@ -593,16 +600,17 @@ impl MatchCache {
         ids: &[ComponentId],
         filter: Option<&Filters>,
         hint: QueryCache,
+        scan: Option<&'a [u32]>,
     ) -> Archetypes<'a> {
         if hint == QueryCache::Never || all.len() < self.min_archetypes() {
             return Archetypes {
                 all,
-                indices: None,
+                indices: scan.map(<[u32]>::iter),
                 next: 0,
             };
         }
         let key = MatchKey::new(|require| ids.iter().for_each(|&id| require(id)), filter);
-        self.archetypes(all, &key, hint)
+        self.archetypes(all, &key, hint, scan)
     }
 
     /// The indices of the archetypes `key` matches, if the policy indexes
@@ -694,6 +702,40 @@ impl MatchCache {
         }
         self.hits += 1;
         Some(&entry.indices)
+    }
+
+    /// Slot `slot` of `all` holds a new archetype now, in place of a
+    /// reclaimed one: every index list that has seen the slot gets it if
+    /// the new archetype matches, and loses it if not, keeping its order.
+    /// Allocates only when a list grows past its capacity.
+    pub(crate) fn reused(&mut self, slot: usize, all: &[Archetype]) {
+        let arch = &all[slot];
+        let budget = self.policy.max_index_bytes / size_of::<u32>();
+        for (key, entry) in &mut self.map {
+            if entry.state != State::Indexed || slot >= entry.generation {
+                continue;
+            }
+            match (key.matches(arch), entry.indices.binary_search(&(slot as u32))) {
+                (true, Err(at)) => {
+                    if self.indices >= budget {
+                        // Over the memory bound: this signature scans from now on.
+                        self.indices -= entry.indices.len();
+                        entry.indices = Vec::new();
+                        entry.state = State::Scanning {
+                            recheck: all.len().saturating_mul(2),
+                        };
+                    } else {
+                        entry.indices.insert(at, slot as u32);
+                        self.indices += 1;
+                    }
+                }
+                (false, Ok(at)) => {
+                    entry.indices.remove(at);
+                    self.indices -= 1;
+                }
+                _ => {}
+            }
+        }
     }
 
     /// The candidates of `key` for a query that holds the world shared (a

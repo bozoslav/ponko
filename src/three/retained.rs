@@ -1410,7 +1410,7 @@ impl Tracked {
         let (was, id) = (*hot.applied.get_mut(), hot.id);
         let instance = source.instance();
         if frame.tracking && was & flags & 1 != 0 {
-            motion.moved(mesh, &instance, arena[lists.slot(0, id)].model);
+            motion.moved_by(self.entities[k], mesh, &instance, arena[lists.slot(0, id)].model);
         }
         let mut meshes = [caster; 1 + MAX_CASCADES];
         meshes[0] = mesh;
@@ -1724,7 +1724,7 @@ impl Tracked {
             let (mesh, caster) = (cold.mesh.load(Ordering::Relaxed), cold.caster.load(Ordering::Relaxed));
             if was & flags & 1 != 0 && motion.tracking() {
                 let before = arena[lists.slot(0, id)].model;
-                motion.moved(mesh, &instance, before);
+                motion.moved_by(self.entities[k], mesh, &instance, before);
             }
             let mut meshes = [caster; 1 + MAX_CASCADES];
             meshes[0] = mesh;
@@ -1938,7 +1938,7 @@ impl Transients {
         item.seq = self.next.len() as u32;
         self.next.push(t);
         if motion_key != NO_KEY && lists.flags(item.id) & flags & 1 != 0 {
-            motion.moved(meshes[0], instance, item.instance.model);
+            motion.moved_by(motion_key, meshes[0], instance, item.instance.model);
         }
         if !lists.holds(item.id, meshes, flags, instance)
             || bytemuck::bytes_of(&item.instance) != bytemuck::bytes_of(instance)

@@ -873,3 +873,188 @@ fn the_ui_examples_are_at_most_half_as_long_as_before_the_builders() {
         }
     }
 }
+
+/// A menu: Play and Quit in a column, filling an 800 x 600 window.
+fn menu(ui: &mut Ui) -> (UiId, UiId, UiId) {
+    let root = ui.root().layout(UiLayout::fill()).id();
+    let play = ui.button(root, "Play").layout(UiLayout::row(40.0)).id();
+    let quit = ui.button(root, "Quit").layout(UiLayout::row(40.0)).id();
+    (root, play, quit)
+}
+
+fn confirm() -> UiInput {
+    UiInput {
+        confirm: true,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn set_focus_then_enter_clicks_that_button() {
+    let mut ui = Ui::default();
+    let (root, _, quit) = menu(&mut ui);
+    ui.push_screen(root, false);
+    assert_eq!(ui.focus(), None, "nothing is focused without asking");
+    assert!(ui.set_focus(quit));
+    assert_eq!(ui.focus(), Some(quit));
+    ui.frame(vec2(800.0, 600.0), &confirm());
+    assert_eq!(ui.events().filter_map(UiEvent::clicked).last(), Some(quit));
+}
+
+#[test]
+fn set_focus_refuses_what_cant_be_focused() {
+    let mut ui = Ui::default();
+    let (root, play, quit) = menu(&mut ui);
+    let label = ui.label(root, "Hello").id();
+    assert!(!ui.set_focus(play), "not on a screen yet");
+    ui.push_screen(root, false);
+    assert!(ui.set_focus(play));
+    assert!(!ui.set_focus(label), "a label");
+    ui.set_enabled(quit, false);
+    assert!(!ui.set_focus(quit), "disabled");
+    ui.set_layout(quit, UiLayout::row(40.0).hidden());
+    ui.set_enabled(quit, true);
+    assert!(!ui.set_focus(quit), "hidden");
+    assert_eq!(ui.focus(), Some(play), "a refused call leaves the focus alone");
+
+    // Only the top screen takes the focus.
+    let dialog = ui.root().id();
+    let ok = ui.button(dialog, "OK").id();
+    ui.push_screen(dialog, true);
+    assert!(!ui.set_focus(play), "under another screen");
+    assert!(ui.set_focus(ok));
+    ui.clear_focus();
+    assert_eq!(ui.focus(), None);
+}
+
+#[test]
+fn a_screen_opens_on_its_focused_node_every_time_it_is_pushed() {
+    let mut ui = Ui::default();
+    let root = ui.root().layout(UiLayout::fill()).id();
+    ui.button(root, "Settings").layout(UiLayout::row(40.0));
+    let play = ui.button(root, "Play").layout(UiLayout::row(40.0)).focused().id();
+    ui.push_screen(root, false);
+    assert_eq!(ui.focus(), Some(play), "before the first layout");
+    ui.frame(vec2(800.0, 600.0), &confirm());
+    assert_eq!(ui.events().filter_map(UiEvent::clicked).last(), Some(play));
+
+    // Tab moves on; closing and opening the menu again starts on Play again.
+    ui.frame(
+        vec2(800.0, 600.0),
+        &UiInput {
+            next: true,
+            ..Default::default()
+        },
+    );
+    assert_ne!(ui.focus(), Some(play));
+    ui.pop_screen();
+    ui.push_screen(root, false);
+    assert_eq!(ui.focus(), Some(play));
+
+    // A screen above it, popped, gives back the focus the menu had.
+    let dialog = ui.root().id();
+    let ok = ui.button(dialog, "OK").focused().id();
+    ui.push_screen(dialog, true);
+    assert_eq!(ui.focus(), Some(ok));
+    ui.pop_screen();
+    assert_eq!(ui.focus(), Some(play));
+
+    // A disabled focus mark is skipped; unmarked, nothing is focused.
+    ui.pop_screen();
+    ui.set_enabled(play, false);
+    ui.push_screen(root, false);
+    assert_eq!(ui.focus(), None);
+    ui.pop_screen();
+    ui.set_enabled(play, true);
+    ui.set_initial_focus(play, false);
+    ui.push_screen(root, false);
+    assert_eq!(ui.focus(), None);
+}
+
+#[test]
+fn a_hud_stays_up_when_escape_closes_the_screen_above_it() {
+    let mut ui = Ui::default();
+    let hud = ui.root().layout(UiLayout::fill().padding(16.0)).id();
+    let count = ui.label(hud, "0 / 5").layout(UiLayout::fixed(200.0, 30.0)).id();
+    ui.show_hud(hud);
+    assert!(ui.is_hud(hud) && !ui.is_screen(hud));
+    assert!(!ui.wants_keyboard(), "the game keeps its keys");
+    let escape = UiInput {
+        cancel: true,
+        ..Default::default()
+    };
+    ui.frame(vec2(800.0, 600.0), &escape);
+    assert!(ui.is_shown(count), "Escape with no screen open");
+    assert_eq!(ui.events().count(), 0, "nothing popped");
+
+    let (menu, play, _) = menu(&mut ui);
+    ui.push_screen(menu, true);
+    ui.frame(vec2(800.0, 600.0), &UiInput::default());
+    assert!(ui.is_shown(count) && ui.is_shown(play));
+    ui.frame(vec2(800.0, 600.0), &escape);
+    assert_eq!(ui.events().collect::<Vec<_>>(), vec![UiEvent::ScreenPopped(menu)]);
+    assert!(ui.is_shown(count), "the HUD is still up");
+    assert_eq!(ui.top_screen(), None);
+
+    ui.hide_hud(hud);
+    assert!(!ui.is_shown(count));
+    ui.show_hud(hud);
+    ui.show_hud(hud);
+    assert!(ui.is_shown(count), "showing twice is showing once");
+    ui.remove(hud);
+    assert!(!ui.is_hud(hud), "removed with its nodes");
+}
+
+#[test]
+fn a_hud_takes_no_pointer_and_no_focus() {
+    let mut ui = Ui::default();
+    let hud = ui.root().layout(UiLayout::fill()).id();
+    let pause = ui.button(hud, "Pause").layout(UiLayout::fixed(100.0, 40.0)).id();
+    ui.show_hud(hud);
+    let at = |pressed, released| UiInput {
+        pointer: vec2(50.0, 20.0),
+        pressed,
+        held: pressed,
+        released,
+        ..Default::default()
+    };
+    ui.frame(vec2(800.0, 600.0), &at(true, false));
+    assert!(!ui.wants_pointer(), "clicks go through to the world");
+    ui.frame(vec2(800.0, 600.0), &at(false, true));
+    assert_eq!(ui.events().count(), 0);
+    assert_eq!(ui.hit_test(vec2(50.0, 20.0)), None);
+    assert!(!ui.set_focus(pause));
+    ui.frame(
+        vec2(800.0, 600.0),
+        &UiInput {
+            next: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(ui.focus(), None, "Tab skips it");
+
+    // Drawn below the screens: a screen's button over it takes the click.
+    let (menu, play, _) = menu(&mut ui);
+    ui.push_screen(menu, false);
+    ui.frame(vec2(800.0, 600.0), &at(true, false));
+    ui.frame(vec2(800.0, 600.0), &at(false, true));
+    assert_eq!(ui.events().filter_map(UiEvent::clicked).last(), Some(play));
+}
+
+#[test]
+#[should_panic(expected = "UI HUD is already a screen")]
+fn a_screen_cant_also_be_a_hud() {
+    let mut ui = Ui::default();
+    let root = ui.root().id();
+    ui.push_screen(root, false);
+    ui.show_hud(root);
+}
+
+#[test]
+#[should_panic(expected = "UI screen is shown as a HUD")]
+fn a_hud_cant_also_be_a_screen() {
+    let mut ui = Ui::default();
+    let root = ui.root().id();
+    ui.show_hud(root);
+    ui.push_screen(root, false);
+}

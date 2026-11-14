@@ -237,6 +237,7 @@ static void setup(PonkoCtx* ctx, void* user) {
     CHECK(ponko_ctx_post(ctx, &back) == PONKO_OK && back.anti_aliasing == 3 && back.taa_sharpness == 0.5f && back.contact_shadows == 0.3f && back.ssr == 0.5f && back.ssr_max_distance == 20);
     uint64_t e;
     CHECK(ponko_spawn(ponko_ctx_world(ctx), NULL, 0, &e) == PONKO_OK);
+    CHECK(ponko_ctx_reset_motion(ctx, e) == PONKO_OK);
     CHECK(ponko_world_free(ponko_ctx_world(ctx)) == PONKO_BUSY);
     PonkoText3D t = ponko_text3d_default(), got;
     t.billboard = true; t.align = 2;
@@ -1934,6 +1935,89 @@ static void headless_frames_ui(void) {
     CHECK(ponko_game_headless_frames(NULL, true) == PONKO_INVALID_ARGUMENT);
 }
 
+/* A menu that opens on its Play button, a HUD that Escape leaves up, and a
+   glTF file made solid in one call. */
+static void focus_and_hud_setup(PonkoCtx* ctx, void* user) {
+    const char* path = user;
+    const uint64_t s = PONKO_UI_SCREEN;
+    PonkoUiLayout column = ponko_ui_layout_default();
+    column.flex_direction = PONKO_UI_FLEX_COLUMN;
+    column.width = (PonkoUiLength){PONKO_UI_LENGTH_POINTS, 300};
+    column.height = (PonkoUiLength){PONKO_UI_LENGTH_POINTS, 200};
+    PonkoUiLayout row = ponko_ui_layout_default();
+    row.width = (PonkoUiLength){PONKO_UI_LENGTH_POINTS, 120};
+    row.height = (PonkoUiLength){PONKO_UI_LENGTH_POINTS, 40};
+    uint64_t hud, count, menu, play, quit;
+    CHECK(ponko_ctx_ui_add_panel(ctx, s, PONKO_UI_NONE, &column, &hud) == PONKO_OK);
+    CHECK(ponko_ctx_ui_add_label(ctx, s, hud, "0 / 5", &row, &count) == PONKO_OK);
+    CHECK(ponko_ctx_ui_show_hud(ctx, s, hud) == PONKO_OK);
+    bool flag = false;
+    CHECK(ponko_ctx_ui_is_hud(ctx, s, hud, &flag) == PONKO_OK && flag);
+    CHECK(ponko_ctx_ui_wants_keyboard(ctx, &flag) == PONKO_OK && !flag);
+    CHECK(ponko_ctx_ui_push_screen(ctx, s, hud, false) == PONKO_INVALID_ARGUMENT);
+    CHECK(ponko_ctx_ui_show_hud(ctx, s, count) == PONKO_INVALID_ARGUMENT);
+
+    CHECK(ponko_ctx_ui_add_panel(ctx, s, PONKO_UI_NONE, &column, &menu) == PONKO_OK);
+    CHECK(ponko_ctx_ui_add_button(ctx, s, menu, "Quit", &row, &quit) == PONKO_OK);
+    CHECK(ponko_ctx_ui_add_button(ctx, s, menu, "Play", &row, &play) == PONKO_OK);
+    CHECK(ponko_ctx_ui_set_initial_focus(ctx, s, play, true) == PONKO_OK);
+    CHECK(ponko_ctx_ui_set_focus(ctx, s, play) == PONKO_INVALID_ARGUMENT); /* not on a screen yet */
+    CHECK(ponko_ctx_ui_push_screen(ctx, s, menu, true) == PONKO_OK);
+    uint64_t focus = 0;
+    CHECK(ponko_ctx_ui_focus(ctx, s, &focus) == PONKO_OK && focus == play);
+    CHECK(ponko_ctx_ui_set_focus(ctx, s, count) == PONKO_INVALID_ARGUMENT); /* a label on a HUD */
+    CHECK(ponko_ctx_ui_set_focus(ctx, s, 9999) == PONKO_NOT_FOUND);
+    PonkoVec2 window = {800, 600};
+    PonkoUiInput enter = ponko_ui_input_default();
+    enter.confirm = true;
+    CHECK(ponko_ctx_ui_frame(ctx, s, window, &enter) == PONKO_OK);
+    PonkoUiEvent event;
+    CHECK(ponko_ctx_ui_next_event(ctx, s, &event) == PONKO_OK);
+    CHECK(event.kind == PONKO_UI_EVENT_CLICKED && event.id == play);
+    CHECK(ponko_ctx_ui_set_focus(ctx, s, quit) == PONKO_OK);
+    CHECK(ponko_ctx_ui_clear_focus(ctx, s) == PONKO_OK);
+    CHECK(ponko_ctx_ui_focus(ctx, s, &focus) == PONKO_OK && focus == PONKO_UI_NONE);
+
+    /* Escape closes the menu; the HUD stays. */
+    PonkoUiInput escape = ponko_ui_input_default();
+    escape.cancel = true;
+    CHECK(ponko_ctx_ui_frame(ctx, s, window, &escape) == PONKO_OK);
+    CHECK(ponko_ctx_ui_is_shown(ctx, s, count, &flag) == PONKO_OK && flag);
+    CHECK(ponko_ctx_ui_is_shown(ctx, s, play, &flag) == PONKO_OK && !flag);
+    CHECK(ponko_ctx_ui_hide_hud(ctx, s, hud) == PONKO_OK);
+    CHECK(ponko_ctx_ui_is_shown(ctx, s, count, &flag) == PONKO_OK && !flag);
+
+    /* A 4 x 4 m floor at y = 0, solid in one call, scaled or as a hull. */
+    PonkoCollisionMesh floor, again, wide;
+    PonkoVec3 one = {1, 1, 1}, twice = {2, 1, 2};
+    CHECK(ponko_ctx_load_collision_mesh(ctx, path, one, false, &floor) == PONKO_OK);
+    CHECK(ponko_ctx_load_collision_mesh(ctx, path, one, false, &again) == PONKO_OK && again.id == floor.id);
+    CHECK(ponko_ctx_load_collision_mesh(ctx, path, twice, false, &wide) == PONKO_OK && wide.id != floor.id);
+    CHECK(ponko_ctx_load_collision_mesh(ctx, path, one, true, &wide) == PONKO_INVALID_ARGUMENT); /* a flat hull */
+    CHECK(ponko_ctx_load_collision_mesh(ctx, "no/such.glb", one, false, &wide) == PONKO_NOT_FOUND);
+    CHECK(ponko_ctx_load_collision_mesh(ctx, path, one, false, NULL) == PONKO_INVALID_ARGUMENT);
+}
+static void focus_huds_and_collision_files(void) {
+    char path[1024];
+    snprintf(path, sizeof path, "%s/ponko-c-floor.gltf", temp_dir());
+    FILE* f = fopen(path, "w");
+    CHECK(f);
+    fputs("{\"asset\": {\"version\": \"2.0\"}, \"scene\": 0, \"scenes\": [{\"nodes\": [0]}], \"nodes\": [{\"mesh\": 0}],"
+          " \"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0}, \"indices\": 1}]}],"
+          " \"buffers\": [{\"byteLength\": 60, \"uri\": \"data:application/octet-stream;base64,"
+          "AAAAwAAAAAAAAABAAAAAQAAAAAAAAABAAAAAQAAAAAAAAADAAAAAwAAAAAAAAADAAAABAAIAAAACAAMA\"}],"
+          " \"bufferViews\": [{\"buffer\": 0, \"byteLength\": 48}, {\"buffer\": 0, \"byteOffset\": 48, \"byteLength\": 12}],"
+          " \"accessors\": [{\"bufferView\": 0, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC3\","
+          " \"min\": [-2, 0, -2], \"max\": [2, 0, 2]}, {\"bufferView\": 1, \"componentType\": 5123, \"count\": 6, \"type\": \"SCALAR\"}]}",
+          f);
+    fclose(f);
+    PonkoGame* game = ponko_game_new("c focus and huds", 1, 1); CHECK(game);
+    CHECK(ponko_game_physics3d(game, (PonkoVec3){0, -9.81f, 0}) == PONKO_OK);
+    PonkoWorld* w = NULL;
+    CHECK(ponko_game_run_headless(game, 0, focus_and_hud_setup, path, &w) == PONKO_OK);
+    CHECK(ponko_world_free(w) == PONKO_OK);
+    remove(path);
+}
 int main(void) {
     change_detection();
     declared_access();
@@ -2020,5 +2104,6 @@ int main(void) {
     wide_queries();
     native_coverage();
     headless_frames_ui();
+    focus_huds_and_collision_files();
     return 0;
 }

@@ -4,6 +4,8 @@
 //! the thread inside `allocations_in` are counted, so libtest's other threads
 //! (its slow-test warning under Miri, for one) can't fail it.
 
+mod common;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -194,4 +196,115 @@ fn warm_transitions_on_a_wide_entity_do_not_allocate() {
 fn wide_archetypes_query_and_change_without_allocating() {
     queries_over_wide_archetypes_do_not_allocate();
     warm_transitions_on_a_wide_entity_do_not_allocate();
+}
+
+// ---- a world that walks through component sets ------------------------------
+
+/// Optional marker `K`.
+#[derive(Component)]
+struct Opt<const K: usize>;
+/// Optional data `K`, tracked in one of the tests.
+#[allow(dead_code)] // Only its layout matters.
+#[derive(Clone, Copy, Component)]
+struct OptData<const K: usize>(u64);
+
+/// Gives (`add`) or takes optional component `c` (0..8) of entity `e`.
+fn toggle(w: &mut World, e: Entity, c: usize, add: bool) {
+    macro_rules! arms {
+        ($($n:literal)*) => {
+            match c {
+                $($n => if add { w.insert(e, Opt::<$n>); } else { w.remove::<Opt<$n>>(e); },)*
+                $(c if c == $n + 4 => if add { w.insert(e, OptData::<$n>(c as u64)); } else { w.remove::<OptData<$n>>(e); },)*
+                _ => unreachable!(),
+            }
+        };
+    }
+    arms!(0 1 2 3)
+}
+
+/// Entities that walk through all 256 sets of eight optional components,
+/// one change per tick (the bit a Gray code flips), each starting at
+/// another point of the walk, next to entities that stay put. The world
+/// keeps far fewer empty archetypes than the walk passes through, so it
+/// reclaims some and builds new ones every tick, the same ones every 256
+/// ticks.
+struct Walk {
+    world: World,
+    walkers: Vec<Entity>,
+    tick: usize,
+}
+
+impl Walk {
+    fn new(walkers: usize, still: usize) -> Self {
+        let mut world = World::new();
+        world.track_changes::<OptData<0>>();
+        for i in 0..still {
+            world.spawn((P(i as f32), V(1.0)));
+        }
+        let walkers = (0..walkers)
+            .map(|i| {
+                let e = world.spawn((P(i as f32),));
+                // Start at the Gray code of an offset into the walk.
+                let start = i * 256 / walkers;
+                let gray = start ^ (start >> 1);
+                for c in (0..8).filter(|c| gray >> c & 1 != 0) {
+                    toggle(&mut world, e, c, true);
+                }
+                e
+            })
+            .collect();
+        Walk {
+            world,
+            walkers,
+            tick: 0,
+        }
+    }
+
+    fn tick(&mut self) {
+        for (i, &e) in self.walkers.iter().enumerate() {
+            let step = (self.tick + i * 256 / self.walkers.len()) % 256;
+            // Going from `step` to `step + 1` flips the lowest set bit of `step + 1`.
+            let c = ((step + 1) % 256).trailing_zeros().min(7) as usize;
+            let had = {
+                let g = step ^ (step >> 1);
+                g >> c & 1 != 0
+            };
+            toggle(&mut self.world, e, c, !had);
+        }
+        self.tick += 1;
+        let mut sum = 0.0;
+        self.world.query::<&P>().for_each(|p| sum += p.0);
+        assert!(sum >= 0.0);
+        // What a game does every tick: start the next one, and drop the
+        // removals of `OptData<0>` everyone has seen.
+        let seen = self.world.advance_change_tick();
+        self.world.forget_removed(seen);
+    }
+}
+
+#[test]
+fn walking_through_more_component_sets_than_are_kept_stops_allocating() {
+    // Miri checks the unsafe code on a short walk; the counts need a long one.
+    let (walkers, still, settle, measured) = if cfg!(miri) { (2, 3, 2, 1) } else { (6, 100, 10, 4) };
+    let mut walk = Walk::new(walkers, still);
+    // Rounds of the walk until every archetype it needs has been built,
+    // and the storage kept for each width, every buffer and every edge map
+    // has the size it will need (the reclaiming sweep isn't in step with
+    // the walk, so that takes a few rounds).
+    for _ in 0..settle * 256 {
+        walk.tick();
+    }
+    let slots = walk.world.raw_ref().archetypes().len();
+    let allocations = allocations_in(|| {
+        for _ in 0..measured * 256 {
+            walk.tick();
+        }
+    });
+    if !cfg!(miri) {
+        assert_eq!(allocations, 0, "settled rounds of the walk allocated");
+    }
+    // Reclaimed slots were reused: the walk passed through 256 sets in each
+    // round, with no new slot.
+    assert_eq!(walk.world.raw_ref().archetypes().len(), slots);
+    assert!(slots < 256, "{slots} slots");
 }

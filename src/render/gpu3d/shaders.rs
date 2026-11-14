@@ -17,7 +17,10 @@ use std::sync::Arc;
 
 use super::pipeline_cache::{self, Features, MaterialCache, ModuleKey, TargetKey};
 use super::shader_checks::{self, end_scope, rejected};
-use super::{DEPTH_FORMAT, HDR_FORMAT, INSTANCE_ATTRIBUTES, MOVED_ATTRIBUTES, VERTEX_ATTRIBUTES, Vertex};
+use super::{
+    DEPTH_FORMAT, HDR_FORMAT, INSTANCE_ATTRIBUTES, MOVED_ATTRIBUTES, PREVIOUS_POSITION_ATTRIBUTES, VERTEX_ATTRIBUTES,
+    Vertex,
+};
 use super::{Instancing, PipelineRole, ShaderVariant, Sides};
 use crate::render::capabilities::GpuLimits;
 use crate::render::taa;
@@ -42,6 +45,9 @@ pub(super) struct Shaders {
     features: Features,
     /// Samples per pixel of the targets the pipelines draw into.
     samples: u32,
+    /// Whether the scene depth is read as a float texture (see
+    /// [`reads_depth_as_float`]).
+    float_depth: bool,
 }
 
 impl Shaders {
@@ -52,6 +58,7 @@ impl Shaders {
         shadow_layout: wgpu::PipelineLayout,
         features: Features,
         samples: u32,
+        float_depth: bool,
     ) -> Self {
         let mut cache = MaterialCache::new(TargetKey {
             color: HDR_FORMAT,
@@ -64,7 +71,11 @@ impl Shaders {
             &layout,
             &shadow_layout,
             "built-in",
-            &compose_shader_storage("", features.decals, features.gi, features.storage),
+            &for_samples(
+                &compose_shader_storage("", features.decals, features.gi, features.storage),
+                samples,
+                float_depth,
+            ),
             samples,
             &cache.counters,
         );
@@ -87,6 +98,7 @@ impl Shaders {
             warm_variants: false,
             features,
             samples,
+            float_depth,
         }
     }
 
@@ -219,7 +231,7 @@ impl Shaders {
             &self.layout,
             &self.shadow_layout,
             name,
-            &source,
+            &for_samples(&source, self.samples, self.float_depth),
             self.samples,
             // Its own until the GPU accepts it (see `material_pipelines`).
             &Arc::default(),
@@ -243,12 +255,178 @@ impl Shaders {
 /// both). A game's own shader must read the scene depth at index 0 (or through
 /// `scene_position`), the only value that means the same in both: the book's
 /// shader section says so.
-pub(super) fn for_samples(source: &str, samples: u32) -> std::borrow::Cow<'_, str> {
-    if samples > 1 {
+///
+/// With `float_depth` (the GL backend, see [`reads_depth_as_float`]) the
+/// scene depth is declared as a float texture instead (see [`depth_as_float`]).
+pub(super) fn for_samples(source: &str, samples: u32, float_depth: bool) -> std::borrow::Cow<'_, str> {
+    if float_depth {
+        std::borrow::Cow::Owned(depth_as_float(source, samples))
+    } else if samples > 1 {
         std::borrow::Cow::Borrowed(source)
     } else {
         std::borrow::Cow::Owned(source.replace("texture_depth_multisampled_2d", "texture_depth_2d"))
     }
+}
+
+/// Whether `device` reads the scene depth as an unfilterable float texture:
+/// on the GL backend (WebGL2 and native OpenGL ES), which can't read a
+/// depth texture the way the other backends do. Its shading language has no
+/// way to load a texel of a depth texture (naga rejects WGSL's `textureLoad`
+/// on one), and OpenGL ES 3.0 counts a depth texture read without a
+/// comparison as incomplete unless its filter is `NEAREST` (wgpu leaves it
+/// linear), so even a plain `texelFetch` would read 0. The scene depth is
+/// then bound as a float texture and sampled through a non-filtering
+/// sampler (see [`depth_as_float`]). WebGPU allows binding a depth format as
+/// an unfilterable float texture on every backend; the other backends keep
+/// the depth binding, so their shaders stay as they were.
+pub(super) fn reads_depth_as_float(device: &wgpu::Device) -> bool {
+    #[cfg(test)]
+    if FORCE_FLOAT_DEPTH.get() {
+        return true;
+    }
+    device.adapter_info().backend == wgpu::Backend::Gl
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests: renderers made on this thread read the scene depth as a float
+    /// texture on any backend, so the GL path runs on the test machine's GPU.
+    pub(crate) static FORCE_FLOAT_DEPTH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a renderer with `float_depth` and `samples` per pixel samples the
+/// scene depth through a non-filtering sampler (binding 2 of the scene
+/// group): with one sample. A multisampled texture has no filter to make it
+/// incomplete, so it is loaded per sample (`texelFetch`), and has no sampler.
+pub(super) fn samples_scene_depth(float_depth: bool, samples: u32) -> bool {
+    float_depth && samples <= 1
+}
+
+/// The sample type the scene depth binding (`scene_depth_texture`) is
+/// declared with: see [`reads_depth_as_float`].
+pub(super) fn scene_depth_sample_type(float_depth: bool) -> wgpu::TextureSampleType {
+    if float_depth {
+        wgpu::TextureSampleType::Float { filterable: false }
+    } else {
+        wgpu::TextureSampleType::Depth
+    }
+}
+
+/// What [`depth_as_float`] adds at the end of a single-sampled shader: the
+/// sampler and the texel read through it (at the texel's center, with
+/// `NEAREST` filtering: the stored value).
+pub(super) const SAMPLED_DEPTH: &str = "
+// ---- the scene depth, sampled (the GL backend) ----
+@group(2) @binding(2) var scene_depth_sampler: sampler;
+fn scene_depth_texel(at: vec2<i32>) -> vec4<f32> {
+    let size = vec2<f32>(textureDimensions(scene_depth_texture));
+    return textureSampleLevel(scene_depth_texture, scene_depth_sampler, (vec2<f32>(at) + 0.5) / size, 0.0);
+}
+";
+
+/// `source` with the scene depth (`scene_depth_texture`, declared
+/// `texture_depth_multisampled_2d` by the mesh prelude) read as a float
+/// texture of `samples` per pixel, the same values:
+///
+/// - With one sample the declaration becomes `texture_2d<f32>`, and each
+///   `textureLoad(scene_depth_texture, at, i)` becomes
+///   `scene_depth_texel(vec2<i32>(at)).x`, which samples it through a
+///   non-filtering sampler (see [`reads_depth_as_float`] for why a load
+///   won't do); the sampler and that function are added at the end.
+/// - Multisampled, the declaration becomes `texture_multisampled_2d<f32>`,
+///   and each load takes the red channel (`.x`) of the `vec4<f32>` it now
+///   returns.
+///
+/// A game's shader that loads the scene depth itself keeps working: its
+/// calls are rewritten the same way. Calls in `//` comments are left alone;
+/// lines don't move, so error messages point at the same lines.
+pub(super) fn depth_as_float(source: &str, samples: u32) -> String {
+    let sampled = samples <= 1;
+    let declared = if sampled {
+        "texture_2d<f32>"
+    } else {
+        "texture_multisampled_2d<f32>"
+    };
+    let source = source.replace("texture_depth_multisampled_2d", declared);
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut out = String::with_capacity(source.len() + SAMPLED_DEPTH.len() + 64);
+    let mut rest = source.as_str();
+    while let Some(at) = rest.find("textureLoad") {
+        let after = at + "textureLoad".len();
+        let line_start = rest[..at].rfind('\n').map_or(0, |n| n + 1);
+        let in_comment = rest[line_start..at].contains("//");
+        let standalone = !rest[..at].ends_with(ident);
+        let reads_depth = rest[after..]
+            .trim_start()
+            .strip_prefix('(')
+            .map(str::trim_start)
+            .and_then(|a| a.strip_prefix("scene_depth_texture"))
+            .is_some_and(|tail| !tail.starts_with(ident));
+        let call = (standalone && !in_comment && reads_depth)
+            .then(|| load_arguments(rest, after))
+            .flatten();
+        match call {
+            Some(call) => {
+                out.push_str(&rest[..at]);
+                if sampled {
+                    out.push_str("scene_depth_texel(vec2<i32>(");
+                    out.push_str(rest[call.coordinate.clone()].trim());
+                    out.push_str(")).x");
+                } else {
+                    out.push_str(&rest[at..call.end]);
+                    out.push_str(".x");
+                }
+                rest = &rest[call.end..];
+            }
+            // Not a scene depth load (or unbalanced: the compiler reports it).
+            None => {
+                out.push_str(&rest[..after]);
+                rest = &rest[after..];
+            }
+        }
+    }
+    out.push_str(rest);
+    if sampled {
+        out.push_str(SAMPLED_DEPTH);
+    }
+    out
+}
+
+/// Where a `textureLoad(scene_depth_texture, coordinate, ..)` call's parts
+/// are in `source`, the call's name ending at `after`.
+struct LoadCall {
+    /// The coordinate argument (the second).
+    coordinate: std::ops::Range<usize>,
+    /// Just past the closing parenthesis.
+    end: usize,
+}
+
+/// The parts of the call whose name ends at `after`: `None` if its
+/// parentheses don't close or it has fewer than two arguments.
+fn load_arguments(source: &str, after: usize) -> Option<LoadCall> {
+    let open = after + source[after..].find('(')?;
+    let mut depth = 0usize;
+    let mut commas = Vec::new();
+    for (i, c) in source[open..].char_indices() {
+        let i = open + i;
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let start = *commas.first()? + 1;
+                    let stop = commas.get(1).copied().unwrap_or(i);
+                    return Some(LoadCall {
+                        coordinate: start..stop,
+                        end: i + 1,
+                    });
+                }
+            }
+            ',' if depth == 1 => commas.push(i),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// One material shader's pipelines: a [`Pipelines`] set per
@@ -625,6 +803,7 @@ pub(super) fn effect_pipeline(
     })
 }
 
+/// `source` is ready for the targets: through [`for_samples`].
 pub(super) fn build_pipelines(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
@@ -636,7 +815,7 @@ pub(super) fn build_pipelines(
 ) -> ShaderPipelines {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
-        source: wgpu::ShaderSource::Wgsl(for_samples(source, samples).into_owned().into()),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
     });
     let builder = SideBuilder {
         device: device.clone(),
@@ -766,6 +945,11 @@ impl SideBuilder {
                 array_stride: if shared { 0 } else { size_of::<MovedInstance>() as u64 },
                 step_mode: wgpu::VertexStepMode::Instance,
                 attributes: &MOVED_ATTRIBUTES,
+            }),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: size_of::<Vertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &PREVIOUS_POSITION_ATTRIBUTES,
             }),
         ];
         let velocity_target = [Some(wgpu::ColorTargetState {

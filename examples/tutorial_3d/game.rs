@@ -20,9 +20,11 @@ use ponko::ui::{UiEvent, UiLayout};
 /// The window title.
 pub const TITLE: &str = "Lantern Yard";
 
-/// The whole game: one plugin per step of the tutorial.
-pub fn game() -> Game {
+/// The whole game: one plugin per step of the tutorial, ready to `run()`
+/// in a window or `run_headless(ticks)`.
+pub fn game() -> ConfiguredGame {
     Game::new(TITLE, 1280, 720)
+        .configured() // the plugins hold all of the setup
         .plugin(Yard) // step 1: a glTF scene, solid, under the sun
         .plugin(Walker) // step 2: a character controller and a camera
         .plugin(Lanterns) // step 3: point lights
@@ -47,12 +49,7 @@ impl Plugin for Yard {
         // What you see: every mesh and material in the file.
         let look = ctx.gfx.load_mesh(YARD);
         // What you stand on: the same triangles as a collision mesh.
-        let shape = ctx.gfx.load_mesh_data(YARD);
-        let (triangles, _) = shape.indices.as_chunks::<3>(); // three corners each
-        let solid = ctx
-            .physics3d
-            .trimesh(&shape.positions, triangles)
-            .expect("the yard has triangles");
+        let solid = ctx.load_collision_mesh(YARD).expect("the yard loads");
         ctx.world.spawn((
             Transform::default(),
             Model::new(look),
@@ -383,14 +380,14 @@ impl Plugin for Hud {
 
     fn setup(&self, ctx: &mut Ctx) {
         let ui = &mut ctx.ui;
-        // A screen of its own for the counter: always shown, never focused.
+        // A HUD for the counter: always shown, under every screen.
         let corner = ui.root().layout(UiLayout::fill().padding(16.0)).id();
         let count = ui
             .label(corner, "")
             .layout(UiLayout::fixed(320.0, 32.0))
             .name("hud.count")
             .id();
-        ui.push_screen(corner, false);
+        ui.show_hud(corner);
 
         // The panel, pushed on top once every lantern is lit.
         let done = ui
@@ -403,6 +400,7 @@ impl Plugin for Hud {
             .button(done, "Play again")
             .layout(UiLayout::row(44.0))
             .name("hud.again")
+            .focused() // Enter plays again
             .id();
         ctx.world.insert_resource(HudUi { count, done, again });
     }
@@ -413,14 +411,11 @@ impl Plugin for Hud {
 fn hud(ctx: &mut Ctx) {
     let ids = *ctx.world.resource::<HudUi>();
     let mut again = false;
-    let events: Vec<UiEvent> = ctx.ui.events().collect();
-    for event in events {
+    for event in ctx.ui.events() {
         match event {
             UiEvent::Clicked(id) if id == ids.again => again = true,
             // Escape closes the panel: play again too.
             UiEvent::ScreenPopped(id) if id == ids.done => again = true,
-            // Escape on the counter's screen: keep the counter.
-            UiEvent::ScreenPopped(id) if id != ids.done => ctx.ui.push_screen(id, false),
             _ => {}
         }
     }

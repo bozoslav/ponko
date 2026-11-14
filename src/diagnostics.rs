@@ -155,11 +155,40 @@ pub struct SystemDiagnostics {
     /// Why it runs alone, as a stage of its own; `None` for a view system
     /// that can share a batch (whether or not it has company).
     pub alone: Option<AloneDiagnostics>,
+    /// Why it isn't in an earlier stage: which system kept it out of the
+    /// stage before its own, and on what. `None` before the game has listed
+    /// its systems.
+    pub blocked: Option<BlockedDiagnostics>,
     /// Time in the last frame (all of its ticks together), in ms. In a
     /// batch this is the system's own run time on whichever thread ran it.
     pub last_ms: f32,
     /// Smoothed average of `last_ms`.
     pub avg_ms: f32,
+}
+
+/// What keeps a system (or a stage's first system) out of the stage before
+/// its own ([`Boundary`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+#[non_exhaustive]
+pub struct BlockedDiagnostics {
+    /// - `phase`: it is in the first stage of its phase.
+    /// - `alone`: it runs alone, or the system before it does.
+    /// - `conflict`: it must see the work of system `after`, which is in
+    ///   the stage before, on `conflicts`.
+    /// - `barrier`: an explicit [`Game::barrier`](crate::game::Game::barrier).
+    /// - `order`: [`Game::order`](crate::game::Game::order) puts it after
+    ///   system `after`.
+    /// - `keeps_order`: it may not run ahead of system `after`, registered
+    ///   earlier and in the same stage, because their order shows on
+    ///   `conflicts` (two senders of one event type, say). Only for systems,
+    ///   never for a stage.
+    pub boundary: String,
+    /// `order` of the earlier system, for `conflict`, `order` and
+    /// `keeps_order`.
+    pub after: Option<usize>,
+    /// What the two systems conflict on, for `conflict` and `keeps_order`.
+    pub conflicts: Vec<ConflictDiagnostics>,
 }
 
 /// What a system declares it reads and writes ([`SystemAccess`]), with
@@ -226,8 +255,9 @@ pub struct ConflictDiagnostics {
 
 /// How the systems are cut into stages. See [`SchedulePlan`].
 ///
-/// A stage is one system alone or a batch of neighbouring view systems
-/// with no conflict. **Every stage ends with a barrier**: the commands its
+/// A stage is one system alone or a batch of view systems with no
+/// conflict; a batch's systems need not be neighbours (see
+/// [`SchedulePlan`]). **Every stage ends with a barrier**: the commands its
 /// systems recorded are applied and the events they sent become visible
 /// before the next stage starts. The stages are listed whether or not the
 /// parallel scheduler is on; with it off, each system runs alone in
@@ -254,7 +284,7 @@ pub struct ScheduleDiagnostics {
     pub dependencies: Vec<DependencyDiagnostics>,
 }
 
-/// One stage: systems `first..first + len` of [`EcsDiagnostics::systems`].
+/// One stage: the systems `systems` of [`EcsDiagnostics::systems`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 #[non_exhaustive]
@@ -267,6 +297,10 @@ pub struct StageDiagnostics {
     pub first: usize,
     /// How many systems it has.
     pub len: usize,
+    /// `order` of each of its systems, in registration order. They need not
+    /// be neighbours: a system that doesn't interact with the ones
+    /// registered before it may run in an earlier stage than theirs.
+    pub systems: Vec<usize>,
     /// More than one system shares it.
     pub batch: bool,
     /// Why it starts here, that is, what keeps its first system out of the
@@ -587,27 +621,43 @@ fn alone(why: Alone) -> AloneDiagnostics {
     }
 }
 
+/// `boundary` as diagnostics.
+fn blocked(boundary: &Boundary) -> BlockedDiagnostics {
+    let (kind, after, conflicts) = match boundary {
+        Boundary::Phase => ("phase", None, Vec::new()),
+        Boundary::Alone => ("alone", None, Vec::new()),
+        Boundary::Conflict { with, conflicts } => ("conflict", Some(*with), conflicts.iter().map(conflict).collect()),
+        Boundary::Barrier => ("barrier", None, Vec::new()),
+        Boundary::Order { after } => ("order", Some(*after), Vec::new()),
+        Boundary::KeepsOrder { after, conflicts } => {
+            ("keeps_order", Some(*after), conflicts.iter().map(conflict).collect())
+        }
+    };
+    BlockedDiagnostics {
+        boundary: kind.to_string(),
+        after,
+        conflicts,
+    }
+}
+
 fn schedule(source: &PlanSource, plan: Option<&SchedulePlan>, dispatch: &[Dispatch]) -> ScheduleDiagnostics {
     let stages = plan.map_or_else(Vec::new, |plan| {
         (plan.stages.iter().enumerate())
             .map(|(index, stage)| {
-                let (boundary, after, conflicts) = match &stage.boundary {
-                    Boundary::Phase => ("phase", None, Vec::new()),
-                    Boundary::Alone => ("alone", None, Vec::new()),
-                    Boundary::Conflict { with, conflicts } => {
-                        ("conflict", Some(*with), conflicts.iter().map(conflict).collect())
-                    }
-                    Boundary::Barrier => ("barrier", None, Vec::new()),
-                    Boundary::Order { after } => ("order", Some(*after), Vec::new()),
-                };
+                let BlockedDiagnostics {
+                    boundary,
+                    after,
+                    conflicts,
+                } = blocked(&stage.boundary);
                 let ran = dispatch.get(stage.first).copied().unwrap_or_default();
                 StageDiagnostics {
                     index,
                     phase: phase_name(stage.phase).to_string(),
                     first: stage.first,
                     len: stage.len,
+                    systems: stage.members.clone(),
                     batch: stage.is_batch(),
-                    boundary: boundary.to_string(),
+                    boundary,
                     after,
                     conflicts,
                     threaded_runs: ran.threaded_runs,
@@ -686,6 +736,7 @@ fn systems(
                     // as far as anyone knows.
                     None => Some(alone(Alone::Undeclared)),
                 },
+                blocked: plan.and_then(|p| p.systems.get(order)).map(|s| blocked(&s.boundary)),
                 last_ms: t.last_ms,
                 avg_ms: t.avg_ms,
             }

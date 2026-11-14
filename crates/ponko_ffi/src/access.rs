@@ -20,7 +20,7 @@ use std::ffi::{CStr, c_char, c_void};
 /// let a = ponko_ffi::ponko_access_new();
 /// unsafe { ponko_ffi::ponko_access_free(a); }
 /// ```
-pub struct PonkoAccess(SystemAccess);
+pub struct PonkoAccess(pub(crate) SystemAccess);
 
 /// Engine services a declaration can name (`ponko_access_service`). Two
 /// systems conflict on a service when both use it and one writes it.

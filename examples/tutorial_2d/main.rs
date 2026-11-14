@@ -19,10 +19,10 @@ use game::game; // in your project: `use crab_cove::game;`
 fn main() {
     if std::env::var("HEADLESS").is_ok_and(|v| v != "0") {
         let ticks = std::env::var("TICKS").ok().and_then(|t| t.parse().ok()).unwrap_or(600);
-        let world = game().configured().run_headless(ticks);
+        let world = game().run_headless(ticks);
         println!("ran {ticks} ticks headless: {} entities", world.len());
     } else {
-        game().configured().run();
+        game().run();
     }
 }
 // ANCHOR_END: main

@@ -392,6 +392,11 @@ impl<'a> RawWorldRef<'a> {
     }
 
     /// The archetype tables, for tools such as the inspector.
+    ///
+    /// An index into this slice names a table only until the next
+    /// structural change: a world reclaims tables that stayed empty and
+    /// builds new component sets in their slots. A reclaimed slot shows as
+    /// an empty table without components.
     #[must_use]
     #[inline]
     pub fn archetypes(&self) -> &'a [Archetype] {

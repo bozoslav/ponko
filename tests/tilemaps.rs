@@ -628,3 +628,98 @@ fn the_example_level_loads_with_its_coins_and_animated_water() {
         .map(|(m, _)| m.animations.len());
     assert_eq!(water, Some(1));
 }
+
+// ---- saves -------------------------------------------------------------------
+
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize, Component)]
+struct Hero {
+    lives: u32,
+}
+
+/// The coin prefab and the game's components, reflected.
+fn coins(ctx: &mut Ctx) {
+    ctx.world.reflect::<Pickup>();
+    ctx.world.reflect::<Hero>();
+    let prefab = r#"{"format": "ponko-prefab", "version": 1, "components": {"Pickup": {"value": 1}}}"#;
+    ctx.assets
+        .add_source(MemorySource::new("prefabs").with("prefabs/coin.json", prefab));
+}
+
+fn coin_options() -> LevelOptions {
+    LevelOptions::default().prefab("Coin", "prefabs/coin.json")
+}
+
+#[test]
+fn a_world_save_holds_the_gameplay_entities_not_the_level() {
+    let path = fixture("level.tmx");
+    let mut ids = Vec::new();
+    let mut save = serde_json::Value::Null;
+    Game::new("levels", 1, 1).run_headless(0, |ctx| {
+        coins(ctx);
+        ctx.spawn_level_with(&path, Vec2::ZERO, coin_options()).unwrap();
+        assert!(ctx.world.query::<&TileMap>().iter().count() > 0);
+        ids.push(ctx.world.spawn((Transform2D::at(vec2(8.0, 8.0)), Hero { lives: 3 })));
+        ids.push(ctx.world.spawn((Transform2D::at(vec2(30.0, 8.0)),)));
+        ids.extend(ctx.world.query::<(Entity, &Pickup)>().iter().map(|(e, _)| e));
+        save = ctx.world.save();
+    });
+    // The hero, the plain entity and the two coins the level spawned as
+    // prefabs: no layers, no plain objects, no root.
+    let mut saved: Vec<u64> = save["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["entity"].as_u64().unwrap())
+        .collect();
+    let mut expected: Vec<u64> = ids.iter().map(|e| e.to_bits()).collect();
+    saved.sort_unstable();
+    expected.sort_unstable();
+    assert_eq!(saved, expected, "{save:#}");
+    assert_eq!(ids.len(), 4);
+    // Only the coins' `LevelObject`s (not reflected) are counted as not
+    // saved: no tile maps, layers or level root.
+    assert_eq!(save["not_saved"], serde_json::json!({ "LevelObject": 2 }));
+}
+
+#[test]
+fn a_loaded_save_and_the_level_respawned_without_its_saved_objects_make_the_level_again() {
+    let path = fixture("level.tmx");
+    let mut save = serde_json::Value::Null;
+    let mut kept = None;
+    Game::new("levels", 1, 1).run_headless(0, |ctx| {
+        coins(ctx);
+        ctx.spawn_level_with(&path, Vec2::ZERO, coin_options()).unwrap();
+        // One coin collected before the save.
+        let coins: Vec<Entity> = ctx.world.query::<(Entity, &Pickup)>().iter().map(|(e, _)| e).collect();
+        ctx.world.despawn(coins[0]);
+        kept = Some(coins[1]);
+        save = ctx.world.save();
+    });
+    let reference_count = {
+        let path = path.clone();
+        let mut world = Game::new("levels", 1, 1).run_headless(0, move |ctx| {
+            coins(ctx);
+            ctx.spawn_level_with(&path, Vec2::ZERO, coin_options()).unwrap();
+        });
+        world.query::<&TileMap>().iter().count()
+    };
+    let mut world = Game::new("levels", 1, 1).run_headless(0, |ctx| {
+        coins(ctx);
+        ctx.world.load(&save).unwrap();
+        assert_eq!(ctx.world.query::<&TileMap>().iter().count(), 0, "the save has no level");
+        let options = coin_options().without_saved_objects();
+        let root = ctx.spawn_level_with(&path, Vec2::ZERO, options).unwrap();
+        assert!(ctx.world.has::<ponko::reflect::NotSaved>(root));
+    });
+    let coins: Vec<Entity> = world.query::<(Entity, &Pickup)>().iter().map(|(e, _)| e).collect();
+    assert_eq!(coins, [kept.unwrap()], "the saved coin, not the level's two again");
+    assert_eq!(
+        world.query::<&TileMap>().iter().count(),
+        reference_count,
+        "every layer is back"
+    );
+    // The plain objects come from the file; the coins' objects don't.
+    assert_eq!(world.query::<&LevelObject>().iter().count(), 3);
+    // Saving again still holds only the coin.
+    assert_eq!(world.save()["entities"].as_array().unwrap().len(), 1);
+}

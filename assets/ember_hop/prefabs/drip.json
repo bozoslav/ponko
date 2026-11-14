@@ -4,6 +4,7 @@
   "components": {
     "Transform2D": {},
     "Sprite": { "texture": "ember_hop/sprites/drip.png", "region": { "min": [0.0, 0.0], "max": [16.0, 16.0] }, "z": 0.3 },
+    "Animation": { "texture": "ember_hop/sprites/drip.png", "frame_size": [16.0, 16.0], "frames": 2, "fps": 4.0 },
     "RigidBody": { "kind": "Kinematic" },
     "Collider": { "shape": { "Rect": { "size": [12.0, 9.0] } }, "sensor": true, "offset": [0.0, 3.5] },
     "Drip": { "speed": 28.0, "heading": 1.0 }

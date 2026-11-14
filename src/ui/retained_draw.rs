@@ -246,23 +246,29 @@ impl Ctx {
             let font_size = n.paint.font_size * scale;
             let mut origin = text_rect.min;
             if n.widget == crate::ui::UiWidget::TextInput && ui.focus == Some(id) {
-                let caret = self.gfx.measure_text_ex(&n.text[..n.caret], n.paint.font, font_size).x;
+                let caret = self.gfx.caret_x(&n.text, n.paint.font, font_size, n.caret);
                 origin.x -= (caret - text_rect.size().x + 3.0 * scale).max(0.0);
-                let a = self
-                    .gfx
-                    .measure_text_ex(&n.text[..n.anchor.min(n.caret)], n.paint.font, font_size)
-                    .x;
-                let b = self
-                    .gfx
-                    .measure_text_ex(&n.text[..n.anchor.max(n.caret)], n.paint.font, font_size)
-                    .x;
-                if a != b {
-                    self.gfx.ui_fill(
-                        Rect::new(origin.x + a, origin.y, b - a, font_size),
-                        n.paint.hover,
-                        z + 0.6,
-                    );
+                // The selection, one span or several where it crosses a
+                // change of direction.
+                let mut spans = std::mem::take(&mut self.gfx.selection_scratch);
+                self.gfx.selection_spans(
+                    &n.text,
+                    n.paint.font,
+                    font_size,
+                    n.anchor.min(n.caret),
+                    n.anchor.max(n.caret),
+                    &mut spans,
+                );
+                for &[a, b] in &spans {
+                    if a != b {
+                        self.gfx.ui_fill(
+                            Rect::new(origin.x + a, origin.y, b - a, font_size),
+                            n.paint.hover,
+                            z + 0.6,
+                        );
+                    }
                 }
+                self.gfx.selection_scratch = spans;
                 self.gfx.ui_fill(
                     Rect::new(origin.x + caret, origin.y, scale, font_size),
                     n.paint.color,
@@ -275,7 +281,18 @@ impl Ctx {
                 color: n.paint.color,
                 z: z + 0.7,
             };
-            self.retained_text(&n.text, origin, text_rect.size().x, params, n.paint.wrap, n.paint.align);
+            // A text field keeps its text at its left edge, where its caret
+            // and selection are measured from; labels and buttons align
+            // right-to-left paragraphs from the right.
+            let directional = n.widget != crate::ui::UiWidget::TextInput;
+            self.retained_text(
+                &n.text,
+                origin,
+                text_rect.size().x,
+                params,
+                (n.paint.wrap, directional),
+                n.paint.align,
+            );
             if n.widget == crate::ui::UiWidget::Scroll && n.max_scroll.y > 0.0 {
                 let h = n.rect.size().y;
                 let thumb = (h * h / (h + n.max_scroll.y * scale)).max(20.0 * scale).min(h);
@@ -295,7 +312,7 @@ impl Ctx {
         origin: Vec2,
         width: f32,
         params: TextParams,
-        wrap: bool,
+        (wrap, directional): (bool, bool),
         align: crate::ui::UiTextAlign,
     ) {
         let mut y = origin.y;
@@ -309,11 +326,14 @@ impl Ctx {
                 };
                 let line = &rest[..end];
                 let w = self.gfx.measure_text_ex(line, params.font, params.size).x;
+                // Start and End follow the paragraph's direction: a
+                // right-to-left paragraph starts at the right.
+                let rtl = directional && crate::text::Text::is_rtl(paragraph);
                 let x = origin.x
-                    + match align {
-                        crate::ui::UiTextAlign::Start => 0.0,
-                        crate::ui::UiTextAlign::Center => (width - w) * 0.5,
-                        crate::ui::UiTextAlign::End => width - w,
+                    + match (align, rtl) {
+                        (crate::ui::UiTextAlign::Start, false) | (crate::ui::UiTextAlign::End, true) => 0.0,
+                        (crate::ui::UiTextAlign::Center, _) => (width - w) * 0.5,
+                        (crate::ui::UiTextAlign::End, false) | (crate::ui::UiTextAlign::Start, true) => width - w,
                     };
                 self.gfx.draw_text_ex(line, Vec2::new(x, y), params);
                 y += self.gfx.measure_text_ex(line, params.font, params.size).y;

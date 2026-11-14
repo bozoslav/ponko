@@ -155,7 +155,8 @@ impl From<crate::reflect::ReflectError> for Error {
                 ErrorKind::NotFound
             }
             R::NoSuchEntity(_) => ErrorKind::BadHandle,
-            R::BadValue { .. } => ErrorKind::Json,
+            R::BadValue { .. } | R::Migration { .. } => ErrorKind::Json,
+            R::NewerSave { .. } => ErrorKind::Unsupported,
         };
         Self::new(kind, e.to_string())
     }

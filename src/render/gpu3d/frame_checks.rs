@@ -196,6 +196,7 @@ impl Renderer3D {
             Features::AO.only_if(self.screen.ao_enabled),
             Features::SSR.only_if(self.screen.ssr.is_some() && targets.ssr.is_some()),
             Features::SPLIT.only_if(has(|p| matches!(p, Part::Transparent))),
+            Features::DEPTH_COPY.only_if(targets.depth_copy.is_some()),
             Features::TAA.only_if(self.screen.taa_on && self.screen.taa.is_some() && targets.taa.is_some()),
             Features::TARGET_EFFECTS.only_if(!self.effects.target_frame.is_empty()),
             Features::EFFECTS.only_if(effects >= 1),
@@ -219,6 +220,10 @@ impl Renderer3D {
         let view = |resource, view: &'a wgpu::TextureView| (resource, view.texture());
         let frame = [
             Some(view(Resource::SceneDepth, &targets.depth)),
+            targets
+                .depth_copy
+                .as_ref()
+                .map(|c| view(Resource::SceneDepthCopy, &c.view)),
             Some(view(Resource::SceneColor, &targets.color)),
             Some((Resource::Hdr, &targets.hdr_texture)),
             // One texture, in two roles (see `Resource::EffectScratch`).

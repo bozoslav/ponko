@@ -77,14 +77,11 @@ look at the end; for now, add it with only the first plugin,
 {{#include ../../examples/tutorial_2d/game.rs:game}}
 ```
 
-`src/main.rs` from the template calls `game().run()`. Our `game()` returns
-the builder before its setup is stored, so the main function asks for that
-with `.configured()` (the tests in [step 6](#step-6-test-it) use the same
-builder to add test settings). Change `src/main.rs` to:
-
-```rust
-{{#include ../../examples/tutorial_2d/main.rs:main}}
-```
+Like the template's, it returns a `ConfiguredGame`, a game ready to
+`run()`: `.configured()` says the plugins hold all of its setup. So
+`src/main.rs` stays as the template wrote it, calling `game().run()` (or
+`run_headless` without a window), and the tests in
+[step 6](#step-6-test-it) add their settings to the same `game()`.
 
 Now the level and the crab:
 
@@ -199,6 +196,9 @@ and the plugin:
   labels and two buttons, laid out in a column. `push_screen` shows it. The
   nodes get **names** (`menu.play`), which tests and tools use to find and
   click them.
+- `.focused()` makes Play the node the screen opens on, every time it is
+  pushed: Enter (or a gamepad's South button) starts the game at once
+  ([Where the focus starts](ui.md#where-the-focus-starts)).
 - `menu` takes the UI's events: a click on Play closes the screen and starts
   the level over, Quit ends the game. Escape (or a gamepad's East button)
   closes the top screen by itself and sends `ScreenPopped`.
@@ -208,7 +208,7 @@ and the plugin:
   simulation, physics included, and frame systems (the UI, the HUD) keep
   running ([The simulation clock](sim-clock.md)).
 
-The mouse clicks the buttons; Tab or the arrow keys pick one and Enter
+The mouse clicks the buttons; Tab or the arrow keys pick another and Enter
 presses it. Add `.plugin(Menu)`.
 
 ## Step 5: saving
@@ -247,8 +247,9 @@ The game runs without a window too, as fast as the CPU allows, which makes
 it testable in plain `cargo test` ([Headless runs and testing](headless.md)).
 `headless_frames(true)` runs frame systems and the UI as well, and an
 [input scenario](actions.md#input-scenarios) presses keys and clicks buttons
-on given ticks. Replace `tests/game.rs` with tests like these; it starts
-with `use crab_cove::*;` and:
+on given ticks. Both are set on `game()` itself, which stays as it is, and
+`run_headless_scenario` runs it with them. Replace `tests/game.rs` with
+tests like these; it starts with `use crab_cove::*;` and:
 
 ```rust
 {{#include ../../tests/tutorial_2d.rs:uses}}

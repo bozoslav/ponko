@@ -815,3 +815,53 @@ impl KeepDefault for World {
         }
     }
 }
+
+/// A world that churns through more component sets than it keeps empty
+/// archetypes for reclaims them and builds new ones in their slots. Both
+/// worlds make the same changes, so they reclaim the same slots; every
+/// answer must still match the model, also from indices built before a
+/// slot was reused for another set.
+#[test]
+fn reclaimed_and_reused_archetype_slots_change_no_answer() {
+    let (cases, rounds) = if cfg!(miri) { (1, 12) } else { (10, 150) };
+    for seed in 0..cases {
+        let outcome = std::panic::catch_unwind(|| {
+            let mut case = Case::new(0x347_0000 + seed);
+            case.indexed.set_query_cache_policy(policy(seed as usize % 5));
+            let mut sets = std::collections::BTreeSet::new();
+            for _ in 0..rounds {
+                // A few short-lived entities with any of the 256 marker
+                // sets: each insert passes through intermediate sets too,
+                // which empty again at once.
+                let mut spawned = Vec::new();
+                for _ in 0..4 {
+                    let mask = (case.rng.next_u64() & 0xFF) as u32;
+                    sets.insert(mask);
+                    case.spawn(mask);
+                    spawned.push(*case.live.last().unwrap());
+                }
+                case.step();
+                case.check();
+                for e in spawned {
+                    if case.model.contains_key(&e) {
+                        case.despawn(e);
+                    }
+                }
+                case.check();
+            }
+            let slots = case.indexed.raw_ref().archetypes().len();
+            assert_eq!(slots, case.plain.raw_ref().archetypes().len());
+            if !cfg!(miri) {
+                assert!(
+                    slots < sets.len(),
+                    "{} marker sets lived in {slots} archetype slots: none reused",
+                    sets.len()
+                );
+            }
+        });
+        if let Err(panic) = outcome {
+            eprintln!("\nfailing case: seed {:#x}\n", 0x347_0000 + seed);
+            std::panic::resume_unwind(panic);
+        }
+    }
+}

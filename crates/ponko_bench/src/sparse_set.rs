@@ -776,27 +776,38 @@ fn dense_data(b: &mut Bench) {
     );
 }
 
-/// Archetype counts and storage bytes as the changes go on: archetypes are
-/// never removed, so a world keeps every combination it ever had.
+/// Archetype counts, storage bytes and heap allocations per tick (since the
+/// previous checkpoint) as the changes go on: whether a world that keeps
+/// visiting new component combinations levels off.
 fn memory(b: &Bench) {
     if b.skips("sparse-set/mem") {
         return;
     }
+    // The archetype world runs on until its rare remaining allocations
+    // (archetypes growing past any size they had) are visible.
     const CHECKPOINTS: [usize; 4] = [0, 60, 300, 600];
+    const ARCH_CHECKPOINTS: [usize; 8] = [0, 60, 300, 600, 1200, 2400, 4800, 9600];
     for density in DENSITIES {
         for kind in [Kind::Arch, Kind::Sset, Kind::Flags] {
             let mut w = build(kind, ENTITIES, density, 0, 0);
             let mut ops = Vec::new();
             let mut done = 0;
-            for at in CHECKPOINTS {
+            let checkpoints: &[usize] = if kind == Kind::Arch {
+                &ARCH_CHECKPOINTS
+            } else {
+                &CHECKPOINTS
+            };
+            for &at in checkpoints {
                 either!(&mut w, |w| {
+                    let before = crate::alloc::Counts::now();
                     for _ in done..at {
                         w.churn.tick(&mut ops);
                         w.replay(&ops);
                     }
+                    let allocs = crate::alloc::Counts::now().since(before).count as f64 / (at - done).max(1) as f64;
                     let (all, live) = w.store.archetypes();
                     println!(
-                        "sparse-set/mem/{density}pct/{:<4} tick {at:>3}: {all:>6} archetypes ({live:>6} not empty), {:>9.1} KiB, {} changes/tick",
+                        "sparse-set/mem/{density}pct/{:<4} tick {at:>4}: {all:>6} archetypes ({live:>6} not empty), {:>9.1} KiB, {} changes/tick, {allocs:.2} allocs/tick since the last",
                         kind.name(),
                         w.store.bytes() as f64 / 1024.0,
                         ops.len(),

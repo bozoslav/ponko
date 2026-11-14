@@ -37,7 +37,7 @@ fn play(dir: &PathBuf, scenario: InputScenario) -> World {
     let (world, report) = game()
         .data_dir(dir)
         .headless_frames(true)
-        .run_headless_scenario(scenario, |_| {});
+        .run_headless_scenario(scenario);
     report.assert_passed();
     world
 }
@@ -123,7 +123,7 @@ fn play_moved(dir: &PathBuf, scenario: InputScenario, list: &[(u64, Vec2)]) -> W
         .data_dir(dir)
         .headless_frames(true)
         .sim_system(moves(list))
-        .run_headless_scenario(scenario, |_| {});
+        .run_headless_scenario(scenario);
     report.assert_passed();
     world
 }
@@ -189,7 +189,7 @@ fn the_best_score_is_saved_and_loaded() {
     let (world, report) = game()
         .data_dir(&dir)
         .headless_frames(true)
-        .run_headless_scenario(scenario, |_| {});
+        .run_headless_scenario(scenario);
     report.assert_passed();
     assert_eq!(world.resource::<Progress>().best, 2);
 }
@@ -211,6 +211,26 @@ fn the_game_waits_on_the_title_screen_until_play() {
     let (_world, report) = game()
         .data_dir(temp_dir("menu"))
         .headless_frames(true)
-        .run_headless_scenario(scenario, |_| {});
+        .run_headless_scenario(scenario);
+    report.assert_passed();
+}
+
+#[test]
+fn the_title_screen_opens_on_play_so_enter_starts_the_game() {
+    let scenario = InputScenario::new()
+        .expect(0, ScenarioCheck::ui("menu.play").shown(true))
+        .at(3, InputEvent::Key(Key::Enter, true))
+        .at(4, InputEvent::Key(Key::Enter, false))
+        .expect(3, ScenarioCheck::ui("menu.play").shown(false))
+        // Opened again by Escape, it starts on Play again.
+        .at(10, InputEvent::Key(Key::Escape, true))
+        .at(11, InputEvent::Key(Key::Escape, false))
+        .at(14, InputEvent::Key(Key::Enter, true))
+        .at(15, InputEvent::Key(Key::Enter, false))
+        .expect(14, ScenarioCheck::ui("menu.play").shown(false));
+    let (_world, report) = game()
+        .data_dir(temp_dir("enter"))
+        .headless_frames(true)
+        .run_headless_scenario(scenario);
     report.assert_passed();
 }

@@ -120,12 +120,19 @@ field names stay stable and new ones may be added.
   - `alone`: why it can't share a batch, or `null`. `reason` is
     `undeclared`, `ctx_system`, `service` or `sends_and_reads` (with the
     service or event type in `item`), or `interval`.
+  - `blocked`: which system kept it out of the stage before its own, and
+    why: `boundary`, `after` and `conflicts` as for a stage (below), plus
+    `keeps_order`: it may not run ahead of system `after`, registered
+    earlier and in the same stage, because their order shows on
+    `conflicts` (two senders of one event type, say).
 - `schedule`:
   - `parallel` (the scheduler is on), `threads` (it has other threads to
     use) and `parallel_threshold_us`.
-  - `stages`, in run order: `index`, `phase`, `first` and `len` (systems
-    `first..first + len`), `batch` (more than one system), and why the stage
-    starts where it does: `boundary` is `phase` (first of its phase),
+  - `stages`, in run order: `index`, `phase`, `systems` (the `order` of
+    each of its systems; they need not be neighbours, since a system that
+    interacts with nothing registered between may run ahead), `first` and
+    `len` (its first system and how many), `batch` (more than one system),
+    and why the stage starts where it does: `boundary` is `phase` (first of its phase),
     `alone` (its system or the one before runs alone), `conflict` (its first
     system conflicts with system `after`, on `conflicts`), `barrier` (an
     explicit `Game::barrier`) or `order` (`Game::order` puts it after system
@@ -187,7 +194,14 @@ Troubleshooting systems that don't run together: a game turned
    System 2 (`friction`) writes `Vel`, which system 0 (`movement`) reads, so
    it waits for `movement`'s batch to end. `dependencies` lists every such
    pair. The fix depends on the game: split the component, or accept the
-   order.
+   order. The other systems of a batch each have their own reason in
+   their `blocked`:
+
+   ```json
+   { "name": "game::wear", "order": 5, "stage": 1,
+     "blocked": { "boundary": "conflict", "after": 4,
+                  "conflicts": [{ "kind": "component", "name": "game::Grip" }] } }
+   ```
 4. For a stage with `"batch": true` that still doesn't speed up, read its
    counters:
 
@@ -212,16 +226,21 @@ fn explain(ctx: &mut Ctx) {
             println!("{} runs alone: {}", system.name, alone.reason);
         }
     }
-    for stage in d.schedule.stages.iter().filter(|s| s.boundary == "conflict") {
-        let (first, earlier) = (&d.systems[stage.first], &d.systems[stage.after.unwrap()]);
-        println!("{} waits for {}: {:?}", first.name, earlier.name, stage.conflicts);
+    for system in &d.systems {
+        let Some(blocked) = system.blocked.as_ref().filter(|b| b.boundary == "conflict") else {
+            continue;
+        };
+        let earlier = &d.systems[blocked.after.unwrap()];
+        println!("{} waits for {}: {:?}", system.name, earlier.name, blocked.conflicts);
     }
 }
 # Game::new("t", 1, 1).sim_system(explain).run_headless(1, |_| {});
 ```
 
-Not exposed to C and C++ yet: native code reads the same data through the
-control endpoint, or the text of `ponko_game_schedule_plan`.
+From C, `ponko_ctx_ecs_diagnostics` writes the same answer as JSON, the
+format `ecs.diagnostics` returns (call it with a null buffer to learn the
+length); C++ `ctx.ecs_diagnostics()` returns it as a `std::string`. Take it
+from inside a system: the systems list is empty during setup.
 
 ## Several agents, several games
 

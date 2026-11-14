@@ -1607,6 +1607,68 @@ pub unsafe extern "C" fn ponko_ctx_create_compute(
     })
 }
 
+/// `count` C compute passes as Rust `ComputePass`es, each checked against
+/// this game's handles.
+/// # Safety
+/// `passes` holds `count` values (may be null when 0).
+pub(crate) unsafe fn compute_passes_from_c(
+    c: &ponko::prelude::Ctx,
+    passes: *const PonkoComputePass,
+    count: usize,
+) -> Result<Vec<ComputePass>, crate::Failure> {
+    if passes.is_null() && count > 0 {
+        return Err(invalid("passes is null"));
+    }
+    let given = if count == 0 {
+        &[][..]
+    } else {
+        // SAFETY: caller contract.
+        unsafe { std::slice::from_raw_parts(passes, count) }
+    };
+    let mut list = Vec::with_capacity(count);
+    for p in given {
+        let compute = __ffi::from_id::<Compute>(p.compute.id);
+        if !c.gfx.is_live(compute) {
+            return Err(invalid("that compute pass wasn't made by this game"));
+        }
+        let target = texture_from_c(p.target);
+        let buffer = p.has_buffer.then(|| __ffi::from_id::<GpuBuffer>(p.buffer.id));
+        if buffer.is_some_and(|b| c.gfx.gpu_buffer_len(b).is_none()) {
+            return Err(invalid("invalid GPU buffer"));
+        }
+        if buffer.is_none() && !c.gfx.is_render_target(target) {
+            return Err(invalid("that texture isn't a render target of this game"));
+        }
+        let material = p.has_material.then(|| to_c(p.material));
+        if material.is_some_and(|m| !c.gfx.is_live(m)) {
+            return Err(invalid("that material wasn't made by this game"));
+        }
+        list.push(ComputePass {
+            buffer,
+            compute,
+            target,
+            material,
+        });
+    }
+    Ok(list)
+}
+
+/// A Rust compute pass as C sees it.
+pub(crate) fn compute_pass_to_c(p: &ComputePass) -> PonkoComputePass {
+    PonkoComputePass {
+        has_buffer: p.buffer.is_some(),
+        buffer: PonkoGpuBuffer {
+            id: p.buffer.map_or(0, __ffi::id),
+        },
+        compute: PonkoCompute {
+            id: __ffi::id(p.compute),
+        },
+        target: texture_to_c(p.target),
+        has_material: p.material.is_some(),
+        material: p.material.map(to_c).unwrap_or_default(),
+    }
+}
+
 /// Replaces the compute passes run each frame with `count` of them, in
 /// order (Rust `ctx.scene3d.passes.compute`); 0 runs none.
 /// # Safety
@@ -1623,39 +1685,7 @@ pub unsafe extern "C" fn ponko_ctx_set_compute_passes(
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            if passes.is_null() && count > 0 {
-                return Err(invalid("passes is null"));
-            }
-            let given = if count == 0 {
-                &[][..]
-            } else {
-                std::slice::from_raw_parts(passes, count)
-            };
-            let mut list = Vec::with_capacity(count);
-            for p in given {
-                let compute = __ffi::from_id::<Compute>(p.compute.id);
-                if !c.gfx.is_live(compute) {
-                    return Err(invalid("that compute pass wasn't made by this game"));
-                }
-                let target = texture_from_c(p.target);
-                let buffer = p.has_buffer.then(|| __ffi::from_id::<GpuBuffer>(p.buffer.id));
-                if buffer.is_some_and(|b| c.gfx.gpu_buffer_len(b).is_none()) {
-                    return Err(invalid("invalid GPU buffer"));
-                }
-                if buffer.is_none() && !c.gfx.is_render_target(target) {
-                    return Err(invalid("that texture isn't a render target of this game"));
-                }
-                let material = p.has_material.then(|| to_c(p.material));
-                if material.is_some_and(|m| !c.gfx.is_live(m)) {
-                    return Err(invalid("that material wasn't made by this game"));
-                }
-                list.push(ComputePass {
-                    buffer,
-                    compute,
-                    target,
-                    material,
-                });
-            }
+            let list = compute_passes_from_c(c, passes, count)?;
             c.scene3d.passes.compute = list;
             Ok(())
         })
@@ -1685,18 +1715,7 @@ pub unsafe extern "C" fn ponko_ctx_compute_passes(
                 return Err(invalid("output is null"));
             }
             for (i, p) in c.scene3d.passes.compute.iter().take(capacity).enumerate() {
-                out_passes.add(i).write(PonkoComputePass {
-                    has_buffer: p.buffer.is_some(),
-                    buffer: PonkoGpuBuffer {
-                        id: p.buffer.map_or(0, __ffi::id),
-                    },
-                    compute: PonkoCompute {
-                        id: __ffi::id(p.compute),
-                    },
-                    target: texture_to_c(p.target),
-                    has_material: p.material.is_some(),
-                    material: p.material.map(to_c).unwrap_or_default(),
-                });
+                out_passes.add(i).write(compute_pass_to_c(p));
             }
             out(out_count, c.scene3d.passes.compute.len())
         })
@@ -3769,6 +3788,39 @@ unsafe fn lod_renderers(list: *const PonkoLodRenderer, count: usize) -> Result<V
         .collect())
 }
 
+/// `count` C levels as Rust `LodLevel`s.
+/// # Safety
+/// `levels` holds `count` values (may be null when 0), each pointing at as
+/// many renderers as it says.
+pub(crate) unsafe fn lod_levels(levels: *const PonkoLodLevel, count: usize) -> Result<Vec<LodLevel>, crate::Failure> {
+    if levels.is_null() && count > 0 {
+        return Err(invalid("levels is null"));
+    }
+    let given = if count == 0 {
+        &[][..]
+    } else {
+        // SAFETY: caller contract.
+        unsafe { std::slice::from_raw_parts(levels, count) }
+    };
+    let mut list = Vec::with_capacity(count);
+    for l in given {
+        // SAFETY: caller contract.
+        let shadow = if l.custom_shadow {
+            LodShadow::Casters(unsafe { lod_renderers(l.shadow_casters, l.shadow_caster_count)? })
+        } else {
+            LodShadow::Same
+        };
+        // SAFETY: caller contract.
+        let renderers = unsafe { lod_renderers(l.renderers, l.renderer_count)? };
+        list.push(
+            LodLevel::new(l.screen_height, renderers)
+                .with_fade(l.fade_width)
+                .with_shadow(shadow),
+        );
+    }
+    Ok(list)
+}
+
 /// Gives `entity` levels of detail (Rust `LodGroup`): `count` levels, most
 /// detailed first, for an object `size` tall in its own space, its
 /// distance measured to `center`. Replaces any it had. Stale entities are an
@@ -3795,27 +3847,7 @@ pub unsafe extern "C" fn ponko_ctx_set_lod_group(
             if !c.world.is_alive(entity) {
                 return Err(invalid("no such entity"));
             }
-            if levels.is_null() && count > 0 {
-                return Err(invalid("levels is null"));
-            }
-            let given = if count == 0 {
-                &[][..]
-            } else {
-                std::slice::from_raw_parts(levels, count)
-            };
-            let mut list = Vec::with_capacity(count);
-            for l in given {
-                let shadow = if l.custom_shadow {
-                    LodShadow::Casters(lod_renderers(l.shadow_casters, l.shadow_caster_count)?)
-                } else {
-                    LodShadow::Same
-                };
-                list.push(
-                    LodLevel::new(l.screen_height, lod_renderers(l.renderers, l.renderer_count)?)
-                        .with_fade(l.fade_width)
-                        .with_shadow(shadow),
-                );
-            }
+            let list = lod_levels(levels, count)?;
             c.world
                 .insert(entity, LodGroup::new(size, list).with_center(to_c(center)));
             Ok(())

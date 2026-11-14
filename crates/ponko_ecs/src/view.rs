@@ -408,6 +408,8 @@ impl ViewState {
         // The world is held exclusively here: let its archetype index
         // take in what the last views' queries asked for.
         world.query_matches.settle_for_views(&world.archetypes);
+        // And list the archetypes with entities, if scans use the list.
+        world.slots.scan();
         self.ids.clear();
         for c in &self.access.components {
             self.ids.push(((c.register)(world), c.write));
@@ -957,6 +959,8 @@ impl<'v, Q: QueryData> ViewQuery<'v, Q> {
             let key = signature::<Q>(&self.ids, &self.filters);
             index.shared_candidates(&world.archetypes, &key, self.cache)
         };
+        // Or the archetypes with entities, if the world lists them.
+        let indices = indices.or(world.slots.shared_scan());
         Archetypes {
             all: &world.archetypes,
             indices: indices.map(<[u32]>::iter),

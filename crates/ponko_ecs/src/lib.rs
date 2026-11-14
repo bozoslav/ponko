@@ -98,6 +98,7 @@ mod change;
 mod commands;
 mod entity;
 mod query;
+mod slots;
 mod storage;
 mod view;
 mod world;

@@ -334,6 +334,25 @@ fn non_modal_overlays_keep_lower_screens_readable_but_inert() {
 }
 
 #[test]
+fn huds_are_read_under_the_screens_inert_and_hidden_by_a_modal() {
+    let mut m = menu();
+    let hud = m.ui.root().layout(UiLayout::anchored(0.0, 0.0, 200.0, 40.0)).id();
+    let count = m.ui.label(hud, "Lanterns lit: 2 / 5").layout(UiLayout::fill()).id();
+    m.ui.show_hud(hud);
+    m.ui.layout(VIEW);
+    let tree = m.ui.accessibility_tree();
+    assert_eq!(tree.screens(), &[hud, m.root], "the HUD first, under the menu");
+    assert!(tree.get(count).unwrap().inert);
+    assert_eq!(tree.get(count).unwrap().name, "Lanterns lit: 2 / 5");
+    assert!(!tree.get(m.play).unwrap().inert, "the menu still takes input");
+
+    let dialog = m.ui.root().layout(UiLayout::centered(200.0, 100.0)).id();
+    m.ui.push_screen(dialog, true);
+    m.ui.layout(VIEW);
+    assert_eq!(m.ui.accessibility_tree().screens(), &[dialog]);
+}
+
+#[test]
 fn removed_nodes_and_empty_uis_have_no_semantics() {
     let empty = Ui::default();
     let tree = empty.accessibility_tree();

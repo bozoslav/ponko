@@ -155,16 +155,45 @@ pub struct StreamedAsset {
     pub size: [u32; 2],
 }
 
-/// One resolution of a texture: RGBA8 pixels.
+/// One resolution of a texture: RGBA8 pixels, or block-compressed ones.
 pub(crate) struct Level {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    /// Block-compressed instead of `rgba` (then empty): this resolution
+    /// and its mipmaps, from a KTX2 or DDS file's chain.
+    #[cfg(feature = "compressed-textures")]
+    pub blocks: Option<crate::compressed::CompressedImage>,
 }
 
 impl Level {
+    fn new(width: u32, height: u32, rgba: Vec<u8>) -> Self {
+        Self {
+            width,
+            height,
+            rgba,
+            #[cfg(feature = "compressed-textures")]
+            blocks: None,
+        }
+    }
+
+    /// Bytes on the GPU.
     fn bytes(&self) -> u64 {
+        #[cfg(feature = "compressed-textures")]
+        if let Some(blocks) = &self.blocks {
+            return blocks.bytes();
+        }
         crate::inventory::rgba8_bytes(self.width, self.height)
+    }
+
+    fn duplicate(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            rgba: self.rgba.clone(),
+            #[cfg(feature = "compressed-textures")]
+            blocks: self.blocks.clone(),
+        }
     }
 }
 
@@ -193,21 +222,13 @@ fn halve(level: &Level) -> Level {
             }
         }
     }
-    Level {
-        width: nw,
-        height: nh,
-        rgba,
-    }
+    Level::new(nw, nh, rgba)
 }
 
 /// The resolutions of `image`, from the largest that fits `max` down to
 /// one whose longest side is at most [`STAND_IN`].
 pub(crate) fn pyramid(image: assets::Image, max: u32) -> Pyramid {
-    let mut levels = vec![Level {
-        width: image.width,
-        height: image.height,
-        rgba: image.rgba,
-    }];
+    let mut levels = vec![Level::new(image.width, image.height, image.rgba)];
     loop {
         let last = levels.last().expect("one level");
         if last.width.max(last.height) <= STAND_IN {
@@ -222,6 +243,30 @@ pub(crate) fn pyramid(image: assets::Image, max: u32) -> Pyramid {
         .position(|l| l.width.max(l.height) <= max)
         .unwrap_or(levels.len() - 1);
     levels.drain(..fits);
+    levels
+}
+
+/// The resolutions of a block-compressed image: its own mip levels, each
+/// with the rest of the chain, from the largest that fits `max` down to one
+/// whose longest side is at most [`STAND_IN`]. Only whole-block levels can
+/// be a texture's largest, so the stand-in may be larger for odd sizes.
+#[cfg(feature = "compressed-textures")]
+pub(crate) fn block_pyramid(image: &crate::compressed::CompressedImage, max: u32) -> Pyramid {
+    let mut levels = Vec::new();
+    for i in 0..image.levels.len() {
+        let (w, h) = image.level_size(i);
+        if !crate::compressed::block_aligned(w, h) {
+            break;
+        }
+        if w.max(h) <= max || i + 1 == image.levels.len() {
+            let mut level = Level::new(w, h, Vec::new());
+            level.blocks = Some(image.starting_at_level(i));
+            levels.push(level);
+        }
+        if w.max(h) <= STAND_IN {
+            break;
+        }
+    }
     levels
 }
 
@@ -723,23 +768,20 @@ impl crate::gfx::Graphics {
         let existing = t.texture;
         if t.stand_in.is_none() {
             let small = levels.last().expect("a level");
-            t.stand_in = Some(Level {
-                width: small.width,
-                height: small.height,
-                rgba: small.rgba.clone(),
-            });
+            t.stand_in = Some(small.duplicate());
         }
         // The size the game sees: the file's (or the largest the GPU holds).
         let full = (levels[0].width, levels[0].height);
         let level = &levels[index];
         let (w, h) = (level.width, level.height);
+        let bytes = level.bytes();
         let id = match existing {
             Some(texture) => {
-                self.set_texture_pixels(texture.id, w, h, &level.rgba);
+                self.set_texture_level(texture.id, level);
                 texture.id
             }
             None => {
-                let texture = self.make_streamed_texture(full, w, h, &level.rgba);
+                let texture = self.make_streamed_texture(full, level);
                 self.name_streamed_texture(name, texture);
                 texture.id
             }
@@ -755,7 +797,6 @@ impl crate::gfx::Graphics {
         } else {
             AssetState::Streaming
         };
-        let bytes = crate::inventory::rgba8_bytes(w, h);
         let origin = t.origin.clone().unwrap_or(Origin::File(name.into()));
         let set = self.residency.set_mut(ResidencyKind::Texture);
         if set.get(name).is_some() {
@@ -766,9 +807,15 @@ impl crate::gfx::Graphics {
         }
     }
 
-    /// Makes a game texture of `logical` size holding `w` × `h` pixels.
-    fn make_streamed_texture(&mut self, logical: (u32, u32), w: u32, h: u32, rgba: &[u8]) -> Texture {
-        let small = self.make_texture(w, h, rgba);
+    /// Makes a game texture of `logical` size holding `level`.
+    fn make_streamed_texture(&mut self, logical: (u32, u32), level: &Level) -> Texture {
+        #[cfg(feature = "compressed-textures")]
+        if let Some(blocks) = &level.blocks {
+            let small = self.make_compressed_texture(blocks);
+            self.textures_live.insert(small.id);
+            return Texture::new(small.id, logical.0, logical.1);
+        }
+        let small = self.make_texture(level.width, level.height, &level.rgba);
         self.textures_live.insert(small.id);
         Texture::new(small.id, logical.0, logical.1)
     }
@@ -790,15 +837,25 @@ impl crate::gfx::Graphics {
         }
     }
 
-    /// Puts `w` × `h` pixels into texture `id`, which may change its resolution.
-    fn set_texture_pixels(&mut self, id: u32, w: u32, h: u32, rgba: &[u8]) {
-        self.asset_ledger
-            .textures
-            .insert(id, crate::inventory::rgba8_bytes(w, h));
+    /// Puts `level` into texture `id`, which may change its resolution.
+    fn set_texture_level(&mut self, id: u32, level: &Level) {
+        self.asset_ledger.textures.insert(id, level.bytes());
+        #[cfg(feature = "compressed-textures")]
+        if let Some(blocks) = &level.blocks {
+            self.compressed.insert(id, blocks.normal);
+            if !self.headless
+                && let Some(renderer) = self.renderer.as_mut()
+            {
+                renderer.replace_compressed_texture(id, blocks);
+            }
+            return;
+        }
+        #[cfg(feature = "compressed-textures")]
+        self.compressed.remove(&id);
         if !self.headless
             && let Some(renderer) = self.renderer.as_mut()
         {
-            renderer.replace_texture(id, w, h, rgba);
+            renderer.replace_texture(id, level.width, level.height, &level.rgba);
         }
     }
 
@@ -818,7 +875,7 @@ impl crate::gfx::Graphics {
             t.job = None;
             t.state = AssetState::Evicted;
             t.size = [stand_in.width, stand_in.height];
-            self.set_texture_pixels(entry.handle, stand_in.width, stand_in.height, &stand_in.rgba);
+            self.set_texture_level(entry.handle, &stand_in);
             self.streaming.textures.get_mut(&name).expect("there").stand_in = Some(stand_in);
         }
     }
@@ -904,7 +961,20 @@ impl crate::gfx::Graphics {
     fn decode_texture_now(&mut self, name: &str) -> Result<(Origin, Pyramid), crate::error::Error> {
         let found = self.asset_sources.find(name)?;
         let max = self.max_texture_side();
-        decode_texture(name, found.origin.clone(), found.into_bytes(), max)
+        let gpu = self.texture_formats();
+        decode_texture(name, found.origin.clone(), found.into_bytes(), max, gpu)
+    }
+
+    /// The block formats streamed textures may stay in.
+    #[cfg(feature = "compressed-textures")]
+    fn texture_formats(&self) -> TextureFormats {
+        self.compressed_formats()
+    }
+
+    /// Nothing to choose without the `compressed-textures` feature.
+    #[cfg(not(feature = "compressed-textures"))]
+    fn texture_formats(&self) -> TextureFormats {
+        TextureFormats
     }
 
     /// Starts decoding texture `name` on a worker, and queues its uploads.
@@ -913,16 +983,19 @@ impl crate::gfx::Graphics {
             .errors
             .remove(&(kind_key(ResidencyKind::Texture), name.to_string()));
         let max = self.max_texture_side();
+        let gpu = self.texture_formats();
         // Find it here: added sources are read on the game thread.
         let job = match self.asset_sources.find(name) {
             Ok(found) => {
                 let origin = found.origin.clone();
                 let name_owned = name.to_string();
                 match origin {
-                    Origin::File(_) => Job::spawn(move || decode_texture(&name_owned, origin, found.into_bytes(), max)),
+                    Origin::File(_) => {
+                        Job::spawn(move || decode_texture(&name_owned, origin, found.into_bytes(), max, gpu))
+                    }
                     Origin::Source { .. } => {
                         let bytes = found.into_bytes();
-                        Job::spawn(move || decode_texture(&name_owned, origin, bytes, max))
+                        Job::spawn(move || decode_texture(&name_owned, origin, bytes, max, gpu))
                     }
                 }
             }
@@ -1069,7 +1142,12 @@ impl crate::gfx::Graphics {
         t.job = None;
         t.at = 0;
         t.state = AssetState::Resident;
-        let bytes = crate::inventory::rgba8_bytes(texture.width(), texture.height());
+        let bytes = self
+            .asset_ledger
+            .textures
+            .get(&id)
+            .copied()
+            .unwrap_or_else(|| crate::inventory::rgba8_bytes(texture.width(), texture.height()));
         let set = self.residency.set_mut(ResidencyKind::Texture);
         if set.get(&name).is_some() {
             set.set_bytes(&name, bytes);
@@ -1083,15 +1161,45 @@ impl crate::gfx::Graphics {
     }
 }
 
-/// Decodes texture `name` from `bytes` into its resolutions.
+/// The block formats a streamed texture may stay in (nothing to choose
+/// without the `compressed-textures` feature).
+#[cfg(feature = "compressed-textures")]
+type TextureFormats = crate::compressed::GpuFormats;
+#[cfg(not(feature = "compressed-textures"))]
+#[derive(Clone, Copy)]
+struct TextureFormats;
+
+/// Decodes texture `name` from `bytes` into its resolutions: a KTX2 or DDS
+/// file in a block format `gpu` samples into its own mip levels.
 fn decode_texture(
     name: &str,
     origin: Origin,
     bytes: Result<Vec<u8>, crate::error::Error>,
     max: u32,
+    gpu: TextureFormats,
 ) -> Result<(Origin, Pyramid), crate::error::Error> {
     let bytes = bytes.map_err(|e| e.with_path(name))?;
-    let image = assets::decode_image(&bytes, name, &origin.describe(name))?;
+    let what = origin.describe(name);
+    #[cfg(feature = "compressed-textures")]
+    if let Some(decoded) = crate::compressed::decode(&bytes, name, &what, gpu) {
+        return Ok(match decoded? {
+            crate::compressed::Decoded::Rgba(image) => (origin, pyramid(image, max)),
+            crate::compressed::Decoded::Blocks(image) => {
+                let levels = block_pyramid(&image, max);
+                if levels.is_empty() {
+                    return Err(crate::error::Error::new(
+                        crate::error::ErrorKind::Limit,
+                        format!("{what} is larger than this GPU's textures and has no smaller mip level to use"),
+                    )
+                    .with_path(name));
+                }
+                (origin, levels)
+            }
+        });
+    }
+    #[cfg(not(feature = "compressed-textures"))]
+    let TextureFormats = gpu;
+    let image = assets::decode_image(&bytes, name, &what)?;
     Ok((origin, pyramid(image, max)))
 }
 
@@ -1130,17 +1238,17 @@ mod tests {
 
     #[test]
     fn halving_averages_blocks() {
-        let level = Level {
-            width: 2,
-            height: 2,
-            rgba: [
+        let level = Level::new(
+            2,
+            2,
+            [
                 [0, 0, 0, 255],
                 [255, 255, 255, 255],
                 [0, 0, 0, 255],
                 [255, 255, 255, 255],
             ]
             .concat(),
-        };
+        );
         let half = halve(&level);
         assert_eq!((half.width, half.height), (1, 1));
         assert_eq!(half.rgba, [128, 128, 128, 255]);

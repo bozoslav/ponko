@@ -237,6 +237,30 @@ Allocations: 100 toggles of such a component made 100 heap allocations
 before and make 0 now (`tests/archetype_alloc.rs`, which fails against the
 old code). Memory: no heap; the remove uses a 64-byte stack slot.
 
+## Reclaiming empty archetypes (#347): no regression
+
+Reclaiming empty archetypes (`crates/ponko_ecs/src/slots.rs`) adds a bit
+operation to every move that fills or empties an archetype and checks a
+generation when following an edge. Three interleaved full runs of
+`membership` against engine `main` at `3b8b1c17`, on 2026-11-14, with the
+machine busy (load averages around 20 to 35): over all 372 cases, the
+median ratio after/before is 1.00 (10th percentile 0.96, 90th 1.02).
+Transitions, ns:
+
+| case | before | after |
+|---|---:|---:|
+| n2 `warm-1-edge` | 15.3 (14.2) | 16.4 (15.3) |
+| n2 `cycle32-64-edges` | 15.9 (14.8) | 16.4 (15.2) |
+| n8 `warm-1-edge` | 35.6 (33.2) | 36.0 (34.7) |
+| n16 `warm-1-edge` | 65.4 (56.3) | 65.7 (59.5) |
+| n64 `warm-1-edge` | 221.3 (211.3) | 221.6 (209.2) |
+
+Medians of the three runs, lowest in parentheses. The two-component toggle
+is about 1 ns (4 to 7 %) slower, at the edge of the 6 to 8 % its runs moved
+by; the larger ones tie. A first version that queued empty archetypes,
+oldest first, cost about 3 ns there (19 ns) and was replaced by a sweep
+over bits. `edge-lookup` doesn't use the engine's edge type and ties.
+
 ## Not measured
 
 - Only Apple M4 Max under heavy load; other platforms untested, and a quiet

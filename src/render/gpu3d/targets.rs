@@ -259,8 +259,23 @@ impl Renderer3D {
             self.samples,
             wgpu::TextureUsages::TEXTURE_BINDING,
         );
-        let scene = scene_bind_group(device, &self.scene_layout, &scene_view, &depth);
-        let scene_of_hdr = scene_bind_group(device, &self.scene_layout, &hdr, &depth);
+        // Where the transparent pass can't sample the depth it tests
+        // against (the GL backend), it samples a copy.
+        let depth_copy = self.depth_copy.as_ref().map(|c| c.target(device, &depth, size));
+        let scene = scene_bind_group(
+            device,
+            &self.scene_layout,
+            &scene_view,
+            depth_copy.as_ref().map_or(&depth, |c| &c.view),
+            self.scene_depth_sampler.as_ref(),
+        );
+        let scene_of_hdr = scene_bind_group(
+            device,
+            &self.scene_layout,
+            &hdr,
+            &depth,
+            self.scene_depth_sampler.as_ref(),
+        );
         let velocity = self
             .screen
             .velocity_on
@@ -294,7 +309,15 @@ impl Renderer3D {
         });
         // The opaque pass reads both from its scene color slot (see `ssr.rs`).
         let screen = ssr.as_ref().map(|s| &s.screen).or(ao.as_ref().map(|a| &a.output));
-        let opaque_scene = screen.map(|screen| scene_bind_group(device, &self.scene_layout, screen, &self.dummy_depth));
+        let opaque_scene = screen.map(|screen| {
+            scene_bind_group(
+                device,
+                &self.scene_layout,
+                screen,
+                &self.dummy_depth,
+                self.scene_depth_sampler.as_ref(),
+            )
+        });
         Targets {
             samples: self.samples,
             ao,
@@ -308,6 +331,7 @@ impl Renderer3D {
             hdr_texture,
             scene_texture,
             scene,
+            depth_copy,
             scene_of_hdr,
             scene_view,
             hdr,
@@ -335,8 +359,11 @@ pub(super) struct Targets {
     pub(super) hdr_texture: wgpu::Texture,
     /// A copy of the opaque scene, for transparent shaders that read it.
     pub(super) scene_texture: wgpu::Texture,
-    /// The scene bind group of the transparent pass: `scene_texture` and `depth`.
+    /// The scene bind group of the transparent pass: `scene_texture` and
+    /// `depth` (or its copy, `depth_copy`).
     pub(super) scene: wgpu::BindGroup,
+    /// On the GL backend: the copy of `depth` the transparent pass reads.
+    pub(super) depth_copy: Option<super::depth_copy::DepthCopyTarget>,
     /// `scene_texture` as a render target: screen effects swap between it
     /// and `hdr` (ping-pong), each reading one and writing the other.
     pub(super) scene_view: wgpu::TextureView,
@@ -627,19 +654,28 @@ pub(in crate::render) fn scene_bind_group(
     layout: &wgpu::BindGroupLayout,
     color: &wgpu::TextureView,
     depth: &wgpu::TextureView,
+    depth_sampler: Option<&wgpu::Sampler>,
 ) -> wgpu::BindGroup {
+    let mut entries = vec![
+        wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(color),
+        },
+        wgpu::BindGroupEntry {
+            binding: 1,
+            resource: wgpu::BindingResource::TextureView(depth),
+        },
+    ];
+    // The GL backend samples the depth (see `shaders::reads_depth_as_float`).
+    if let Some(sampler) = depth_sampler {
+        entries.push(wgpu::BindGroupEntry {
+            binding: 2,
+            resource: wgpu::BindingResource::Sampler(sampler),
+        });
+    }
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("3d scene"),
         layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(color),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::TextureView(depth),
-            },
-        ],
+        entries: &entries,
     })
 }

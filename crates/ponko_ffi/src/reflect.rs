@@ -251,7 +251,13 @@ pub unsafe extern "C" fn ponko_world_load(world: *mut PonkoWorld, json: *const c
         // SAFETY: access validates null and guards the live handle.
         unsafe {
             access(world, |w, _| {
-                w.load(&save).map_err(|e| crate::invalid_owned(e.to_string()))
+                w.load(&save).map_err(|e| match e {
+                    // Their error kinds: a save from a newer game, a failing step.
+                    ponko::reflect::ReflectError::NewerSave { .. } | ponko::reflect::ReflectError::Migration { .. } => {
+                        crate::save_migrations::reflect_failure(e)
+                    }
+                    e => crate::invalid_owned(e.to_string()),
+                })
             })
         }
     })

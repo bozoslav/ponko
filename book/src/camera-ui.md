@@ -132,6 +132,99 @@ In C++, `draw_text(text, pos, params)` is `draw_text_ex`, with
   screens and costs only a lookup per glyph after that.
 - `measure_text` works headless too, so layout code can be tested.
 
+### Other languages: fallback fonts, shaping and right-to-left text
+
+A font covers some scripts and not others; the built-in one has Latin,
+Greek and Cyrillic. Give a font a **fallback chain** and every character it
+lacks comes from the first font in the chain that has it:
+
+<div class="lang-pair">
+<div>
+
+```rust
+# use ponko::prelude::*;
+# fn setup(ctx: &mut Ctx) {
+let arabic = ctx.gfx.try_load_font("fonts/NotoSansArabic-Subset.ttf").unwrap_or(Font::DEFAULT);
+let japanese = ctx.gfx.try_load_font("fonts/NotoSansJP-Subset.otf").unwrap_or(Font::DEFAULT);
+ctx.gfx.set_font_fallbacks(Font::DEFAULT, &[arabic, japanese]);
+ctx.gfx.set_text_shaping(TextShaping::Auto); // the default
+let size = ctx.gfx.measure_text("Level 3: مرحبا", 24.0);
+// Installed fonts need the `system-fonts` feature.
+if let Ok(system) = ctx.gfx.try_load_system_font("Noto Sans") {
+    ctx.gfx.set_font_fallbacks(Font::DEFAULT, &[arabic, japanese, system]);
+}
+# let _ = size;
+# }
+```
+
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:localized_text}}
+```
+
+</div>
+</div>
+
+That is enough for scripts whose letters stand alone: Japanese, Chinese,
+Korean. Arabic letters join and change shape with their neighbours,
+Devanagari reorders vowel signs and stacks consonants, and Arabic and
+Hebrew run right to left. Those need the **`text-shaping`** cargo feature
+(on by default in the C library):
+
+```toml
+ponko = { version = "0.3", features = ["text-shaping"] }
+```
+
+With it, every string that isn't plain ASCII goes through
+[harfrust](https://crates.io/crates/harfrust), the HarfBuzz project's
+shaper in Rust:
+
+- **Shaping**: the font's own substitutions and positioning (OpenType
+  `GSUB` and `GPOS`): Arabic joining forms, Indic conjuncts and reordered
+  vowel signs, marks placed on their letters, ligatures and kerning pairs.
+- **Bidirectional text**: each line is ordered with the Unicode
+  bidirectional algorithm, so "Level 3: مرحبا!" keeps "Level 3:" on the
+  left and draws the Arabic word right to left after it. Its direction
+  comes from its first strong letter.
+- **Fallback per run**: a line is split into runs of one script and one
+  font (walking the chain), and each run is shaped with its font.
+- **Line breaks**: wrapped UI text breaks where Unicode's line-breaking
+  rules allow (UAX #14): at spaces, and between Japanese and Chinese
+  characters, which have none.
+
+It reaches every text path: `draw_text` and `measure_text`, the retained
+UI's labels and buttons (a paragraph that reads right to left starts at
+the right with `UiTextAlign::Start`), the immediate widgets, text fields
+(the caret and the selection follow the visual order, so a selection that
+crosses a change of direction shows as two pieces; arrow keys move through
+the characters in reading order) and 3D text.
+
+**Cost.** ASCII strings keep the per-character path: the feature leaves
+their layout cost as it was (the `text/layout-ascii-400` benchmark).
+`TextShaping::Always` shapes them too, for ligatures and the font's
+OpenType kerning in Latin text. A shaped string is cached in font units,
+so drawing it again each frame costs a hash and a lookup per glyph; a new
+string is shaped once. The feature adds six crates and about 1.3 MB to a
+window-only release build (desktop and web alike); a build with the
+default features, whose inspector already links the shaper, grows by
+three crates and about 0.5 MB. Each loaded font's file also stays in
+memory for the shaper.
+
+**System fonts.** The `system-fonts` feature (desktop only) adds
+`load_system_font("Family")` and `set_system_font_fallback(true)`, which
+searches the computer's fonts for a character no loaded font has (useful
+for text the game can't know, such as player names) and appends the font
+it finds to the chain. Without the feature, and on the web, they report
+`ErrorKind::Unsupported`. A shipped game should bring its own fonts.
+
+**Not covered yet.** Color emoji: glyphs are rasterized as coverage masks,
+so an emoji font's color layers or bitmaps are not drawn (outline emoji
+fonts draw in one color). Thai, Lao and Khmer, which need a dictionary to
+find word breaks, wrap only at spaces. Vertical text is not laid out.
+Fonts' variation axes stay at their defaults.
+
 ## UI
 
 A few immediate-mode widgets, in the same units as the retained tree's layout
@@ -215,11 +308,16 @@ as `ctx.ui.immediate.style.text_size = 14.0`, stays through a later
 `set_theme`. The retained theme has no spacing besides `border_width`: the
 immediate `style.padding` is its own, and scales with the screen. From C,
 `ponko_ctx_ui_set_scale` and `ponko_ctx_ui_set_theme` do the same; C++:
-`ctx.ui_retained().set_scale(..)` and `.set_theme(..)`. This snippet is
-Rust-only; the C and C++ calls need no new functions. Reading or setting
-`ctx.ui.immediate.font`, `border_width` and `scale()` on their own is
-Rust-only too: native code sets them through the theme and the scale, and
-cannot read them back.
+`ctx.ui_retained().set_scale(..)` and `.set_theme(..)`. The snippet is
+written in Rust; the C and C++ calls above do the same. The immediate
+widgets' own font, border and scale read back and change on their own too:
+`ponko_ctx_ui_immediate_font`, `ponko_ctx_set_ui_immediate_font`,
+`ponko_ctx_ui_immediate_border_width`,
+`ponko_ctx_set_ui_immediate_border_width` and
+`ponko_ctx_ui_immediate_scale` in C; `ui_immediate_font()`,
+`set_ui_immediate_font(f)`, `ui_immediate_border_width()`,
+`set_ui_immediate_border_width(w)` and `ui_immediate_scale()` on the C++
+`ctx`. The scale is read-only: it follows `set_scale`.
 
 The whole scene from `cargo run --release --example ui`:
 

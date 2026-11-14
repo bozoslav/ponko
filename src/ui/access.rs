@@ -191,9 +191,10 @@ pub struct UiAccessNode {
 
 /// A deterministic snapshot of the UI's accessibility semantics.
 ///
-/// Nodes are in depth-first layout order, screens from the bottom up. A modal
-/// screen hides every screen below it; non-modal lower screens stay readable
-/// but [`inert`](UiAccessNode::inert). Nodes with `display: none` (and their
+/// Nodes are in depth-first layout order, screens from the bottom up, after
+/// the [HUDs](Ui::show_hud). A modal screen hides every screen and HUD below
+/// it; non-modal lower screens and HUDs stay readable but
+/// [`inert`](UiAccessNode::inert). Nodes with `display: none` (and their
 /// subtrees) are left out. Take the snapshot after [`Ui::frame`] or
 /// [`Ui::layout`] so bounds and focus are current. Its `Display` form is one
 /// line per node, indented by depth, for golden tests and tools.
@@ -434,9 +435,16 @@ impl Ui {
     /// place that decides what assistive technology sees; the snapshot and
     /// the change tracker both read it, so they can't disagree.
     fn walk_access(&self, visit: &mut dyn FnMut(&Seen)) {
-        let first = self.screens.iter().rposition(|s| s.modal).unwrap_or(0);
+        let modal = self.screens.iter().rposition(|s| s.modal);
         let top = self.top_screen();
-        for screen in self.screens.iter().skip(first) {
+        // HUDs are under every screen: readable, never interactive, and
+        // hidden like the screens below a modal one.
+        if modal.is_none() {
+            for &hud in &self.huds {
+                self.walk_access_node(visit, hud, None, 0, true, false, false);
+            }
+        }
+        for screen in self.screens.iter().skip(modal.unwrap_or(0)) {
             self.walk_access_node(
                 visit,
                 screen.root,

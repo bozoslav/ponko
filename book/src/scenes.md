@@ -32,9 +32,14 @@ agents and your own code write them like any other file.
   The file is read once, then kept in memory, so spawning a thousand trees
   reads it once.
 - Only [reflected](reflection.md) components go in files: reflect your
-  types before loading or saving. `Transform2D`, `Sprite` and the physics
-  components are reflected already. A sprite names its image
-  (`"texture": "crab.png"`), and loading the scene or prefab loads it.
+  types before loading or saving. `Transform2D`, `Sprite`, `Animation` and
+  the physics components are reflected already. A sprite names its image
+  (`"texture": "crab.png"`), and loading the scene or prefab loads it; so
+  does a [sprite-sheet animation](tiles.md#animation), which also keeps its
+  frame.
+- Entities with `NotSaved` (`ponko::reflect::NotSaved`) are left out of
+  scenes and saves: what the game rebuilds from its own files, such as a
+  [level's tiles and colliders](tiles.md#levels-and-saves).
   With 3D on, `d3::Transform` (saved as `"Transform3D"`) and `Model` are reflected too: a model names
   its mesh's glTF file (`"mesh": "tree.glb"`), loaded the same way. Scenes
   can also come from Unity ([Importing from Unity](unity.md)).

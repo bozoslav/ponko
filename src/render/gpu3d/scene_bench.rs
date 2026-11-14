@@ -458,6 +458,10 @@ impl SceneBench {
         if bench.shadow_workload.is_some() {
             bench.ctx.scene3d.lighting.shadow_refresh = 1;
         }
+        // TAA, for what motion vectors cost (no preset turns it on).
+        if std::env::var("PONKO_RENDER_TAA").is_ok_and(|v| v.trim() == "1") {
+            bench.ctx.scene3d.post.anti_aliasing = crate::render::AntiAliasing::Taa;
+        }
         bench.place_camera();
         let _ = bench.device.poll(wgpu::PollType::wait_indefinitely());
         // The scene's own uploads are not a frame's.
@@ -1261,14 +1265,16 @@ impl SceneBench {
     /// the shadow maps see.
     fn collect(&mut self) -> SkyLight {
         let ctx = &mut self.ctx;
+        let motion = ctx.scene3d.post.anti_aliasing == crate::render::AntiAliasing::Taa
+            || (ctx.scene3d.post.ao_temporal && ctx.scene3d.post.ambient_occlusion.enabled);
         let mut skins = std::mem::take(&mut ctx.gfx.frame3d.skins);
+        skins.motion = motion;
         skins.collect(&mut ctx.world, &ctx.gfx.assets3d);
         ctx.collect_views(&skins);
         let frame = &mut ctx.gfx.frame3d;
         frame.size_limit = self.device.limits().max_texture_dimension_2d;
         frame.lod = ctx.scene3d.lod;
-        frame.motion.enabled = ctx.scene3d.post.anti_aliasing == crate::render::AntiAliasing::Taa
-            || (ctx.scene3d.post.ao_temporal && ctx.scene3d.post.ambient_occlusion.enabled);
+        frame.motion.enabled = motion;
         if !ctx.scene3d.camera.occlusion_culling {
             frame.occlusion = None;
         } else if let Some(grid) = self.renderer.take_occlusion() {

@@ -1988,8 +1988,8 @@ pub unsafe extern "C" fn ponko_ctx_ui_scroll(
 
 /// Pushes a detached root as the top screen. Only the top screen takes input;
 /// a `modal` one also dims the screens below it and owns the pointer outside
-/// its rectangle. Fails with `PONKO_INVALID_ARGUMENT` if the node has a parent
-/// or is already a screen.
+/// its rectangle. Fails with `PONKO_INVALID_ARGUMENT` if the node has a parent,
+/// is already a screen or is shown as a HUD (`ponko_ctx_ui_show_hud`).
 /// ```
 /// assert_eq!(unsafe { ponko_ffi::ponko_ctx_ui_push_screen(std::ptr::null_mut(), ponko_ffi::PONKO_UI_SCREEN, 0, true) } as u32, 1);
 /// ```
@@ -2011,6 +2011,9 @@ pub unsafe extern "C" fn ponko_ctx_ui_push_screen(
             }
             if ui.is_screen(root) {
                 return Err(invalid("UI screen already on stack"));
+            }
+            if ui.is_hud(root) {
+                return Err(invalid("UI screen is shown as a HUD"));
             }
             ui.push_screen(root, modal);
             Ok(())

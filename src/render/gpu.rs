@@ -443,8 +443,14 @@ impl Renderer {
         if let Some(tier) = forced_tier {
             eprintln!("ponko: PONKO_GPU_TIER forces the {tier} GPU tier");
         }
-        let required_features = adapter.features()
+        #[cfg_attr(not(feature = "compressed-textures"), allow(unused_mut))]
+        let mut required_features = adapter.features()
             & (wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
+        // Block-compressed textures upload as they are where the GPU samples them.
+        #[cfg(feature = "compressed-textures")]
+        {
+            required_features |= adapter.features() & super::blocks::FEATURES;
+        }
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("ponko device"),
@@ -850,6 +856,7 @@ impl Renderer {
 
     #[cfg(feature = "3d")]
     fn upload_texture_array(&mut self, width: u32, height: u32, layers: &[&[u8]], linear: bool) -> wgpu::Texture {
+        let layers = &*stored_layers(layers, self.device.adapter_info().backend == wgpu::Backend::Gl);
         let size = wgpu::Extent3d {
             width,
             height,
@@ -1132,6 +1139,64 @@ impl Renderer {
         id
     }
 
+    /// The block-compressed formats this device samples.
+    #[cfg(feature = "compressed-textures")]
+    pub fn compressed_formats(&self) -> crate::compressed::GpuFormats {
+        super::blocks::gpu_formats(self.device.features())
+    }
+
+    /// Uploads a block-compressed texture with its mipmaps and returns its
+    /// id. It keeps its own mipmaps: none are made for 3D materials.
+    #[cfg(feature = "compressed-textures")]
+    pub fn create_compressed_texture(&mut self, image: &crate::compressed::CompressedImage) -> u32 {
+        let texture = super::blocks::upload(&self.device, &self.queue, "compressed texture", &[image]);
+        let bind_group = self.sprite_bind_group(&texture, false);
+        self.textures.push(GpuTexture {
+            bind_group,
+            texture,
+            nearest: false,
+            #[cfg(feature = "3d")]
+            mips: Some(!image.srgb),
+        });
+        (self.textures.len() - 1) as u32
+    }
+
+    /// Replaces texture `id` with a block-compressed image (resolution
+    /// streaming, hot reload), like [`replace_texture`](Self::replace_texture).
+    #[cfg(feature = "compressed-textures")]
+    pub fn replace_compressed_texture(&mut self, id: u32, image: &crate::compressed::CompressedImage) {
+        let Some(old) = self.textures.get(id as usize) else {
+            return;
+        };
+        let nearest = old.nearest;
+        let texture = super::blocks::upload(&self.device, &self.queue, "compressed texture", &[image]);
+        let bind_group = self.sprite_bind_group(&texture, nearest);
+        self.textures[id as usize] = GpuTexture {
+            bind_group,
+            texture,
+            nearest,
+            #[cfg(feature = "3d")]
+            mips: Some(!image.srgb),
+        };
+        #[cfg(feature = "3d")]
+        {
+            // No CPU copy of its alpha to compare: count it as changed.
+            self.texture_alpha.remove(&id);
+            if let Some(three) = &mut self.three {
+                three.texture_alpha_changed(id, true);
+                three.texture_replaced(&self.device, &self.textures, id);
+            }
+        }
+    }
+
+    /// Uploads a texture array of block-compressed layers (one size and
+    /// format) with their mipmaps; returns its id among the 3D arrays.
+    #[cfg(all(feature = "3d", feature = "compressed-textures"))]
+    pub fn create_compressed_texture_array(&mut self, layers: &[&crate::compressed::CompressedImage]) -> u32 {
+        let texture = super::blocks::upload(&self.device, &self.queue, "3d compressed texture array", layers);
+        self.three().add_texture_array(&texture)
+    }
+
     /// Replaces texture `id` with `rgba` at a new size (resolution
     /// streaming): the same id, sampling and mipmap kind, so sprites and
     /// materials showing it see the new pixels at once.
@@ -1376,6 +1441,11 @@ impl Renderer {
     /// Replaces every pixel of texture `id` (same size as created).
     pub fn update_texture(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) {
         debug_assert_eq!(rgba.len(), (width * height * 4) as usize);
+        // A block-compressed texture can't take pixels: it becomes RGBA8.
+        if self.textures[id as usize].texture.format().is_compressed() {
+            self.replace_texture(id, width, height, rgba);
+            return;
+        }
         self.queue.uploading(Upload::Textures).write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &self.textures[id as usize].texture,
@@ -2030,15 +2100,17 @@ impl Renderer {
     }
 }
 
-/// Bytes `texture` takes on the GPU, every mipmap level and layer.
-fn texture_bytes(texture: &wgpu::Texture) -> u64 {
+/// Bytes `texture` takes on the GPU, every mipmap level and layer
+/// (block-compressed formats by whole blocks).
+pub(super) fn texture_bytes(texture: &wgpu::Texture) -> u64 {
     let block = u64::from(texture.format().block_copy_size(None).unwrap_or(4));
+    let (bw, bh) = texture.format().block_dimensions();
     let layers = u64::from(texture.depth_or_array_layers());
     let samples = u64::from(texture.sample_count());
     (0..texture.mip_level_count())
         .map(|level| {
-            let w = u64::from((texture.width() >> level).max(1));
-            let h = u64::from((texture.height() >> level).max(1));
+            let w = u64::from((texture.width() >> level).max(1).div_ceil(bw));
+            let h = u64::from((texture.height() >> level).max(1).div_ceil(bh));
             w * h * block
         })
         .sum::<u64>()
@@ -2149,5 +2221,35 @@ mod msaa_tests {
         );
         assert_eq!(msaa_refusal(1, 2, false), None, "WebGL2: the capabilities say so");
         assert!(msaa_refusal(1, 0, false).is_some());
+    }
+}
+
+/// The layers a texture array is made with. wgpu's GL backend (WebGL2, `gl`)
+/// makes a one-layer array an ordinary 2D texture, which shaders can't read
+/// as an array (it reads as nothing): there it gets a second layer, a copy
+/// of the first, which a read past the last layer returns anyway.
+#[cfg(feature = "3d")]
+fn stored_layers<'s, 'a>(layers: &'s [&'a [u8]], gl: bool) -> std::borrow::Cow<'s, [&'a [u8]]> {
+    if gl && layers.len() == 1 {
+        std::borrow::Cow::Owned(vec![layers[0], layers[0]])
+    } else {
+        std::borrow::Cow::Borrowed(layers)
+    }
+}
+
+#[cfg(all(test, feature = "3d"))]
+mod stored_layer_tests {
+    use super::stored_layers;
+
+    #[test]
+    fn one_layer_arrays_get_a_second_copy_on_gl_only() {
+        let (a, b): (&[u8], &[u8]) = (&[1, 2, 3, 4], &[5, 6, 7, 8]);
+        assert_eq!(&*stored_layers(&[a], true), &[a, a]);
+        assert_eq!(&*stored_layers(&[a], false), &[a]);
+        assert_eq!(
+            &*stored_layers(&[a, b], true),
+            &[a, b],
+            "two layers are an array already"
+        );
     }
 }

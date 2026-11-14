@@ -32,6 +32,9 @@ libc = "0.2"
 
 [features]
 render = ["ponko/window"]
+# The text benchmarks' shaped cases, and the ASCII case with shaping
+# compiled in (its cost must match the build without it).
+text-shaping = ["ponko/text-shaping"]
 
 [[bin]]
 name = "instances"

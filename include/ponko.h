@@ -747,6 +747,18 @@ enum PonkoScenarioStatus
 typedef uint32_t PonkoScenarioStatus;
 #endif // __cplusplus
 
+enum PonkoTextShaping
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+ {
+  PONKO_TEXT_SHAPING_AUTO = 0,
+  PONKO_TEXT_SHAPING_ALWAYS = 1,
+};
+#ifndef __cplusplus
+typedef uint32_t PonkoTextShaping;
+#endif // __cplusplus
+
 typedef struct PonkoAccess PonkoAccess;
 
 typedef struct PonkoActionMap PonkoActionMap;
@@ -1490,6 +1502,8 @@ typedef struct PonkoUploadStats {
 
 typedef void (*PonkoResourceScopeFn)(struct PonkoWorld *world, void *value, void *user);
 
+typedef uint32_t (*PonkoJsonConvertFn)(void *user, const char *json, const char **out_json);
+
 typedef struct PonkoScenarioReport {
   uint32_t status;
   bool failed;
@@ -2093,6 +2107,18 @@ typedef struct PonkoVehicle3D {
   struct PonkoCollisionGroups groups;
   uint32_t reserved;
 } PonkoVehicle3D;
+
+typedef struct PonkoAudioKey {
+  float distance;
+  float gain;
+} PonkoAudioKey;
+
+typedef struct PonkoTargetEffect {
+  struct PonkoEffect effect;
+  struct PonkoTexture target;
+  bool has_material;
+  struct PonkoMaterial material;
+} PonkoTargetEffect;
 
 typedef struct PonkoSprite {
   struct PonkoTexture texture;
@@ -3735,6 +3761,16 @@ enum PonkoStatus ponko_ctx_physics3d_is_collider_active(struct PonkoCtx *ctx,
                                                         uint64_t entity,
                                                         bool *out_active);
 
+enum PonkoStatus ponko_ctx_set_physics_paused(struct PonkoCtx *ctx, bool paused);
+
+enum PonkoStatus ponko_ctx_is_physics_paused(struct PonkoCtx *ctx, bool *out_paused);
+
+enum PonkoStatus ponko_ctx_load_collision_mesh(struct PonkoCtx *ctx,
+                                               const char *path,
+                                               struct PonkoVec3 scale,
+                                               bool convex,
+                                               struct PonkoCollisionMesh *out_mesh);
+
 enum PonkoStatus ponko_ctx_prefab_parts(struct PonkoCtx *ctx,
                                         uint64_t root,
                                         uint64_t *out_entities,
@@ -3996,6 +4032,110 @@ enum PonkoStatus ponko_resource_scope(struct PonkoWorld *world,
                                       size_t size,
                                       PonkoResourceScopeFn scope,
                                       void *user);
+
+enum PonkoStatus ponko_world_set_save_version(struct PonkoWorld *world, uint32_t version);
+
+enum PonkoStatus ponko_world_save_version(struct PonkoWorld *world, uint32_t *out_version);
+
+enum PonkoStatus ponko_save_migration_rename_component(struct PonkoWorld *world,
+                                                       uint32_t from_version,
+                                                       const char *from,
+                                                       const char *to);
+
+enum PonkoStatus ponko_save_migration_remove_component(struct PonkoWorld *world,
+                                                       uint32_t from_version,
+                                                       const char *name);
+
+enum PonkoStatus ponko_save_migration_rename_field(struct PonkoWorld *world,
+                                                   uint32_t from_version,
+                                                   const char *component,
+                                                   const char *from,
+                                                   const char *to);
+
+enum PonkoStatus ponko_save_migration_add_field(struct PonkoWorld *world,
+                                                uint32_t from_version,
+                                                const char *component,
+                                                const char *field,
+                                                const char *value_json);
+
+enum PonkoStatus ponko_save_migration_remove_field(struct PonkoWorld *world,
+                                                   uint32_t from_version,
+                                                   const char *component,
+                                                   const char *field);
+
+enum PonkoStatus ponko_save_migration_split_component(struct PonkoWorld *world,
+                                                      uint32_t from_version,
+                                                      const char *from,
+                                                      const char *parts_json);
+
+enum PonkoStatus ponko_save_migration_merge_components(struct PonkoWorld *world,
+                                                       uint32_t from_version,
+                                                       const char *const *from,
+                                                       size_t count,
+                                                       const char *into);
+
+enum PonkoStatus ponko_save_migration_rename_resource(struct PonkoWorld *world,
+                                                      uint32_t from_version,
+                                                      const char *from,
+                                                      const char *to);
+
+enum PonkoStatus ponko_save_migration_remove_resource(struct PonkoWorld *world,
+                                                      uint32_t from_version,
+                                                      const char *name);
+
+enum PonkoStatus ponko_save_migration_convert_field(struct PonkoWorld *world,
+                                                    uint32_t from_version,
+                                                    const char *component,
+                                                    const char *field,
+                                                    PonkoJsonConvertFn convert_fn,
+                                                    void *user,
+                                                    PonkoUserFreeFn free);
+
+enum PonkoStatus ponko_save_migration_convert_component(struct PonkoWorld *world,
+                                                        uint32_t from_version,
+                                                        const char *component,
+                                                        PonkoJsonConvertFn convert_fn,
+                                                        void *user,
+                                                        PonkoUserFreeFn free);
+
+enum PonkoStatus ponko_save_migration_convert_resource(struct PonkoWorld *world,
+                                                       uint32_t from_version,
+                                                       const char *resource,
+                                                       PonkoJsonConvertFn convert_fn,
+                                                       void *user,
+                                                       PonkoUserFreeFn free);
+
+enum PonkoStatus ponko_save_migration_change_entities(struct PonkoWorld *world,
+                                                      uint32_t from_version,
+                                                      PonkoJsonConvertFn convert_fn,
+                                                      void *user,
+                                                      PonkoUserFreeFn free);
+
+enum PonkoStatus ponko_save_migration_change_save(struct PonkoWorld *world,
+                                                  uint32_t from_version,
+                                                  PonkoJsonConvertFn convert_fn,
+                                                  void *user,
+                                                  PonkoUserFreeFn free);
+
+enum PonkoStatus ponko_world_migrate_save(struct PonkoWorld *world,
+                                          const char *json,
+                                          char *buffer,
+                                          size_t capacity,
+                                          size_t *out_len);
+
+enum PonkoStatus ponko_ctx_check_old_saves(struct PonkoCtx *ctx,
+                                           const char *folder,
+                                           size_t *out_count);
+
+enum PonkoStatus ponko_world_set_saved(struct PonkoWorld *world, uint64_t entity, bool saved);
+
+enum PonkoStatus ponko_world_is_saved(struct PonkoWorld *world, uint64_t entity, bool *out_saved);
+
+enum PonkoStatus ponko_ctx_spawn_level_without_saved_objects(struct PonkoCtx *ctx,
+                                                             const char *path,
+                                                             struct PonkoVec2 at,
+                                                             const struct PonkoLevelOptions *options,
+                                                             uint64_t *out_root);
 
 struct PonkoInputScenario *ponko_input_scenario_new(void);
 
@@ -4991,6 +5131,24 @@ enum PonkoStatus ponko_ui_access_removed(struct PonkoUiAccess *access,
                                          size_t index,
                                          uint64_t *out_id);
 
+enum PonkoStatus ponko_ctx_ui_set_focus(struct PonkoCtx *ctx, uint64_t target, uint64_t id);
+
+enum PonkoStatus ponko_ctx_ui_clear_focus(struct PonkoCtx *ctx, uint64_t target);
+
+enum PonkoStatus ponko_ctx_ui_set_initial_focus(struct PonkoCtx *ctx,
+                                                uint64_t target,
+                                                uint64_t id,
+                                                bool on);
+
+enum PonkoStatus ponko_ctx_ui_show_hud(struct PonkoCtx *ctx, uint64_t target, uint64_t root);
+
+enum PonkoStatus ponko_ctx_ui_hide_hud(struct PonkoCtx *ctx, uint64_t target, uint64_t root);
+
+enum PonkoStatus ponko_ctx_ui_is_hud(struct PonkoCtx *ctx,
+                                     uint64_t target,
+                                     uint64_t id,
+                                     bool *out_hud);
+
 enum PonkoStatus ponko_ctx_create_ui_panel(struct PonkoCtx *ctx,
                                            uint64_t entity_bits,
                                            uint32_t width,
@@ -5273,6 +5431,141 @@ struct PonkoTransform3D ponko_wheel3d_pose(const struct PonkoWheel3D *wheel,
                                            struct PonkoTransform3D chassis);
 
 enum PonkoStatus ponko_vehicle3d_component(struct PonkoWorld *world, uint32_t *out_id);
+
+enum PonkoStatus ponko_action_map_count(const struct PonkoActionMap *map, size_t *out_count);
+
+enum PonkoStatus ponko_action_map_name(const struct PonkoActionMap *map,
+                                       size_t index,
+                                       char *buffer,
+                                       size_t capacity,
+                                       size_t *out_len);
+
+enum PonkoStatus ponko_action_map_get(const struct PonkoActionMap *map,
+                                      const char *name,
+                                      uint32_t *out_kind,
+                                      struct PonkoActionBinding *out_bindings,
+                                      size_t capacity,
+                                      size_t *out_count);
+
+enum PonkoStatus ponko_ctx_set_action(struct PonkoCtx *ctx,
+                                      const char *name,
+                                      uint32_t kind,
+                                      const struct PonkoActionBinding *bindings,
+                                      size_t count);
+
+enum PonkoStatus ponko_ctx_play_sound_at_keyed(struct PonkoCtx *ctx,
+                                               struct PonkoSound sound,
+                                               struct PonkoVec3 position,
+                                               const struct PonkoAudioSettings3D *settings,
+                                               const struct PonkoAudioKey *keys,
+                                               size_t count,
+                                               struct PonkoPlaying *out_playing);
+
+enum PonkoStatus ponko_ctx_set_audio_source3d_keyed(struct PonkoCtx *ctx,
+                                                    uint64_t entity_bits,
+                                                    struct PonkoSound sound,
+                                                    const struct PonkoAudioSettings3D *settings,
+                                                    const struct PonkoAudioKey *keys,
+                                                    size_t count);
+
+enum PonkoStatus ponko_ctx_audio_unlocked(struct PonkoCtx *ctx, bool *out_unlocked);
+
+enum PonkoStatus ponko_game_add_builtin(struct PonkoGame *game,
+                                        uint32_t phase_raw,
+                                        uint32_t system_id);
+
+enum PonkoStatus ponko_builtin_access(uint32_t system_id, struct PonkoAccess **out_access);
+
+enum PonkoStatus ponko_access_clone(const struct PonkoAccess *access,
+                                    struct PonkoAccess **out_access);
+
+enum PonkoStatus ponko_ctx_ecs_diagnostics(struct PonkoCtx *ctx,
+                                           char *buffer,
+                                           size_t capacity,
+                                           size_t *out_len);
+
+enum PonkoStatus ponko_ctx_set_lod_hysteresis(struct PonkoCtx *ctx,
+                                              uint64_t entity,
+                                              float fraction);
+
+enum PonkoStatus ponko_ctx_lod_hysteresis(struct PonkoCtx *ctx,
+                                          uint64_t entity,
+                                          float *out_fraction);
+
+enum PonkoStatus ponko_lod_instance_levels(float size,
+                                           struct PonkoVec3 center,
+                                           const struct PonkoLodLevel *levels,
+                                           size_t count,
+                                           float scale,
+                                           float fov_y,
+                                           struct PonkoLodSettings settings,
+                                           struct PonkoInstanceLevel *out_levels,
+                                           size_t capacity,
+                                           size_t *out_count);
+
+enum PonkoStatus ponko_ctx_set_scene_compute_passes(struct PonkoCtx *ctx,
+                                                    const struct PonkoComputePass *passes,
+                                                    size_t count);
+
+enum PonkoStatus ponko_ctx_scene_compute_passes(struct PonkoCtx *ctx,
+                                                struct PonkoComputePass *out_passes,
+                                                size_t capacity,
+                                                size_t *out_count);
+
+enum PonkoStatus ponko_ctx_set_target_effects(struct PonkoCtx *ctx,
+                                              const struct PonkoTargetEffect *effects,
+                                              size_t count);
+
+enum PonkoStatus ponko_ctx_target_effects(struct PonkoCtx *ctx,
+                                          struct PonkoTargetEffect *out_effects,
+                                          size_t capacity,
+                                          size_t *out_count);
+
+enum PonkoStatus ponko_ctx_storage_world_slots(struct PonkoCtx *ctx,
+                                               char *buffer,
+                                               size_t capacity,
+                                               size_t *out_len);
+
+enum PonkoStatus ponko_ctx_delete_world(struct PonkoCtx *ctx, const char *slot);
+
+enum PonkoStatus ponko_ctx_storage_is_persistent(struct PonkoCtx *ctx, bool *out_persistent);
+
+enum PonkoStatus ponko_ctx_storage_is_saving(struct PonkoCtx *ctx, bool *out_saving);
+
+enum PonkoStatus ponko_ctx_ui_immediate_font(struct PonkoCtx *ctx, struct PonkoFont *out_font);
+
+enum PonkoStatus ponko_ctx_set_ui_immediate_font(struct PonkoCtx *ctx, struct PonkoFont font);
+
+enum PonkoStatus ponko_ctx_ui_immediate_border_width(struct PonkoCtx *ctx, float *out_width);
+
+enum PonkoStatus ponko_ctx_set_ui_immediate_border_width(struct PonkoCtx *ctx, float width);
+
+enum PonkoStatus ponko_ctx_ui_immediate_scale(struct PonkoCtx *ctx, float *out_scale);
+
+enum PonkoStatus ponko_ctx_set_font_fallbacks(struct PonkoCtx *ctx,
+                                              struct PonkoFont font,
+                                              const struct PonkoFont *fallbacks,
+                                              size_t count);
+
+enum PonkoStatus ponko_ctx_font_fallbacks(struct PonkoCtx *ctx,
+                                          struct PonkoFont font,
+                                          struct PonkoFont *out_fonts,
+                                          size_t capacity,
+                                          size_t *out_count);
+
+enum PonkoStatus ponko_ctx_set_text_shaping(struct PonkoCtx *ctx, uint32_t mode);
+
+enum PonkoStatus ponko_ctx_text_shaping(struct PonkoCtx *ctx, uint32_t *out_mode);
+
+enum PonkoStatus ponko_ctx_try_load_system_font(struct PonkoCtx *ctx,
+                                                const char *family,
+                                                struct PonkoFont *out_font);
+
+enum PonkoStatus ponko_ctx_set_system_font_fallback(struct PonkoCtx *ctx,
+                                                    bool on,
+                                                    bool *out_available);
+
+enum PonkoStatus ponko_ctx_reset_motion(struct PonkoCtx *ctx, uint64_t entity);
 
 #ifdef __cplusplus
 }  // extern "C"

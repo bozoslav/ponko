@@ -22,7 +22,9 @@ pub(crate) struct MaterialUniform {
     pub emissive: [f32; 4],
     /// roughness, metallic, normal map strength, unused.
     pub params: [f32; 4],
-    /// Which maps it has (1/0): normal, ORM, emissive, unused.
+    /// Which maps it has (1/0): normal, ORM, emissive, unused. A
+    /// two-channel normal map is 2 (X and Y in red and green) or 3 (in red
+    /// and alpha): the shader rebuilds Z.
     pub maps: [u32; 4],
     /// For custom shaders.
     pub custom: [[f32; 4]; 4],
@@ -179,6 +181,14 @@ impl Graphics {
             if array.is_some_and(|a| !self.assets3d.arrays_live.contains(a)) {
                 *array = None;
             }
+        }
+        #[cfg(feature = "compressed-textures")]
+        if let Some(normal) = gpu.textures[1] {
+            gpu.uniform.maps[0] = match self.compressed.get(&normal) {
+                Some(crate::compressed::NormalChannels::Rg) => 2,
+                Some(crate::compressed::NormalChannels::Ra) => 3,
+                _ => 1,
+            };
         }
         gpu
     }
@@ -1314,6 +1324,36 @@ impl Graphics {
         self.frame3d.motion.reset = true;
     }
 
+    /// Gives `entity`'s model no motion on the next drawn frame, as
+    /// [`reset_temporal_history`](Self::reset_temporal_history) does for
+    /// every model, but leaving the rest of the picture's history alone.
+    /// Call it after teleporting one object, or when its animation snaps to
+    /// another pose (a cut between clips with no blend), so TAA and
+    /// temporal AO don't smear it along a path it never took. The frame
+    /// after, its motion is measured from where it was drawn on this one.
+    /// For a level-of-detail group, pass the group's entity; for a model
+    /// posed through [`SkinOf`](crate::anim::SkinOf), the model's.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// Game::new("t", 1, 1).run_headless(1, |ctx| {
+    ///     let hero = ctx.world.spawn((ponko::d3::Transform::default(),));
+    ///     ctx.world.get_mut::<ponko::d3::Transform>(hero).unwrap().position = vec3(100.0, 0.0, 0.0);
+    ///     ctx.gfx.reset_motion(hero);
+    /// });
+    /// ```
+    pub fn reset_motion(&mut self, entity: ponko_ecs::Entity) {
+        let motion = &mut self.frame3d.motion;
+        // Kept until a frame draws. Past this many (a crowd, or frames that
+        // draw nothing), the whole history is reset instead.
+        if motion.forget.len() >= super::motion::MAX_FORGET {
+            motion.forget.clear();
+            motion.reset = true;
+        } else if !motion.reset {
+            motion.forget.push(entity.to_bits());
+        }
+    }
+
     /// What each mesh cost to draw in the last frame: the models and
     /// triangles the camera drew with it, and the same for the shadow maps,
     /// most triangles first. For finding what makes a frame slow; it
@@ -1694,7 +1734,11 @@ impl Ctx {
         self.collect_passes(fallback);
         self.gfx.validate_instance_batches();
         let start = web_time::Instant::now();
+        let motion = self.scene3d.post.anti_aliasing == super::AntiAliasing::Taa
+            || (self.scene3d.post.ao_temporal && self.scene3d.post.ambient_occlusion.enabled);
         let mut skins = std::mem::take(&mut self.gfx.frame3d.skins);
+        // The last frame's poses are kept only while something reads motion.
+        skins.motion = motion;
         skins.collect(&mut self.world, &self.gfx.assets3d);
         self.collect_views(&skins);
         self.collect_text3d();
@@ -1703,8 +1747,7 @@ impl Ctx {
         };
         self.gfx.frame3d.size_limit = renderer.max_texture_size();
         self.gfx.frame3d.lod = self.scene3d.lod;
-        self.gfx.frame3d.motion.enabled = self.scene3d.post.anti_aliasing == super::AntiAliasing::Taa
-            || (self.scene3d.post.ao_temporal && self.scene3d.post.ambient_occlusion.enabled);
+        self.gfx.frame3d.motion.enabled = motion;
         if !self.scene3d.camera.occlusion_culling {
             self.gfx.frame3d.occlusion = None;
         } else if let Some(grid) = renderer.take_occlusion() {

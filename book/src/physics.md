@@ -158,6 +158,8 @@ sensors and `.exclude(entity)` skips one body. The C and C++ `cast_ray`,
 - `apply_impulse(e, impulse)`: a one-off push in mass × pixels/s (multiply by
   `mass(e)` to get a speed change).
 - `set_gravity(g)`: change the pull for everyone.
+- `set_paused(true)`: hold the step while the other sim systems run, for a
+  pause screen ([Pausing only physics](sim-clock.md#pausing-only-physics)).
 
 New bodies join at the next step, so a query in the tick you spawned them
 won't see them yet.

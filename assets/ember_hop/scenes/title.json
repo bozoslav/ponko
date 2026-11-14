@@ -703,6 +703,15 @@
      },
      "z": 0.2
     },
+    "Animation": {
+     "texture": "ember_hop/sprites/spark.png",
+     "frame_size": [
+      16.0,
+      16.0
+     ],
+     "frames": 4,
+     "fps": 8.0
+    },
     "Spark": {
      "value": 1
     }
@@ -731,6 +740,15 @@
      },
      "z": 0.2
     },
+    "Animation": {
+     "texture": "ember_hop/sprites/spark.png",
+     "frame_size": [
+      16.0,
+      16.0
+     ],
+     "frames": 4,
+     "fps": 8.0
+    },
     "Spark": {
      "value": 1
     }
@@ -758,6 +776,15 @@
       ]
      },
      "z": 0.2
+    },
+    "Animation": {
+     "texture": "ember_hop/sprites/spark.png",
+     "frame_size": [
+      16.0,
+      16.0
+     ],
+     "frames": 4,
+     "fps": 8.0
     },
     "Spark": {
      "value": 1
@@ -801,6 +828,15 @@
       ]
      },
      "z": 0.1
+    },
+    "Animation": {
+     "texture": "ember_hop/sprites/lantern.png",
+     "frame_size": [
+      16.0,
+      16.0
+     ],
+     "frames": 2,
+     "fps": 3.0
     }
    }
   },

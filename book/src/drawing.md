@@ -365,3 +365,104 @@ image formats from C is not exposed yet.
 `save_screenshot` saves the next frame as a PNG once it
 has been drawn, even while the window is hidden. Headless runs have no
 frames, so it does nothing there.
+
+## Compressed textures
+
+Images in PNG or JPEG are unpacked to 4 bytes a pixel on the GPU, however
+small the file. Block-compressed textures stay compressed in video memory:
+a color texture in BC7 takes a quarter of that, a normal map in BC5 a
+quarter and a one-channel mask in BC4 an eighth, and they load faster, as
+their mipmaps are made ahead of time instead of at load. Turn on the
+`compressed-textures` feature and load `.ktx2` (or `.dds`) files like any
+other texture:
+
+```toml
+# Cargo.toml
+ponko = { version = "0.1", features = ["3d", "compressed-textures"] }
+```
+
+```rust
+# use ponko::prelude::*;
+# fn f(ctx: &mut Ctx) {
+let bricks = ctx.gfx.load_texture("bricks.ktx2");
+# let _ = bricks;
+# }
+```
+
+`ponko textures` makes them from your images, once, at build time. It
+converts every PNG and JPEG under a folder (default `assets`) into a
+`.ktx2` file next to it, with its mipmaps, and skips those already up to
+date:
+
+```sh
+ponko textures assets
+ponko textures assets --check   # in CI: fail if a .ktx2 is missing or stale
+```
+
+A `textures.json` in that folder says what each image is, by path or
+pattern (`*` within a folder name, `**` across folders; an exact path wins
+over patterns, and a longer pattern over a shorter one):
+
+```json
+{
+  "default": "color",
+  "textures": {
+    "**_normal.png": "normal",
+    "**_orm.png": "linear",
+    "**_mask.png": "mask",
+    "ui/**": "ui",
+    "hero.png": { "kind": "color", "basis": true }
+  }
+}
+```
+
+| Kind | For | Becomes |
+|---|---|---|
+| `color` (the default) | colors, read as sRGB | BC7 sRGB |
+| `linear` | data that isn't a color: ORM, flow maps | BC7 |
+| `normal` | normal maps | BC5: X and Y; the shader rebuilds Z |
+| `mask` | one channel, in red | BC4 |
+| `ui` | UI and pixel art, which must stay sharp | RGBA8, no mipmaps |
+| `skip` | images the game reads as pixels | not converted |
+
+BC formats are what desktop GPUs sample (Windows, macOS, Linux, and
+browsers on desktops). A GPU without them, such as most phones, still
+loads the files: the engine decodes them to RGBA8 at load, as it does for
+textures whose width or height isn't a multiple of 4. They then take as
+much memory as a PNG.
+
+For a game that also runs on phones, `"basis": true` keeps a texture as
+Basis Universal UASTC instead, and the engine transcodes it at load to
+what the GPU samples: BC7 or BC5 on desktops, ASTC or ETC2 on phones,
+RGBA8 where there is none. That needs the `basis-universal` feature (the
+Basis Universal transcoder, C++ built with your C++ compiler) and costs
+time at load: in the measurement below, transcoding made loading slower
+than the PNGs. **Web builds have no Basis Universal transcoder**: there a
+UASTC file fails with an `Unsupported` error, so give the web BCn files.
+
+Compressed textures work wherever textures do: in materials (a BC5 normal
+map is read as one), texture arrays (every layer a `.ktx2` of the same
+size and format; mixed with image files, every layer is decoded to RGBA8),
+[streaming](streaming.md), where a budget keeps a smaller mip level of the
+file resident, and hot reload, where a `.png` may even be replaced by its
+`.ktx2`. The asset inventory and residency budgets count their compressed
+bytes. `update_texture` on one turns it into an RGBA8 texture. Without the
+feature, loading a `.ktx2` fails with an `Unsupported` error naming it.
+Cube maps, 3D textures and Basis ETC1S files aren't read yet; nor are the
+KTX2 textures of glTF files (`KHR_texture_basisu`). The C library has the
+same features (`cargo build -p ponko_ffi --features compressed-textures`);
+its released builds leave them out.
+
+Measured on an Apple M4 Max (Metal) with a busy machine, a release build,
+reading, decoding and uploading 18 material textures of 1024 x 1024 (six
+color, six normal and six mask) with their mip chains, the median of three
+runs (`src/render/compressed_bench.rs` says how to repeat it):
+
+| Files | GPU memory | On disk | Load |
+|---|---|---|---|
+| PNG, mipmaps made on the GPU | 96.0 MiB | 32.2 MiB | 575 ms |
+| KTX2, BC7/BC5/BC4 | 20.0 MiB | 18.0 MiB | 69 ms |
+| KTX2, UASTC transcoded at load | 24.0 MiB | 22.5 MiB | 1582 ms (PNG in the same run: 1333 ms) |
+
+The web wasn't measured: there is no headless browser GPU to measure it
+on.

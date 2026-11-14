@@ -206,6 +206,31 @@ pub fn run(b: &mut Bench) {
         measure(b, &name, game, 60, 400, |ctx| spawn(ctx, 16_000, 8));
     }
 
+    // Producers and consumers registered in pairs, as code grouped by
+    // feature often is: `p0 c0 p1 c1 ...`, where `ck` reads what `pk`
+    // writes. Batching only neighbours gives five stages (`p0`, `c0 p1`,
+    // `c1 p2`, `c2 p3`, `c3`); batching by dependencies gives two (every
+    // producer, then every consumer).
+    for mode in MODES {
+        let name = format!("schedule/interleaved/4x16000/heavy/{mode}");
+        if b.skips(&name) {
+            continue;
+        }
+        let mut game = game(mode);
+        macro_rules! pairs {
+            ($($p:literal $c:literal)*) => {$(
+                game = game
+                    .add(Phase::AfterPhysics, heavy::<$p>.access(SystemAccess::new().write::<Val<$p>>()))
+                    .add(
+                        Phase::AfterPhysics,
+                        link::<$p, $c>.access(SystemAccess::new().read::<Val<$p>>().write::<Val<$c>>()),
+                    );
+            )*};
+        }
+        pairs!(0 4  1 5  2 6  3 7);
+        measure(b, &name, game, 60, 200, |ctx| spawn(ctx, 16_000, 8));
+    }
+
     // A mixed simulation: one heavy system, a fan of four medium ones that
     // read what it wrote, two cheap ones, and a `Ctx` system in between.
     for mode in MODES {

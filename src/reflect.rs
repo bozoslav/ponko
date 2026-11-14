@@ -14,8 +14,13 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+mod animation;
 mod builtin_schemas;
+mod migrate;
 mod particles;
+pub(crate) use animation::reflect_animation;
+pub(crate) use migrate::migrate as migrate_save;
+pub use migrate::{Migration, SaveMigrations};
 pub(crate) use particles::reflect_particle_emitter2d;
 
 use crate::schema::{SchemaSource, schema_json};
@@ -54,6 +59,21 @@ pub enum ReflectError {
     UnknownResource(String),
     /// The resource is reflected but not in the world right now.
     MissingResource(String),
+    /// The save was written by a newer version of the game: its
+    /// `"game_version"` is above the game's [`SaveMigrations::version`].
+    NewerSave {
+        /// The save's game version.
+        saved: u32,
+        /// The newest game version this build reads.
+        current: u32,
+    },
+    /// A [`Migration`] step failed on the save.
+    Migration {
+        /// The version the failing step migrates from (to `from + 1`).
+        from: u32,
+        /// What failed, with the entity or resource.
+        message: String,
+    },
 }
 
 impl fmt::Display for ReflectError {
@@ -73,6 +93,15 @@ impl fmt::Display for ReflectError {
                 "no reflected resource named `{name}` (register it with `world.reflect_resource::<T>()`)"
             ),
             Self::MissingResource(name) => write!(f, "resource `{name}` is not in the world"),
+            Self::NewerSave { saved, current } => write!(
+                f,
+                "the save is from a newer version of the game (game save version {saved}; this build reads up to {current})"
+            ),
+            Self::Migration { from, message } => write!(
+                f,
+                "migrating the save from game save version {from} to {}: {message}",
+                from + 1
+            ),
         }
     }
 }
@@ -107,6 +136,32 @@ pub(crate) struct WorldLoads(pub(crate) u64);
 pub(crate) fn world_loads(world: &World) -> u64 {
     world.get_resource::<WorldLoads>().map_or(0, |l| l.0)
 }
+
+/// Leaves its entity out of world saves: [`WorldReflect::save`] skips
+/// every entity that has it, and so do the saves built on it
+/// ([`Storage::save_world`](crate::storage::Storage::save_world),
+/// [`save_scene`](crate::assets::Assets::save_scene), the editor and the
+/// control endpoint's `world.save`). Loading a save replaces every entity,
+/// these too, so the game spawns them again after a load.
+///
+/// For what the game rebuilds from its own files rather than from a save:
+/// [`Ctx::spawn_level`](crate::ctx::Ctx::spawn_level) puts it on everything
+/// it spawns except the objects spawned as prefabs (see
+/// [`LevelOptions::without_saved_objects`](crate::d2::LevelOptions::without_saved_objects)).
+/// It isn't reflected itself, so it is never in a save, scene or prefab.
+///
+/// ```
+/// use ponko::prelude::*;
+/// use ponko::reflect::NotSaved;
+///
+/// let mut world = World::new();
+/// world.reflect::<ponko::d2::Transform>();
+/// world.spawn((ponko::d2::Transform::at(vec2(1.0, 2.0)),)); // the player
+/// world.spawn((ponko::d2::Transform::default(), NotSaved)); // scenery from a file
+/// assert_eq!(world.save()["entities"].as_array().unwrap().len(), 1);
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Component)]
+pub struct NotSaved;
 
 /// What reflection knows about one component type.
 #[derive(Clone)]
@@ -484,8 +539,9 @@ pub trait WorldReflect {
     /// the module path (`my_game::Health` becomes `"Health"`).
     /// Registering the same type again does nothing.
     ///
-    /// `Transform2D`, `Sprite` and `Attached` are reflected in every game by
-    /// default (a sprite with its texture's file name), and with 3D on,
+    /// `Transform2D`, `Sprite`, `Animation` and `Attached` are reflected in
+    /// every game by default (a sprite or a sprite-sheet animation with its
+    /// texture's file name), and with 3D on,
     /// `Transform3D` and `Model` too (a model with its mesh's file name).
     ///
     /// ```
@@ -646,7 +702,7 @@ pub trait WorldReflect {
     /// The whole world as JSON: every entity that has reflected components,
     /// with its id, sorted by id. Components that aren't reflected are not
     /// saved; `"not_saved"` counts them by name, so nothing goes missing
-    /// silently. Reflected resources ([`reflect_resource`](Self::reflect_resource))
+    /// silently. Entities with [`NotSaved`] are left out (and not counted). Reflected resources ([`reflect_resource`](Self::reflect_resource))
     /// are saved under `"resources"`; others are not.
     ///
     /// ```
@@ -685,6 +741,11 @@ pub trait WorldReflect {
     /// If `save` isn't a world save this version reads, names a component or
     /// resource that isn't reflected, or has a value that doesn't fit its
     /// type. Everything is checked first: on an error the world is unchanged.
+    ///
+    /// The game's [`SaveMigrations`] run on the save first: a save of an
+    /// older game version is brought up to date, one of a newer version is
+    /// refused ([`ReflectError::NewerSave`]), and a step that fails is
+    /// [`ReflectError::Migration`].
     ///
     /// Also if an entity id's index is out of bounds, so that a corrupt or
     /// hostile file can't make the world allocate a huge entity table. Saved
@@ -1188,7 +1249,13 @@ impl WorldReflect for World {
         let reflected = self.reflected_components();
         let mut entities = Vec::new();
         let mut not_saved: std::collections::BTreeMap<String, usize> = Default::default();
-        for a in self.raw_ref().archetypes().iter().filter(|a| !a.is_empty()) {
+        let left_out = self.component_id::<NotSaved>();
+        for a in self
+            .raw_ref()
+            .archetypes()
+            .iter()
+            .filter(|a| !a.is_empty() && left_out.is_none_or(|id| !a.component_ids().contains(&id)))
+        {
             for &id in a.component_ids() {
                 // Rust components are reflected under their short name, C ones
                 // under the name they were registered with ("game::Health").
@@ -1217,13 +1284,17 @@ impl WorldReflect for World {
                 resources.insert(r.name.clone(), v);
             }
         }
-        serde_json::json!({
+        let mut save = serde_json::json!({
             "format": SAVE_FORMAT,
             "version": SAVE_VERSION,
             "entities": entities,
             "resources": resources,
             "not_saved": not_saved,
-        })
+        });
+        if let Some(version) = migrate::game_version(self) {
+            save[migrate::GAME_VERSION] = version.into();
+        }
+        save
     }
 
     fn load(&mut self, save: &Value) -> Result<(), ReflectError> {
@@ -1242,6 +1313,8 @@ impl WorldReflect for World {
                 save["version"]
             )));
         }
+        // The game's own changes: older saves are brought up to date first.
+        let save = migrate::migrate(self, save)?;
         let list = save["entities"]
             .as_array()
             .ok_or_else(|| bad("missing \"entities\" list".into()))?;
@@ -2115,10 +2188,27 @@ pub(crate) struct ColliderFiles {
     pub(crate) by_file: HashMap<String, crate::physics3d::CollisionMesh>,
 }
 
-/// A collider's mesh description as a lookup key.
+/// A collider's mesh description as a lookup key: the same for every way
+/// to write it (`scale` and `convex` left out or given as their defaults),
+/// so a scene and [`Ctx::load_collision_mesh`](crate::ctx::Ctx::load_collision_mesh)
+/// share one mesh.
 #[cfg(feature = "physics3d")]
 pub(crate) fn collider_file_key(file: &Value) -> String {
-    file.to_string()
+    let (path, scale, convex) = collider_file_parts(file);
+    format!("{path:?} {:?} {convex}", scale.to_array())
+}
+
+/// A mesh description's file, scale (one when left out) and convex flag
+/// (false when left out). The file is `None` when it isn't a string.
+#[cfg(feature = "physics3d")]
+pub(crate) fn collider_file_parts(file: &Value) -> (Option<&str>, glam::Vec3, bool) {
+    let scale = match &file["scale"] {
+        Value::Array(s) if s.len() == 3 => {
+            glam::Vec3::from_array(std::array::from_fn(|i| s[i].as_f64().unwrap_or(1.0) as f32))
+        }
+        _ => glam::Vec3::ONE,
+    };
+    (file["file"].as_str(), scale, file["convex"].as_bool().unwrap_or(false))
 }
 
 /// A collider described by a mesh file, as JSON: its mesh's description.

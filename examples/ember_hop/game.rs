@@ -21,9 +21,11 @@
 //! The hero is a dynamic physics body; sparks, drips, hazards, braziers and the
 //! way out are sensors whose `CollisionStarted` events are the game's rules.
 //! The title is a scene file (`ctx.load_scene`). Lighting a brazier saves the
-//! world in a save slot (`ctx.storage.save_world`); falling, spikes, water or a
-//! drip load it again (`ctx.load_world`). Progress (best time, most sparks)
-//! is a small JSON file in `ctx.storage`.
+//! world in a save slot (`ctx.storage.save_world`): the hero and the prefab
+//! objects with their state and animations, not the level, which the engine
+//! leaves out of saves. Falling, spikes, water or a drip load it again
+//! (`ctx.load_world`) and spawn the level around it. Progress (best time, most
+//! sparks) is a small JSON file in `ctx.storage`.
 
 // The test file includes this module but needs only part of it.
 #![allow(dead_code)]
@@ -42,7 +44,6 @@ use ponko::particles::{ParticleCurve, ParticleGradient};
 use ponko::prelude::*;
 use ponko::storage::Storage;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 // ---- tuning ---------------------------------------------------------------------
 
@@ -97,7 +98,8 @@ pub const PROGRESS_FILE: &str = "progress.json";
 pub const SEED: u64 = 374;
 
 // ---- components ------------------------------------------------------------------
-// The reflected ones (serde) are in the save slot and in the prefab files.
+// The reflected ones (serde) are in the save slot and in the prefab files, with
+// the engine's (sprites, animations, bodies).
 
 /// What the hero shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -462,8 +464,7 @@ impl Plugin for Rules {
         // The physics step runs only while something should move: not on the
         // title, the pause or the end screen.
         game.physics(vec2(0.0, GRAVITY))
-            .remove(Systems::PHYSICS)
-            .add(Phase::Physics, physics_unless_paused)
+            .add(Phase::BeforePhysics, hold_physics)
             .sim_system(rules)
     }
     fn setup(&self, ctx: &mut Ctx) {
@@ -489,14 +490,14 @@ impl Plugin for Rules {
     }
 }
 
-/// Physics, unless the game is paused or between runs.
-pub fn physics_unless_paused(ctx: &mut Ctx) {
-    if matches!(
+/// Holds the physics step while the game is paused or between runs; the
+/// rules keep running, so they see the press that resumes.
+pub fn hold_physics(ctx: &mut Ctx) {
+    let moving = matches!(
         *ctx.world.resource::<Screen>(),
         Screen::Playing | Screen::Dying { .. } | Screen::Transition { .. }
-    ) {
-        ponko::systems::step_physics(ctx);
-    }
+    );
+    ctx.physics.set_paused(!moving);
 }
 
 fn load_art(ctx: &mut Ctx) -> Art {
@@ -563,7 +564,6 @@ pub fn to_title(ctx: &mut Ctx) {
         eprintln!("ember_hop: {e}");
         ctx.world.clear();
     }
-    decorate(ctx);
     ctx.camera.zoom = ZOOM;
     ctx.camera.look_at(vec2(160.0, 90.0));
     *ctx.world.resource_mut::<Screen>() = Screen::Title;
@@ -607,7 +607,7 @@ pub fn enter_level(ctx: &mut Ctx, index: usize) {
         run.level = index;
         run.level_sparks = 0;
     }
-    if let Err(e) = spawn_level(ctx, index) {
+    if let Err(e) = spawn_level(ctx, index, false) {
         // A level that doesn't load is a broken install: say which file.
         panic!("ember_hop: level {} doesn't load: {e}", LEVELS[index]);
     }
@@ -644,14 +644,18 @@ pub fn spawn_hero(ctx: &mut Ctx, at: Vec2) -> Entity {
 }
 
 /// Spawns level `index` with its prefabs, autotiles its ground and makes
-/// its hazards sensors.
-pub fn spawn_level(ctx: &mut Ctx, index: usize) -> Result<Entity, Error> {
+/// its hazards sensors. After loading a save (`loaded`), without the prefab
+/// objects: the save has them, as they were.
+pub fn spawn_level(ctx: &mut Ctx, index: usize, loaded: bool) -> Result<Entity, Error> {
     // ANCHOR: spawn_level
-    let options = LevelOptions::default()
+    let mut options = LevelOptions::default()
         .prefab("Spark", SPARK_PREFAB)
         .prefab("Drip", DRIP_PREFAB)
         .prefab("Checkpoint", CHECKPOINT_PREFAB)
         .prefab("Exit", EXIT_PREFAB);
+    if loaded {
+        options = options.without_saved_objects();
+    }
     let root = ctx.spawn_level_with(LEVELS[index], Vec2::ZERO, options)?;
 
     // The ground layer is painted with one rock tile; the edges and the moss
@@ -704,87 +708,21 @@ pub fn spawn_level(ctx: &mut Ctx, index: usize) -> Result<Entity, Error> {
         size,
         title,
     };
-    decorate(ctx);
     Ok(root)
 }
 
-/// What files and saves don't hold: animations (not reflected yet), the
-/// look of lit braziers. Run after spawning a level or loading a world.
-pub fn decorate(ctx: &mut Ctx) {
-    let art = *ctx.world.resource::<Art>();
-    let mut add: Vec<(Entity, Animation)> = Vec::new();
-    for (e, sprite) in ctx
-        .world
-        .query::<(Entity, &Sprite)>()
-        .filter::<Without<Animation>>()
-        .iter()
-    {
-        let t = sprite.texture;
-        let animation = if t == art.spark.texture {
-            Some(Animation::new(art.spark, 0..4, 8.0))
-        } else if t == art.drip.texture {
-            Some(Animation::new(art.drip, 0..2, 4.0))
-        } else if t == art.lantern.texture {
-            Some(Animation::new(art.lantern, 0..2, 3.0))
-        } else {
-            None
-        };
-        add.extend(animation.map(|a| (e, a)));
-    }
-    for (e, cp) in ctx
-        .world
-        .query::<(Entity, &Checkpoint)>()
-        .filter::<Without<Animation>>()
-        .iter()
-    {
-        if cp.lit {
-            add.push((e, Animation::new(art.brazier, 1..3, 6.0)));
-        }
-    }
-    for (e, a) in add {
-        ctx.world.insert(e, a);
-    }
-}
-
-/// After `load_world`: the save holds every reflected entity, the level's
-/// colliders and layer positions too (the engine can't leave entities out
-/// of a save yet). Keep the game's own (hero, sparks, drips, braziers),
-/// remove the rest, and spawn the level from its file around them without
-/// the objects the save already has.
+/// After `load_world`: the save holds the hero and the level's prefab objects
+/// (sparks left, drips, braziers, the way out) with their animations; the
+/// level around them comes from its file.
 pub fn rehydrate(ctx: &mut Ctx) {
-    let all: Vec<Entity> = ctx.world.query::<Entity>().iter().collect();
-    let ours: HashSet<Entity> = all
-        .iter()
-        .copied()
-        .filter(|&e| {
-            ctx.world.has::<Player>(e)
-                || ctx.world.has::<Spark>(e)
-                || ctx.world.has::<Drip>(e)
-                || ctx.world.has::<Checkpoint>(e)
-        })
-        .collect();
-    for e in all.into_iter().filter(|e| !ours.contains(e)) {
-        ctx.world.despawn(e);
-    }
     let level = ctx.world.resource::<Run>().level.min(LEVELS.len() - 1);
-    if let Err(e) = spawn_level(ctx, level) {
+    if let Err(e) = spawn_level(ctx, level, true) {
         panic!("ember_hop: level {} doesn't load: {e}", LEVELS[level]);
     }
-    let fresh: Vec<Entity> = ctx
-        .world
-        .query::<(Entity, &LevelObject)>()
-        .iter()
-        .filter(|(_, o)| matches!(o.class.as_str(), "Spark" | "Drip" | "Checkpoint"))
-        .map(|(e, _)| e)
-        .collect();
-    for e in fresh {
-        ctx.world.despawn(e);
-    }
-    let art = *ctx.world.resource::<Art>();
+    // A rule, not a repair: the hero starts again from rest.
     let heroes: Vec<Entity> = ctx.world.query::<(Entity, &Player)>().iter().map(|(e, _)| e).collect();
     for e in heroes {
         ctx.world.insert(e, Velocity::default());
-        ctx.world.insert(e, Animation::new(art.hero, 0..2, 3.0));
     }
     snap_camera(ctx);
 }
@@ -844,7 +782,6 @@ fn finish_run(ctx: &mut Ctx) {
     if ctx.load_scene(TITLE_SCENE).is_err() {
         ctx.world.clear();
     }
-    decorate(ctx);
     ctx.camera.look_at(vec2(160.0, 90.0));
 }
 

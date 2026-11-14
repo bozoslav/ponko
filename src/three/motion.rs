@@ -46,6 +46,16 @@ pub(crate) struct Motion {
     pub enabled: bool,
     /// Whether the game asked to forget the history (a camera cut).
     pub reset: bool,
+    /// Entities (bits) the game asked to have no motion on the next drawn
+    /// frame (a teleport, an animation snap): see `Gfx::reset_motion`.
+    pub forget: Vec<u64>,
+    /// This frame's `forget`, sorted.
+    forgotten: Vec<u64>,
+    /// The first mesh id of the posed (skinned or morphing) models, and per
+    /// posed model whether its pose changed since the last frame: those are
+    /// listed even when their matrix holds still.
+    posed_base: u32,
+    posed: Vec<bool>,
     /// Whether the last frame was collected with motion on: the frame it
     /// is turned on has no past.
     armed: bool,
@@ -58,6 +68,10 @@ pub(crate) struct Motion {
     /// ...and their runs: (mesh, first instance, count).
     pub runs: Vec<(u32, u32, u32)>,
 }
+
+/// The most entities `Motion::forget` holds; a frame asked to forget more
+/// forgets every model's motion instead.
+pub(crate) const MAX_FORGET: usize = 4096;
 
 /// An entity key that is none (shadow-only casters have no motion).
 pub(crate) const NO_KEY: u64 = u64::MAX;
@@ -72,6 +86,21 @@ impl Motion {
         // teleported with it has no motion.
         self.tracking = self.enabled && self.armed && !self.reset;
         self.armed = self.enabled;
+        // Forgotten on the frame that draws next, like `reset`.
+        self.forgotten.clear();
+        self.forgotten.append(&mut self.forget);
+        self.forgotten.sort_unstable();
+        self.posed.clear();
+    }
+
+    /// Says which posed models' poses changed since the last frame: posed
+    /// model `k` has mesh id `base + k`.
+    pub fn posed(&mut self, base: u32, changed: impl Iterator<Item = bool>) {
+        self.posed_base = base;
+        self.posed.clear();
+        if self.tracking {
+            self.posed.extend(changed);
+        }
     }
 
     /// Whether this frame lists motion: `moved` does nothing otherwise.
@@ -80,14 +109,30 @@ impl Motion {
     }
 
     /// Notes that the camera, which drew a model with matrix `previous` in
-    /// the last frame, draws it as `instance` (with `mesh`) in this one.
-    pub fn moved(&mut self, mesh: u32, instance: &Instance3D, mut previous: [[f32; 4]; 4]) {
+    /// the last frame, draws it as `instance` (with `mesh`) in this one. A
+    /// posed model whose pose changed is listed even if its matrix did not.
+    #[cfg(test)]
+    pub fn moved(&mut self, mesh: u32, instance: &Instance3D, previous: [[f32; 4]; 4]) {
+        self.moved_by(NO_KEY, mesh, instance, previous);
+    }
+
+    /// [`moved`](Self::moved) for the model of entity `key` (bits), which
+    /// has no motion on a frame the game asked to forget it.
+    pub fn moved_by(&mut self, key: u64, mesh: u32, instance: &Instance3D, mut previous: [[f32; 4]; 4]) {
         if !self.tracking {
+            return;
+        }
+        if !self.forgotten.is_empty() && key != NO_KEY && self.forgotten.binary_search(&key).is_ok() {
             return;
         }
         // The first slot of the matrix carries the decal layers: not motion.
         previous[0][3] = instance.model[0][3];
-        if previous != instance.model {
+        let posed = mesh
+            .checked_sub(self.posed_base)
+            .and_then(|k| self.posed.get(k as usize))
+            .copied()
+            .unwrap_or(false);
+        if posed || previous != instance.model {
             self.moved.push((
                 mesh,
                 self.moved.len() as u32,
@@ -209,5 +254,33 @@ mod tests {
         motion.moved(0, &at(3.0), at(2.0).model);
         motion.finish();
         assert_eq!(motion.runs, vec![(0, 0, 1)]);
+    }
+
+    #[test]
+    fn a_posed_model_whose_pose_changed_is_listed_with_a_still_matrix() {
+        let mut motion = enabled();
+        motion.begin();
+        // Posed models are meshes 10 and 11; only 11's pose changed.
+        motion.posed(10, [false, true].into_iter());
+        motion.moved(10, &at(0.0), at(0.0).model);
+        motion.moved(11, &at(0.0), at(0.0).model);
+        motion.moved(3, &at(0.0), at(0.0).model);
+        motion.finish();
+        assert_eq!(motion.runs, vec![(11, 0, 1)]);
+    }
+
+    #[test]
+    fn a_forgotten_entity_has_no_motion_on_the_next_frame_only() {
+        let mut motion = enabled();
+        motion.forget.push(7);
+        motion.begin();
+        motion.moved_by(7, 0, &at(1.0), at(0.0).model);
+        motion.moved_by(8, 1, &at(1.0), at(0.0).model);
+        motion.finish();
+        assert_eq!(motion.runs, vec![(1, 0, 1)], "only the other entity moved");
+        motion.begin();
+        motion.moved_by(7, 0, &at(2.0), at(1.0).model);
+        motion.finish();
+        assert_eq!(motion.runs, vec![(0, 0, 1)], "the frame after it moves again");
     }
 }

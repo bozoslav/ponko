@@ -1,0 +1,17 @@
+{
+  "name": "text_shaping_hindi",
+  "scene": "\"नमस्ते दुनिया\" (hello world) in Noto Sans Devanagari, white text, 24 px line height, top left corner at (8, 8), on black; 256x56, drawn with the window's sprite pipeline into an sRGB target",
+  "width": 256,
+  "height": 56,
+  "format": "rgba8-srgb",
+  "tolerance": {
+    "channel": 24,
+    "outliers": 0.004,
+    "edge": 1
+  },
+  "adapter": "Apple M4 Max",
+  "backend": "Metal",
+  "driver": "unknown",
+  "checksum": "8e5961a405c1b6ff",
+  "reason": "New references for shaped text (#409): Arabic, Hindi, Japanese through a fallback font, and a mixed-direction line"
+}

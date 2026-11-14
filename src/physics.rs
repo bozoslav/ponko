@@ -344,6 +344,8 @@ pub struct Physics {
     links: Vec<Option<Link>>,
     gravity: Vec2,
     step: u64,
+    /// From `set_paused`: the built-in step does nothing while set.
+    paused: bool,
     /// The world's load count when `links` were made (see `forget_bodies`).
     world_loads: u64,
     collisions: mpsc::Receiver<rp::CollisionEvent>,
@@ -382,6 +384,7 @@ impl Physics {
             links: Vec::new(),
             gravity,
             step: 0,
+            paused: false,
             world_loads: 0,
             collisions,
             collector: rp::ChannelEventCollector::new(collision_tx, force_tx, tear_tx),
@@ -397,6 +400,45 @@ impl Physics {
     /// Changes the pull on every dynamic body.
     pub fn set_gravity(&mut self, gravity: Vec2) {
         self.gravity = gravity;
+    }
+
+    /// Holds the physics step (`true`) or lets it run again (`false`),
+    /// while every other simulation system keeps running: a pause screen
+    /// whose own sim systems read the "resume" press. Unlike
+    /// [`Time::pause`](crate::time::Time::pause), the tick counter goes on.
+    ///
+    /// While paused, [`step_physics`] does nothing: bodies keep their
+    /// [`Transform2D`] and [`Velocity`], no [`CollisionStarted`] or
+    /// [`CollisionStopped`] events are sent, and ray and overlap queries
+    /// see the bodies where the last step left them. Bodies spawned,
+    /// changed or despawned meanwhile are picked up by the first step
+    /// after the pause. Headless runs honour it like windowed ones. The
+    /// flag belongs to this service, not the world: saves don't keep it and
+    /// loading one doesn't clear it.
+    ///
+    /// ```
+    /// use ponko::prelude::*;
+    ///
+    /// fn pause_menu(ctx: &mut Ctx) {
+    ///     if ctx.key_pressed(Key::Escape) {
+    ///         let held = ctx.physics.is_paused();
+    ///         ctx.physics.set_paused(!held);
+    ///     }
+    /// }
+    ///
+    /// let game = Game::new("Pause", 800, 600)
+    ///     .physics(vec2(0.0, 980.0))
+    ///     .sim_system(pause_menu);
+    /// # let _ = game;
+    /// ```
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    /// `true` while [`set_paused`](Self::set_paused) holds the step.
+    #[must_use]
+    pub fn is_paused(&self) -> bool {
+        self.paused
     }
 
     /// How many bodies are simulated.
@@ -598,8 +640,12 @@ pub(crate) fn start(ctx: &mut Ctx, gravity: Vec2) {
 /// removed bodies, simulates, writes positions and velocities back, and
 /// sends [`CollisionStarted`] / [`CollisionStopped`] events. Added by
 /// [`Game::physics`](crate::game::Game::physics); remove or reorder it like any
-/// other system.
+/// other system. Does nothing while
+/// [`ctx.physics.set_paused(true)`](Physics::set_paused) holds it.
 pub fn step_physics(ctx: &mut Ctx) {
+    if ctx.physics.paused {
+        return;
+    }
     let dt = ctx.dt();
     step(&mut ctx.physics, &mut ctx.world, &mut ctx.events, dt);
 }

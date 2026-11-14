@@ -704,3 +704,46 @@ fn a_joint_drive_without_a_force_limit_reads_back_unlimited() {
     let back: Joint = serde_json::from_value(json).unwrap();
     assert_eq!(back, joint);
 }
+
+// ---- sprite-sheet animations ----------------------------------------------------
+
+#[test]
+fn a_prefab_with_an_animated_sprite_spawns_animating() {
+    // crab.png is 32 x 32: four 16 x 16 frames.
+    let prefab = r#"{"format": "ponko-prefab", "version": 1, "components": {
+        "Sprite": { "texture": "crab.png", "region": { "min": [0, 0], "max": [16, 16] } },
+        "Animation": { "texture": "crab.png", "frame_size": [16, 16], "fps": 10 }
+    }}"#;
+    let mut crab = None;
+    let world = game().headless_frames(true).run_headless(20, |ctx| {
+        ctx.assets
+            .add_source(MemorySource::new("prefabs").with("prefabs/crab.json", prefab));
+        crab = Some(ctx.spawn_prefab("prefabs/crab.json", vec2(5.0, 5.0)).unwrap());
+    });
+    let crab = crab.unwrap();
+    let animation = world.get::<ponko::d2::Animation>(crab).expect("the prefab's animation");
+    assert_eq!((animation.first, animation.frames, animation.sheet.len), (0, 4, 4));
+    assert!(animation.time > 0.3, "a third of a second: {}", animation.time);
+    let sprite = world.get::<Sprite>(crab).unwrap();
+    assert_eq!(sprite.region, Some(animation.sheet.frame(animation.current_frame())));
+    assert_ne!(animation.current_frame(), 0, "past the first frame");
+}
+
+#[test]
+fn a_scene_keeps_each_animations_frame() {
+    let file = TempAsset::new("test-scene-animated.json");
+    let mut crab = None;
+    let saved = game().run_headless(0, |ctx| {
+        let sheet = SpriteSheet::new(ctx.load_texture("crab.png"), 16, 16);
+        let mut walk = ponko::d2::Animation::new(sheet, 1..4, 6.0).once();
+        walk.time = 0.4;
+        crab = Some(ctx.world.spawn((Transform2D::default(), sheet.sprite(1), walk)));
+        ctx.assets.save_scene(&ctx.world, file.name()).unwrap();
+    });
+    let crab = crab.unwrap();
+    let before = saved.get::<ponko::d2::Animation>(crab).unwrap().clone();
+    let world = game().run_headless(0, |ctx| ctx.load_scene(file.name()).unwrap());
+    let after = world.get::<ponko::d2::Animation>(crab).expect("loaded with the scene");
+    assert_eq!(after, &before);
+    assert_eq!(after.current_frame(), 3);
+}

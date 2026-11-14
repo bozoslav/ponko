@@ -100,9 +100,13 @@ Only running it opens a window and plays audio. Procedural clips already use
 maximum distance, and logarithmic, linear or keyed rolloff. Keyed curves use
 sorted `(normalized_distance, gain)` pairs in a static slice. All curves are
 silent at the maximum distance and full volume inside the minimum distance.
-Keyed curves are Rust-only for now (see
-[Still Rust-only](c-cpp.md#still-rust-only)): C and C++ choose linear or
-logarithmic.
+From C, `ponko_ctx_play_sound_at_keyed` and
+`ponko_ctx_set_audio_source3d_keyed` take the keys as an array of
+`PonkoAudioKey` (`distance`, `gain`); in C++ `play_sound_at` and
+`set_audio_source3d` take a `std::vector<ponko::audio_key>` after the
+settings. Keys out of order are refused. The engine keeps one copy of each
+distinct curve for the rest of the run, so build curves once rather than
+per frame.
 Stereo panning follows the listener's right axis. Kira applies gain, panning
 and playback-rate changes with smoothing; this is stereo positional audio,
 not an HRTF simulation. Prefer mono source clips for localized effects.
@@ -213,5 +217,6 @@ size (3.6 MB as a 160 kbit/s MP3) and at most 1.6 MB more while it plays.
 Use `load_stream` for music and long ambience, and `load_sound` for short
 effects, which start without any decoding work.
 
-The C and C++ API has no `unlocked` query: native games run on the desktop,
-where sound is always allowed.
+From C, `ponko_ctx_audio_unlocked` answers the same (C++:
+`ctx.audio_unlocked()`); native games run on the desktop, where it is
+always `true`.

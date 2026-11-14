@@ -16,6 +16,12 @@ use std::ffi::{CStr, c_char};
 /// ```
 pub struct PonkoActionMap(ActionMap);
 
+impl PonkoActionMap {
+    pub(crate) fn inner(&self) -> &ActionMap {
+        &self.0
+    }
+}
+
 /// Source kinds for `PonkoActionBinding::kind`.
 /// ```
 /// assert_eq!(ponko_ffi::PonkoActionSource::PONKO_ACTION_KEY as u32, 0);
@@ -73,7 +79,7 @@ unsafe fn text<'a>(ptr: *const c_char) -> Result<&'a str, Failure> {
         .to_str()
         .map_err(|_| invalid("string is not UTF-8"))
 }
-unsafe fn map_mut<'a>(map: *mut PonkoActionMap) -> Result<&'a mut ActionMap, Failure> {
+pub(crate) unsafe fn map_mut<'a>(map: *mut PonkoActionMap) -> Result<&'a mut ActionMap, Failure> {
     // SAFETY: caller supplies a live, exclusively accessed handle.
     unsafe { map.as_mut() }
         .map(|m| &mut m.0)
@@ -143,62 +149,75 @@ pub unsafe extern "C" fn ponko_action_map_set(
     boundary(|| {
         // SAFETY: caller supplies live non-overlapping handles and strings.
         let (map, name) = unsafe { (map_mut(map)?, text(name)?) };
-        if bindings.is_null() && count != 0 {
-            return Err(invalid("bindings is null"));
-        }
-        let bindings = if count == 0 {
-            &[]
-        } else {
-            // SAFETY: caller supplies count readable descriptions.
-            unsafe { std::slice::from_raw_parts(bindings, count) }
-        };
-        let mut buttons = Vec::new();
-        let mut axes = Vec::new();
-        let mut vectors = Vec::new();
-        for b in bindings {
-            match (kind, b.kind) {
-                (0, 0) => buttons.push(ButtonBinding::Key(key(b.first)?)),
-                (0, 1) => buttons.push(ButtonBinding::Mouse(mouse(b.first)?)),
-                (0, 2) => buttons.push(ButtonBinding::Gamepad {
-                    pad: pad(b.pad)?,
-                    button: button(b.first)?,
-                }),
-                (1, 3) => axes.push(AxisBinding::Keys {
-                    negative: key(b.first)?,
-                    positive: key(b.second)?,
-                }),
-                (1, 4) => axes.push(AxisBinding::Gamepad {
-                    pad: pad(b.pad)?,
-                    axis: axis(b.first)?,
-                    deadzone: b.deadzone,
-                }),
-                (2, 5) => vectors.push(Axis2Binding::Keys {
-                    left: key(b.first)?,
-                    right: key(b.second)?,
-                    up: key(b.third)?,
-                    down: key(b.fourth)?,
-                }),
-                (2, 6) => vectors.push(Axis2Binding::Gamepad {
-                    pad: pad(b.pad)?,
-                    stick: match b.first {
-                        0 => GamepadStick::Left,
-                        1 => GamepadStick::Right,
-                        _ => return Err(invalid("unknown stick")),
-                    },
-                    deadzone: b.deadzone,
-                }),
-                _ => return Err(invalid("source does not match action kind")),
-            }
-        }
-        let action = match kind {
-            0 => Action::Button(buttons),
-            1 => Action::Axis(axes),
-            2 => Action::Axis2(vectors),
-            _ => return Err(invalid("unknown action kind")),
-        };
+        // SAFETY: caller supplies `count` readable descriptions.
+        let action = unsafe { action_from_c(kind, bindings, count)? };
         map.set(name, action);
         Ok(())
     })
+}
+
+/// The action `count` C descriptions describe, for action kind `kind`.
+/// # Safety
+/// `bindings` readable for `count` elements (or null with count 0).
+pub(crate) unsafe fn action_from_c(
+    kind: u32,
+    bindings: *const PonkoActionBinding,
+    count: usize,
+) -> Result<Action, Failure> {
+    if bindings.is_null() && count != 0 {
+        return Err(invalid("bindings is null"));
+    }
+    let bindings = if count == 0 {
+        &[]
+    } else {
+        // SAFETY: caller supplies count readable descriptions.
+        unsafe { std::slice::from_raw_parts(bindings, count) }
+    };
+    let mut buttons = Vec::new();
+    let mut axes = Vec::new();
+    let mut vectors = Vec::new();
+    for b in bindings {
+        match (kind, b.kind) {
+            (0, 0) => buttons.push(ButtonBinding::Key(key(b.first)?)),
+            (0, 1) => buttons.push(ButtonBinding::Mouse(mouse(b.first)?)),
+            (0, 2) => buttons.push(ButtonBinding::Gamepad {
+                pad: pad(b.pad)?,
+                button: button(b.first)?,
+            }),
+            (1, 3) => axes.push(AxisBinding::Keys {
+                negative: key(b.first)?,
+                positive: key(b.second)?,
+            }),
+            (1, 4) => axes.push(AxisBinding::Gamepad {
+                pad: pad(b.pad)?,
+                axis: axis(b.first)?,
+                deadzone: b.deadzone,
+            }),
+            (2, 5) => vectors.push(Axis2Binding::Keys {
+                left: key(b.first)?,
+                right: key(b.second)?,
+                up: key(b.third)?,
+                down: key(b.fourth)?,
+            }),
+            (2, 6) => vectors.push(Axis2Binding::Gamepad {
+                pad: pad(b.pad)?,
+                stick: match b.first {
+                    0 => GamepadStick::Left,
+                    1 => GamepadStick::Right,
+                    _ => return Err(invalid("unknown stick")),
+                },
+                deadzone: b.deadzone,
+            }),
+            _ => return Err(invalid("source does not match action kind")),
+        }
+    }
+    let action = match kind {
+        0 => Action::Button(buttons),
+        1 => Action::Axis(axes),
+        2 => Action::Axis2(vectors),
+        _ => return Err(invalid("unknown action kind")),
+    };
+    Ok(action)
 }
 
 /// Remove a named action.

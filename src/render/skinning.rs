@@ -68,6 +68,10 @@ struct Slot {
     /// again, it already holds the corners: nothing is uploaded, so a held
     /// pose costs nothing on this path either.
     posed: Option<(u64, Vec<glam::Mat4>, Vec<f32>)>,
+    /// With motion vectors on, while its pose moves: the same model posed
+    /// as it was in the last frame (from `SkinFrame::previous`), which the
+    /// motion-vector pass reads for where each corner was.
+    previous: Option<Box<Slot>>,
 }
 
 #[repr(C)]
@@ -82,11 +86,19 @@ struct Params {
 pub(super) struct Skinning {
     /// `None` without compute shaders.
     pipeline: Option<(wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
+    /// With `pipeline`: the one posing positions only, for the last
+    /// frame's poses (the motion-vector pass reads nothing else).
+    positions: Option<wgpu::ComputePipeline>,
     /// This frame's skin matrices, written a changed matrix at a time (a
     /// skeleton that holds its pose costs nothing).
     joints: Synced,
     /// This frame's morph weights, written a changed vec4 at a time.
     weights: Synced,
+    /// The last frame's skin matrices and morph weights as this frame lays
+    /// them out (`SkinFrame::previous`), for the poses motion vectors start
+    /// from. Written only while some posed model moves with motion on.
+    previous_joints: Synced,
+    previous_weights: Synced,
     /// Bumped whenever `joints` or `weights` is made anew (bind groups name
     /// them).
     generation: u64,
@@ -99,6 +111,9 @@ pub(super) struct Skinning {
     slots: Vec<Option<Slot>>,
     /// This frame, per slot: the skinned mesh, and whether any pass draws it.
     pub draws: Vec<(u32, bool)>,
+    /// This frame, per slot: whether its last frame's pose is posed too
+    /// (into `Slot::previous`), for motion vectors.
+    moving: Vec<bool>,
     scratch: Vec<Vertex>,
     params_scratch: Vec<u8>,
     matrix_scratch: Vec<[f32; 16]>,
@@ -153,20 +168,27 @@ impl Skinning {
                 label: Some("3d skinning"),
                 source: wgpu::ShaderSource::Wgsl(SHADER.into()),
             });
-            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("3d skinning"),
-                layout: Some(&pipeline_layout),
-                module: &module,
-                entry_point: Some("skin"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-            (pipeline, layout)
+            let pipeline = |label, entry_point| {
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&pipeline_layout),
+                    module: &module,
+                    entry_point: Some(entry_point),
+                    compilation_options: Default::default(),
+                    cache: None,
+                })
+            };
+            (
+                (pipeline("3d skinning", "skin"), layout),
+                pipeline("3d previous poses", "skin_positions"),
+            )
         });
+        let (pipeline, positions) = pipeline.unzip();
         let stride = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(size_of::<Params>() as u64);
         let storage = wgpu::BufferUsages::STORAGE;
         Self {
             pipeline,
+            positions,
             joints: Synced::new(
                 device,
                 "3d skin matrices",
@@ -178,6 +200,22 @@ impl Skinning {
             weights: Synced::new(
                 device,
                 "3d morph weights",
+                storage,
+                64 * 4,
+                Upload::Skins,
+                (16, 8, MAX_WRITES),
+            ),
+            previous_joints: Synced::new(
+                device,
+                "3d previous skin matrices",
+                storage,
+                64 * 64,
+                Upload::Skins,
+                (64, 4, MAX_WRITES),
+            ),
+            previous_weights: Synced::new(
+                device,
+                "3d previous morph weights",
                 storage,
                 64 * 4,
                 Upload::Skins,
@@ -195,6 +233,7 @@ impl Skinning {
             stride,
             slots: Vec::new(),
             draws: Vec::new(),
+            moving: Vec::new(),
             scratch: Vec::new(),
             params_scratch: Vec::new(),
             matrix_scratch: Vec::new(),
@@ -275,6 +314,8 @@ impl Skinning {
     /// Gets this frame's skinned models ready: their buffers, skin matrices
     /// and (on the CPU path) posed corners. `mesh(id)` gives a skinned mesh's
     /// rest-pose vertices and skin; `used(k)` whether a pass draws model `k`.
+    /// With `motion` (motion vectors drawn this frame), the models whose
+    /// pose changed are posed a second time as they were in the last frame.
     pub fn prepare<'m>(
         &mut self,
         device: &wgpu::Device,
@@ -282,47 +323,113 @@ impl Skinning {
         skins: &SkinFrame,
         mesh: impl Fn(u32) -> Option<(&'m wgpu::Buffer, &'m GpuSkin)>,
         used: impl Fn(usize) -> bool,
+        motion: bool,
     ) {
         self.draws.clear();
         self.draws
             .extend(skins.draws.iter().enumerate().map(|(k, d)| (d.mesh, used(k))));
+        // The last frame's poses are laid out as this frame's.
+        let history = motion
+            && skins.previous.len() == skins.matrices.len()
+            && skins.previous_weights.len() == skins.weights.len();
+        self.moving.clear();
+        self.moving.extend(
+            skins
+                .draws
+                .iter()
+                .zip(&self.draws)
+                .map(|(d, &(_, used))| history && used && d.posed_motion),
+        );
         if self.draws.iter().all(|d| !d.1) {
             return;
         }
+        let compute = self.pipeline.is_some();
+        let any_moving = self.moving.iter().any(|&m| m);
         // Bind groups name the joints and weights: new ones need new groups.
         let matrices = skins.matrices.len().max(1);
         // Only the compute shader reads them (the CPU path poses from
         // `skins`), and without it storage buffers may hold nothing at all.
-        if self.pipeline.is_some() && self.joints.reserve(device, matrices * 64) {
-            self.generation += 1;
+        for (buffer, len, live) in [
+            (&mut self.joints, matrices * 64, compute),
+            (&mut self.weights, skins.weights.len() * 4, compute),
+            (&mut self.previous_joints, matrices * 64, compute && any_moving),
+            (
+                &mut self.previous_weights,
+                skins.weights.len() * 4,
+                compute && any_moving,
+            ),
+        ] {
+            if live && buffer.reserve(device, len) {
+                self.generation += 1;
+            }
         }
-        if self.pipeline.is_some() && self.weights.reserve(device, skins.weights.len() * 4) {
-            self.generation += 1;
-        }
-        if self.pipeline.is_some() && !skins.matrices.is_empty() {
-            self.matrix_scratch.clear();
-            self.matrix_scratch
-                .extend(skins.matrices.iter().map(glam::Mat4::to_cols_array));
-            self.joints.write(queue, 0, bytemuck::cast_slice(&self.matrix_scratch));
-        }
-        if self.pipeline.is_some() && !skins.weights.is_empty() {
-            self.weights.write(queue, 0, bytemuck::cast_slice(&skins.weights));
+        if compute {
+            let pairs = [
+                (
+                    &mut self.joints,
+                    &mut self.weights,
+                    &skins.matrices,
+                    &skins.weights,
+                    true,
+                ),
+                (
+                    &mut self.previous_joints,
+                    &mut self.previous_weights,
+                    &skins.previous,
+                    &skins.previous_weights,
+                    any_moving,
+                ),
+            ];
+            for (joints, weights, m, w, live) in pairs {
+                if live && !m.is_empty() {
+                    self.matrix_scratch.clear();
+                    self.matrix_scratch.extend(m.iter().map(glam::Mat4::to_cols_array));
+                    joints.write(queue, 0, bytemuck::cast_slice(&self.matrix_scratch));
+                }
+                if live && !w.is_empty() {
+                    weights.write(queue, 0, bytemuck::cast_slice(w));
+                }
+            }
         }
         if self.params.reserve(device, self.draws.len() * self.stride as usize) {
             for slot in self.slots.iter_mut().flatten() {
                 slot.group = None;
+                if let Some(previous) = &mut slot.previous {
+                    previous.group = None;
+                }
             }
         }
         // Past the most the device holds (reported), skins stay at rest.
         let fit = self.params.fits() / self.stride as usize;
-        for d in self.draws.iter_mut().skip(fit) {
+        for (d, moving) in self.draws.iter_mut().zip(&mut self.moving).skip(fit) {
             d.1 = false;
+            *moving = false;
         }
         if self.slots.len() < skins.draws.len() {
             self.slots.resize_with(skins.draws.len(), || None);
         }
         self.params_scratch.clear();
         self.params_scratch.resize(self.stride as usize * self.draws.len(), 0);
+        let usage = self.rest_usage();
+        let now = Pose {
+            matrices: &skins.matrices,
+            weights: &skins.weights,
+            joints: self.joints.buffer(),
+            weight_buffer: self.weights.buffer(),
+        };
+        let before = Pose {
+            matrices: &skins.previous,
+            weights: &skins.previous_weights,
+            joints: self.previous_joints.buffer(),
+            weight_buffer: self.previous_weights.buffer(),
+        };
+        let shared = Shared {
+            device,
+            queue,
+            layout: self.pipeline.as_ref().map(|(_, layout)| layout),
+            params: self.params.buffer(),
+            generation: self.generation,
+        };
         for (k, d) in skins.draws.iter().enumerate() {
             let (count, targets) = mesh(d.mesh).map_or((0, 0), |(_, s)| (s.count, s.targets));
             let p = Params {
@@ -336,97 +443,21 @@ impl Skinning {
             if !self.draws[k].1 {
                 continue;
             }
-            let usage = self.rest_usage();
-            let slot = self.slots[k].get_or_insert_with(|| Slot {
-                buffer: slot_buffer(device, count.max(1), usage),
-                capacity: count.max(1),
-                group: None,
-                posed: None,
-            });
-            if slot.capacity < count {
-                slot.capacity = count.next_power_of_two();
-                traffic::reallocated();
-                slot.buffer = slot_buffer(device, slot.capacity, usage);
-                slot.group = None;
-                slot.posed = None;
-            }
+            let slot = self.slots[k].get_or_insert_with(|| Slot::new(device, count, usage));
+            slot.fit(device, count, usage);
             let Some((rest, skin)) = mesh(d.mesh) else {
                 continue;
             };
-            match (&self.pipeline, &skin.cpu) {
-                (Some((_, layout)), _) => {
-                    let fresh = matches!(&slot.group, Some((m, g, _)) if *m == d.mesh && *g == self.generation);
-                    if !fresh {
-                        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label: Some("3d skinning"),
-                            layout,
-                            entries: &[
-                                entry(0, rest),
-                                entry(1, &skin.influences),
-                                entry(2, self.joints.buffer()),
-                                entry(3, &slot.buffer),
-                                entry(5, self.weights.buffer()),
-                                entry(6, &skin.deltas),
-                                wgpu::BindGroupEntry {
-                                    binding: 4,
-                                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                                        buffer: self.params.buffer(),
-                                        offset: 0,
-                                        size: wgpu::BufferSize::new(size_of::<Params>() as u64),
-                                    }),
-                                },
-                            ],
-                        });
-                        slot.group = Some((d.mesh, self.generation, group));
-                    }
-                }
-                (None, Some((vertices, influences, deltas))) => {
-                    let skin_matrices = &skins.matrices[d.first as usize..];
-                    let morph = skins
-                        .weights
-                        .get(d.morph_first as usize..(d.morph_first + p.morph_count) as usize)
-                        .unwrap_or(&[]);
-                    // The posed corners depend only on these (joints past
-                    // the slice's end fall back to identity either way).
-                    let used = &skin_matrices[..(skin.joints as usize).min(skin_matrices.len())];
-                    if matches!(&slot.posed, Some((id, m, w)) if *id == skin.id && m[..] == *used && w[..] == *morph) {
-                        continue;
-                    }
-                    let corners = vertices.len();
-                    self.scratch.clear();
-                    self.scratch
-                        .extend(vertices.iter().zip(influences).enumerate().map(|(c, (v, i))| {
-                            let (mut p, mut n) = (glam::Vec3::from(v.position), glam::Vec3::from(v.normal));
-                            for (t, &w) in morph.iter().enumerate() {
-                                if w != 0.0 {
-                                    let delta = &deltas[t * corners + c];
-                                    p += w * glam::Vec3::from(delta.position);
-                                    n += w * glam::Vec3::from(delta.normal);
-                                }
-                            }
-                            let m = crate::three::blend_skin(skin_matrices, i.joints, i.weights);
-                            let p = m.transform_point3(p);
-                            let n = m.transform_vector3(n).normalize_or(glam::Vec3::Y);
-                            Vertex {
-                                position: p.to_array(),
-                                normal: n.to_array(),
-                                ..*v
-                            }
-                        }));
-                    queue
-                        .uploading(Upload::Skins)
-                        .write_buffer(&slot.buffer, 0, bytemuck::cast_slice(&self.scratch));
-                    let (id, m, w) = slot.posed.get_or_insert_with(Default::default);
-                    *id = skin.id;
-                    m.clear();
-                    m.extend_from_slice(used);
-                    w.clear();
-                    w.extend_from_slice(morph);
-                }
-                (None, None) => {}
+            pose(&shared, slot, d.mesh, &p, rest, skin, &now, &mut self.scratch);
+            if self.moving[k] {
+                let previous = slot
+                    .previous
+                    .get_or_insert_with(|| Box::new(Slot::new(device, count, usage)));
+                previous.fit(device, count, usage);
+                pose(&shared, previous, d.mesh, &p, rest, skin, &before, &mut self.scratch);
             }
         }
-        if self.pipeline.is_some() {
+        if compute {
             self.params.write(queue, 0, &self.params_scratch);
         }
     }
@@ -444,25 +475,53 @@ impl Skinning {
             timestamp_writes: timestamps,
         });
         pass.set_pipeline(pipeline);
-        for (k, &(mesh, used)) in self.draws.iter().enumerate() {
-            let Some(slot) = self.slots.get(k).and_then(Option::as_ref) else {
-                continue;
-            };
-            let Some((m, _, group)) = slot.group.as_ref() else {
-                continue;
-            };
-            if !used || *m != mesh {
+        // A slot's bind group, if model `k` is posed into it this frame.
+        fn posed<'s>(draws: &[(u32, bool)], k: usize, slot: &'s Slot) -> Option<&'s wgpu::BindGroup> {
+            let &(mesh, used) = draws.get(k)?;
+            let (m, _, group) = slot.group.as_ref()?;
+            (used && *m == mesh).then_some(group)
+        }
+        let draws = &self.draws[..];
+        for (k, slot) in self.slots.iter().enumerate() {
+            if let Some((slot, group)) = slot.as_ref().and_then(|s| Some((s, posed(draws, k, s)?))) {
+                pass.set_bind_group(0, group, &[(k as u64 * self.stride) as u32]);
+                pass.dispatch_workgroups(slot.capacity.div_ceil(GROUP), 1, 1);
+            }
+        }
+        // The last frame's poses of the models whose pose changed, for
+        // motion vectors: positions only.
+        let Some(positions) = &self.positions else {
+            return;
+        };
+        let mut set = false;
+        for (k, slot) in self.slots.iter().enumerate() {
+            if !self.moving.get(k).copied().unwrap_or(false) {
                 continue;
             }
-            pass.set_bind_group(0, group, &[(k as u64 * self.stride) as u32]);
-            pass.dispatch_workgroups(slot.capacity.div_ceil(GROUP), 1, 1);
+            let Some(previous) = slot.as_ref().and_then(|s| s.previous.as_deref()) else {
+                continue;
+            };
+            if let Some(group) = posed(draws, k, previous) {
+                if !set {
+                    pass.set_pipeline(positions);
+                    set = true;
+                }
+                pass.set_bind_group(0, group, &[(k as u64 * self.stride) as u32]);
+                pass.dispatch_workgroups(previous.capacity.div_ceil(GROUP), 1, 1);
+            }
         }
     }
 
     /// See `Renderer3D::check_mirrors`.
     #[cfg(test)]
     pub fn check_mirrors(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        for buffer in [&self.joints, &self.weights, &self.params] {
+        for buffer in [
+            &self.joints,
+            &self.weights,
+            &self.previous_joints,
+            &self.previous_weights,
+            &self.params,
+        ] {
             buffer.check(device, queue);
         }
     }
@@ -472,11 +531,150 @@ impl Skinning {
         self.pipeline.is_some() && self.draws.iter().any(|d| d.1)
     }
 
+    /// Skinned model `k` posed as it was in the last frame, if it's drawn
+    /// this frame and its pose changed since (with motion on).
+    pub fn previous_vertices(&self, k: usize) -> Option<&wgpu::Buffer> {
+        if !self.moving.get(k).copied().unwrap_or(false) {
+            return None;
+        }
+        Some(&self.slots.get(k)?.as_ref()?.previous.as_ref()?.buffer)
+    }
+
     /// Skinned model `k`'s posed vertices, if it's drawn this frame.
     pub fn vertices(&self, k: usize) -> Option<&wgpu::Buffer> {
         let &(_, used) = self.draws.get(k)?;
         used.then(|| self.slots.get(k).and_then(Option::as_ref).map(|s| &s.buffer))
             .flatten()
+    }
+}
+
+/// One pose to put into slots: skin matrices and morph weights, on the CPU
+/// and (for the compute shader) on the GPU.
+struct Pose<'a> {
+    matrices: &'a [glam::Mat4],
+    weights: &'a [f32],
+    joints: &'a wgpu::Buffer,
+    weight_buffer: &'a wgpu::Buffer,
+}
+
+/// What posing any slot this frame needs.
+struct Shared<'a> {
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    /// The compute shader's bind group layout; `None` on the CPU path.
+    layout: Option<&'a wgpu::BindGroupLayout>,
+    params: &'a wgpu::Buffer,
+    generation: u64,
+}
+
+impl Slot {
+    fn new(device: &wgpu::Device, count: u32, usage: wgpu::BufferUsages) -> Self {
+        Self {
+            buffer: slot_buffer(device, count.max(1), usage),
+            capacity: count.max(1),
+            group: None,
+            posed: None,
+            previous: None,
+        }
+    }
+
+    /// Makes room for `count` corners.
+    fn fit(&mut self, device: &wgpu::Device, count: u32, usage: wgpu::BufferUsages) {
+        if self.capacity < count {
+            self.capacity = count.next_power_of_two();
+            traffic::reallocated();
+            self.buffer = slot_buffer(device, self.capacity, usage);
+            self.group = None;
+            self.posed = None;
+        }
+    }
+}
+
+/// Gets `slot` ready to hold draw `d` posed by `pose`: a bind group for the
+/// compute shader, or the corners posed on the CPU (uploaded only when what
+/// they are posed from changed).
+#[allow(clippy::too_many_arguments)]
+fn pose(
+    shared: &Shared<'_>,
+    slot: &mut Slot,
+    mesh: u32,
+    p: &Params,
+    rest: &wgpu::Buffer,
+    skin: &GpuSkin,
+    pose: &Pose<'_>,
+    scratch: &mut Vec<Vertex>,
+) {
+    match (shared.layout, &skin.cpu) {
+        (Some(layout), _) => {
+            let fresh = matches!(&slot.group, Some((m, g, _)) if *m == mesh && *g == shared.generation);
+            if !fresh {
+                let group = shared.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("3d skinning"),
+                    layout,
+                    entries: &[
+                        entry(0, rest),
+                        entry(1, &skin.influences),
+                        entry(2, pose.joints),
+                        entry(3, &slot.buffer),
+                        entry(5, pose.weight_buffer),
+                        entry(6, &skin.deltas),
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                buffer: shared.params,
+                                offset: 0,
+                                size: wgpu::BufferSize::new(size_of::<Params>() as u64),
+                            }),
+                        },
+                    ],
+                });
+                slot.group = Some((mesh, shared.generation, group));
+            }
+        }
+        (None, Some((vertices, influences, deltas))) => {
+            let skin_matrices = pose.matrices.get(p.first as usize..).unwrap_or(&[]);
+            let morph = pose
+                .weights
+                .get(p.morph_first as usize..(p.morph_first + p.morph_count) as usize)
+                .unwrap_or(&[]);
+            // The posed corners depend only on these (joints past the
+            // slice's end fall back to identity either way).
+            let used = &skin_matrices[..(skin.joints as usize).min(skin_matrices.len())];
+            if matches!(&slot.posed, Some((id, m, w)) if *id == skin.id && m[..] == *used && w[..] == *morph) {
+                return;
+            }
+            let corners = vertices.len();
+            scratch.clear();
+            scratch.extend(vertices.iter().zip(influences).enumerate().map(|(c, (v, i))| {
+                let (mut p, mut n) = (glam::Vec3::from(v.position), glam::Vec3::from(v.normal));
+                for (t, &w) in morph.iter().enumerate() {
+                    if w != 0.0 {
+                        let delta = &deltas[t * corners + c];
+                        p += w * glam::Vec3::from(delta.position);
+                        n += w * glam::Vec3::from(delta.normal);
+                    }
+                }
+                let m = crate::three::blend_skin(skin_matrices, i.joints, i.weights);
+                let p = m.transform_point3(p);
+                let n = m.transform_vector3(n).normalize_or(glam::Vec3::Y);
+                Vertex {
+                    position: p.to_array(),
+                    normal: n.to_array(),
+                    ..*v
+                }
+            }));
+            shared
+                .queue
+                .uploading(Upload::Skins)
+                .write_buffer(&slot.buffer, 0, bytemuck::cast_slice(scratch));
+            let (id, m, w) = slot.posed.get_or_insert_with(Default::default);
+            *id = skin.id;
+            m.clear();
+            m.extend_from_slice(used);
+            w.clear();
+            w.extend_from_slice(morph);
+        }
+        (None, None) => {}
     }
 }
 
@@ -577,10 +775,18 @@ mod tests {
             material: u32::MAX,
             parts: (0, 0),
             lod: u32::MAX,
+            posed_motion: false,
         });
         // Another model's weight first, so `morph_first` matters.
         frame.weights = vec![9.0, 0.5, 0.25];
-        skinning.prepare(&device, &queue, &frame, |_| Some((&rest_buffer, &skin)), |_| true);
+        skinning.prepare(
+            &device,
+            &queue,
+            &frame,
+            |_| Some((&rest_buffer, &skin)),
+            |_| true,
+            false,
+        );
         let mut encoder = device.create_command_encoder(&Default::default());
         skinning.record(&mut encoder, None);
         let size = (rest.len() * size_of::<super::Vertex>()) as u64;
@@ -676,12 +882,13 @@ mod tests {
             material: u32::MAX,
             parts: (0, 0),
             lod: u32::MAX,
+            posed_motion: false,
         });
         frame.weights = vec![9.0, 0.5];
         let corners = (rest.len() * size_of::<super::Vertex>()) as u64;
         let uploaded = |skinning: &mut super::Skinning, frame: &crate::three::SkinFrame, skin: &super::GpuSkin| {
             crate::render::traffic::take();
-            skinning.prepare(&device, &queue, frame, |_| Some((&rest_buffer, skin)), |_| true);
+            skinning.prepare(&device, &queue, frame, |_| Some((&rest_buffer, skin)), |_| true, false);
             crate::render::traffic::take().skins
         };
         assert_eq!(uploaded(skinning, &frame, &skin), corners, "first posed");

@@ -119,15 +119,40 @@ edit the ground (a crater), make a new heightfield, put it in the
 component's `mesh` and free the old one: the collider changes at the next
 step. Its `friction`, `restitution` and `groups` work as on a `d3::Collider`.
 
-In a scene file, a mesh collider can name a mesh file instead, and
+**A glTF file, solid in one call:** `ctx.load_collision_mesh(path)` makes
+a triangle mesh of every mesh in the file, for a fixed body, so what the
+player walks on is exactly what `ctx.gfx.load_mesh(path)` draws.
+`ctx.load_collision_mesh_with(path, CollisionMeshOptions { scale, convex })`
+scales the corners first, or makes a convex hull (for a dynamic body)
+instead. Each file and options is read once; loading it again gives the same
+mesh. It fails with an error for a missing file or one without triangles.
+
+```rust
+# use ponko::d3::*;
+# use ponko::prelude::*;
+# fn setup(ctx: &mut Ctx) {
+let look = ctx.gfx.load_mesh("yard.glb");
+let solid = ctx.load_collision_mesh("yard.glb").expect("the yard loads");
+ctx.world.spawn((Transform::default(), Model::new(look), RigidBody::fixed(), Collider::mesh(solid)));
+# }
+```
+
+C++: `ctx.load_collision_mesh(path, scale, convex)` (the last two default to
+the file as it is); C: `ponko_ctx_load_collision_mesh(ctx, path, scale,
+convex, &mesh)`. For triangles of your own, `MeshData::triangles()` gives a
+mesh's indices three at a time, the shape `trimesh` takes.
+
+In a scene file, a mesh collider names its mesh file the same way, and
 `ctx.load_scene` makes the mesh (the [Unity importer](unity.md) writes
-them this way):
+them this way); a scene and `load_collision_mesh` share one mesh for the
+same file and options:
 
 ```json
 "Collider3D": { "shape": { "Mesh": { "file": "town/meshes/wall.glb", "scale": [1, 1, 1], "convex": false } } }
 ```
 
-A collider of a mesh made in code has no file to name, so saves and the
+A collider of a mesh from `load_collision_mesh` is saved by its file, as a
+scene's is. One of a mesh made in code has no file to name, so saves and the
 editor leave it out, like a sprite of a texture made in code: make it
 again in code after loading.
 

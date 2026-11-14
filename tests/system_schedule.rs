@@ -135,6 +135,88 @@ fn readers_fan_out_behind_their_writer() {
 }
 
 #[test]
+fn a_later_system_that_interacts_with_nothing_between_joins_an_earlier_batch() {
+    // Producers and consumers registered in pairs: each consumer reads what
+    // the producer before it writes. Batching only neighbours would give
+    // `p0`, `c0 + p1`, `c1`; by dependencies it is two stages.
+    let game = Game::new("plan", 1, 1)
+        .add(Phase::AfterPhysics, nothing.access(writes::<Pos>()))
+        .add(Phase::AfterPhysics, nothing.access(reads::<Pos>().write::<Vel>()))
+        .add(Phase::AfterPhysics, nothing.access(writes::<Health>()))
+        .add(Phase::AfterPhysics, nothing.access(reads::<Health>().write::<Score>()));
+    assert_eq!(stage_sizes(&game), [2, 2]);
+    let plan = game.schedule_plan();
+    let stages = plan.stages_in(Phase::AfterPhysics);
+    assert_eq!((stages[0].systems(), stages[1].systems()), (&[0, 2][..], &[1, 3][..]));
+    assert!(matches!(plan.systems[3].boundary, Boundary::Conflict { with: 2, .. }));
+}
+
+#[test]
+fn moved_systems_keep_every_observable_order_in_every_mode() {
+    // `late` is registered last but interacts with nothing before it, so it
+    // runs in the first stage; the writers of `Score` keep their order, and
+    // the senders of `Hit` publish in registration order although the
+    // second one's stage is chosen by a conflict of the first.
+    #[derive(Default)]
+    struct Seen(Vec<u32>);
+    let send = |n: u32| move |sys: &mut SystemView| sys.events.send(Hit(n));
+    for mode in MODES {
+        let game = game(mode)
+            .add(
+                Phase::AfterPhysics,
+                (|sys: &mut SystemView| sys.world.query::<&mut Score>().for_each(|s| s.0 += 1))
+                    .access(writes::<Score>()),
+            )
+            .add(
+                Phase::AfterPhysics,
+                (move |sys: &mut SystemView| {
+                    sys.world.query::<&mut Score>().for_each(|s| s.0 *= 3);
+                    send(1)(sys);
+                })
+                .access(writes::<Score>().send_events::<Hit>()),
+            )
+            .add(
+                Phase::AfterPhysics,
+                send(2).access(SystemAccess::new().send_events::<Hit>()),
+            )
+            .add(
+                Phase::AfterPhysics,
+                (|sys: &mut SystemView| sys.world.query::<&mut Pos>().for_each(|p| p.0 += 1.0)).access(writes::<Pos>()),
+            )
+            .add(
+                Phase::SimLast,
+                (|sys: &mut SystemView| {
+                    let hits: Vec<u32> = sys.events.read::<Hit>().iter().map(|h| h.0).collect();
+                    sys.world.resource_mut::<Seen>().0.extend(hits);
+                })
+                .access(SystemAccess::new().read_events::<Hit>().write_resource::<Seen>()),
+            );
+        let plan = game.schedule_plan();
+        let stages = plan.stages_in(Phase::AfterPhysics);
+        assert_eq!(stages.len(), 2, "{plan}");
+        assert_eq!(
+            (stages[0].systems(), stages[1].systems()),
+            (&[0, 3][..], &[1, 2][..]),
+            "{plan}"
+        );
+        assert!(
+            matches!(plan.systems[2].boundary, Boundary::KeepsOrder { after: 1, .. }),
+            "{plan}"
+        );
+        let mut world = game.run_headless(2, |ctx| {
+            ctx.world.insert_resource(Seen::default());
+            ctx.world.spawn((Score(1), Pos(0.0)));
+        });
+        assert_eq!(
+            world.query::<&Score>().iter().next().unwrap().0,
+            ((1 + 1) * 3 + 1) * 3,
+            "{mode:?}"
+        );
+        assert_eq!(world.resource::<Seen>().0, [1, 2, 1, 2], "{mode:?}");
+    }
+}
+
+#[test]
 fn a_ctx_system_between_view_systems_is_a_barrier() {
     let game = Game::new("plan", 1, 1)
         .add(Phase::AfterPhysics, nothing.access(writes::<Pos>()))
@@ -1111,6 +1193,8 @@ mod differential {
         Spawn,
         Random,
         Tick,
+        /// The change tick the system writes in.
+        ChangeTick,
     }
 
     /// Runs `$body` with `$t` naming the type number `$i` of `$family`.
@@ -1154,6 +1238,7 @@ mod differential {
                 Op::Spawn => a.commands(),
                 Op::Random => a.read_service(Service::Random),
                 Op::Tick => a.read_service(Service::Time),
+                Op::ChangeTick => a,
             };
         }
         a
@@ -1200,6 +1285,7 @@ mod differential {
                 }
                 Op::Random => acc = mix(acc, sys.random().stream(3).u64() as i64),
                 Op::Tick => acc = mix(acc, sys.time.sim_tick() as i64),
+                Op::ChangeTick => acc = mix(acc, sys.world.change_tick().to_bits() as i64),
             }
         }
     }
@@ -1245,6 +1331,7 @@ mod differential {
                 }
                 Op::Random => acc = mix(acc, ctx.random().stream(3).u64() as i64),
                 Op::Tick => acc = mix(acc, ctx.time.sim_tick() as i64),
+                Op::ChangeTick => acc = mix(acc, ctx.world.change_tick().to_bits() as i64),
             }
         }
     }
@@ -1266,7 +1353,7 @@ mod differential {
         (0..n)
             .map(|_| {
                 let ops = (0..1 + rng.below(4))
-                    .map(|_| match rng.below(14) {
+                    .map(|_| match rng.below(15) {
                         0..=2 => Op::Read(rng.below(COMPONENTS)),
                         3..=5 => Op::Write(rng.below(COMPONENTS)),
                         6 => Op::Changed(rng.below(COMPONENTS)),
@@ -1276,6 +1363,7 @@ mod differential {
                         10 => Op::ReadEvents(rng.below(EVENTS)),
                         11 => Op::Spawn,
                         12 => Op::Random,
+                        13 => Op::ChangeTick,
                         _ => Op::Tick,
                     })
                     .collect();
@@ -1298,9 +1386,39 @@ mod differential {
     /// Everything the run left behind.
     type Outcome = (Vec<(u64, [Option<i64>; 4])>, [i64; 2], usize);
 
-    fn run(seed: u64, mode: Mode, ticks: u64) -> (Outcome, usize) {
+    /// How the plan of a generated game came out.
+    #[derive(Default)]
+    struct Planned {
+        batches: usize,
+        /// Systems in an earlier stage than a system registered before them.
+        moved: usize,
+    }
+
+    /// Only view systems, every tick, no barriers, few commands: schedules
+    /// where systems can move ahead of each other.
+    fn view_specs(seed: u64) -> Vec<Spec> {
+        let mut specs = specs(seed);
+        for (i, spec) in specs.iter_mut().enumerate() {
+            spec.view = true;
+            spec.every = 1;
+            spec.barrier = false;
+            if i % 4 != 0 {
+                spec.ops.retain(|op| !matches!(op, Op::Spawn));
+                if spec.ops.is_empty() {
+                    spec.ops.push(Op::Read(i as u64 % COMPONENTS));
+                }
+            }
+        }
+        specs
+    }
+
+    fn run(seed: u64, mode: Mode, ticks: u64) -> (Outcome, Planned) {
+        run_specs(seed, specs(seed), mode, ticks)
+    }
+
+    fn run_specs(seed: u64, specs: Vec<Spec>, mode: Mode, ticks: u64) -> (Outcome, Planned) {
         let mut game = game(mode).seed(seed);
-        for (salt, spec) in specs(seed).into_iter().enumerate() {
+        for (salt, spec) in specs.into_iter().enumerate() {
             let salt = salt as i64 + 1;
             if spec.barrier {
                 game = game.barrier(spec.phase);
@@ -1324,7 +1442,16 @@ mod differential {
                 game.add(spec.phase, move |ctx: &mut Ctx| run_ctx(&ops, salt, ctx))
             };
         }
-        let batches = game.schedule_plan().batches().count();
+        let plan = game.schedule_plan();
+        let stage_of: Vec<usize> = (0..plan.systems.len())
+            .map(|i| plan.stages.iter().position(|s| s.members.contains(&i)).unwrap())
+            .collect();
+        let planned = Planned {
+            batches: plan.batches().count(),
+            moved: (0..stage_of.len())
+                .filter(|&s| (0..s).any(|t| stage_of[t] > stage_of[s]))
+                .count(),
+        };
         let mut world = game.run_headless(ticks, |ctx| {
             ctx.world.track_changes::<C<0>>();
             ctx.world.track_changes::<C<1>>();
@@ -1362,7 +1489,7 @@ mod differential {
             .collect();
         rows.sort_unstable();
         let resources = [world.resource::<R<0>>().0, world.resource::<R<1>>().0];
-        ((rows, resources, world.len()), batches)
+        ((rows, resources, world.len()), planned)
     }
 
     fn seeds() -> Vec<u64> {
@@ -1382,7 +1509,7 @@ mod differential {
 
     #[test]
     fn random_systems_come_out_the_same_alone_in_order_and_on_threads() {
-        let (mut batches, mut cases) = (0, 0);
+        let (mut batches, mut moved, mut cases) = (0, 0, 0);
         for seed in seeds() {
             let (reference, planned) = run(seed, Mode::Off, 24);
             for mode in [Mode::InOrder, Mode::Threads] {
@@ -1397,11 +1524,151 @@ mod differential {
                         .collect::<Vec<_>>()
                 );
             }
-            batches += planned;
+            batches += planned.batches;
+            moved += planned.moved;
             cases += 1;
         }
-        // The generator must actually produce batches, or nothing was tested.
+        // The generator must actually produce batches, and systems that run
+        // ahead of ones registered before them, or nothing was tested.
         assert!(cases == 1 || batches >= cases / 2, "{batches} batches in {cases} cases");
+        assert!(
+            cases == 1 || moved >= cases / 10,
+            "{moved} moved systems in {cases} cases"
+        );
+    }
+
+    /// The same for schedules of view systems only, where many systems run
+    /// ahead of ones registered before them.
+    #[test]
+    fn random_view_systems_that_move_ahead_come_out_the_same() {
+        let (mut moved, mut cases) = (0, 0);
+        for seed in seeds() {
+            let (reference, planned) = run_specs(seed, view_specs(seed), Mode::Off, 24);
+            for mode in [Mode::InOrder, Mode::Threads] {
+                let (outcome, _) = run_specs(seed, view_specs(seed), mode, 24);
+                assert!(
+                    outcome == reference,
+                    "seed {seed:#x}: {mode:?} differs from one system at a time.\n\
+                     Rerun with PONKO_SCHEDULE_SEED={seed:#x}\nsystems: {:?}",
+                    view_specs(seed).iter().map(|s| (s.phase, &s.ops)).collect::<Vec<_>>()
+                );
+            }
+            moved += planned.moved;
+            cases += 1;
+        }
+        assert!(
+            cases == 1 || moved >= cases / 2,
+            "{moved} moved systems in {cases} cases"
+        );
+    }
+
+    /// The same, on thread pools of different sizes: the number of threads
+    /// never shows in the result.
+    #[test]
+    fn random_systems_come_out_the_same_with_any_thread_count() {
+        for seed in seeds().into_iter().take(16) {
+            let (reference, _) = run(seed, Mode::Off, 16);
+            for threads in [1, 2, 3, 8] {
+                let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+                let (outcome, _) = pool.install(|| run(seed, Mode::Threads, 16));
+                assert!(
+                    outcome == reference,
+                    "seed {seed:#x}: {threads} threads differ from one system at a time. \
+                     Rerun with PONKO_SCHEDULE_SEED={seed:#x}"
+                );
+            }
+        }
+    }
+
+    /// Generated view systems, each with a declaration, record when they
+    /// start and end. Run on threads, no two systems that conflict may ever
+    /// overlap, and a system that must see another's work starts after it
+    /// ended.
+    #[test]
+    fn random_systems_that_conflict_never_overlap() {
+        use std::sync::Mutex;
+        #[derive(Clone, Copy)]
+        struct Span {
+            start: u64,
+            end: u64,
+        }
+        let mut overlaps = 0;
+        for seed in seeds().into_iter().take(24) {
+            let specs: Vec<Vec<Op>> = view_specs(seed).into_iter().map(|s| s.ops).collect();
+            let accesses: Vec<SystemAccess> = specs.iter().map(|ops| declare(ops)).collect();
+            let clock = Arc::new(AtomicU32::new(0));
+            let running = Arc::new(Mutex::new(Vec::<usize>::new()));
+            let spans = Arc::new(Mutex::new(vec![Vec::<Span>::new(); specs.len()]));
+            let conflict = |t: usize, s: usize| {
+                let (a, b) = if t < s { (t, s) } else { (s, t) };
+                !accesses[a].conflicts_before(&accesses[b]).is_empty()
+            };
+            let conflicts: Arc<Vec<Vec<bool>>> = Arc::new(
+                (0..specs.len())
+                    .map(|i| (0..specs.len()).map(|j| i != j && conflict(i, j)).collect())
+                    .collect(),
+            );
+            let mut game = game(Mode::Threads).seed(seed);
+            for (me, ops) in specs.iter().enumerate() {
+                let (ops, clock, running, spans, conflicts) = (
+                    ops.clone(),
+                    clock.clone(),
+                    running.clone(),
+                    spans.clone(),
+                    conflicts.clone(),
+                );
+                game = game.add(
+                    Phase::AfterPhysics,
+                    (move |sys: &mut SystemView| {
+                        {
+                            let mut inside = running.lock().unwrap();
+                            if let Some(&other) = inside.iter().find(|&&o| conflicts[me][o]) {
+                                panic!("seed {seed:#x}: systems {other} and {me} conflict but overlap");
+                            }
+                            inside.push(me);
+                        }
+                        let start = u64::from(clock.fetch_add(1, Ordering::SeqCst));
+                        run_view(&ops, me as i64, sys);
+                        std::thread::sleep(Duration::from_micros(300));
+                        let end = u64::from(clock.fetch_add(1, Ordering::SeqCst));
+                        running.lock().unwrap().retain(|&o| o != me);
+                        spans.lock().unwrap()[me].push(Span { start, end });
+                    })
+                    .access(accesses[me].clone()),
+                );
+            }
+            let _ = game.run_headless(3, |ctx| {
+                ctx.world.track_changes::<C<0>>();
+                ctx.world.track_changes::<C<1>>();
+                ctx.world.track_changes::<C<2>>();
+                ctx.world.track_changes::<C<3>>();
+                ctx.world.insert_resource(R::<0>(1));
+                ctx.world.insert_resource(R::<1>(2));
+                for i in 0..8i64 {
+                    ctx.world.spawn((C::<0>(i), C::<1>(i), C::<2>(i), C::<3>(i)));
+                }
+            });
+            let spans = spans.lock().unwrap();
+            for tick in 0..3 {
+                for s in 0..specs.len() {
+                    for t in 0..s {
+                        let (a, b) = (spans[t][tick], spans[s][tick]);
+                        // (Systems whose order only shows may share a batch,
+                        // where either may finish first: the plan's tests
+                        // and the differential ones check those.)
+                        if !accesses[t].conflicts_before(&accesses[s]).is_empty() {
+                            assert!(a.end < b.start, "seed {seed:#x}: {s} started before {t} ended");
+                        }
+                        if a.start < b.end && b.start < a.end {
+                            overlaps += 1;
+                        }
+                    }
+                }
+            }
+        }
+        // On one core nothing overlaps; elsewhere something must, or the
+        // test checked nothing.
+        assert!(!has_threads() || overlaps > 0, "no two systems ever overlapped");
     }
 
     #[test]

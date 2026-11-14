@@ -11,6 +11,7 @@
     { "entity": 1, "components": {
         "Transform2D": {},
         "Sprite": { "texture": "ember_hop/sprites/lantern.png", "region": { "min": [0.0, 0.0], "max": [16.0, 16.0] }, "z": 0.1 },
+        "Animation": { "texture": "ember_hop/sprites/lantern.png", "frame_size": [16.0, 16.0], "frames": 2, "fps": 3.0 },
         "Attached": { "to": 0, "offset": [6.0, -2.0], "rotation": 0.0 } } },
     { "entity": 2, "components": {
         "Transform2D": {},

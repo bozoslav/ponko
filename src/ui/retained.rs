@@ -448,6 +448,8 @@ pub(super) struct Node {
     pub name: String,
     /// A title ([`Ui::title`]): painted from the theme's title color and size.
     pub title: bool,
+    /// Its screen opens with it focused ([`Ui::set_initial_focus`]).
+    pub initial_focus: bool,
 }
 pub(super) struct Screen {
     pub root: UiId,
@@ -491,6 +493,8 @@ pub struct Ui {
     pub(super) tree: TaffyTree<usize>,
     pub(super) nodes: Vec<Option<Node>>,
     pub(super) screens: Vec<Screen>,
+    /// The HUD roots ([`Ui::show_hud`]), drawn below every screen, bottom first.
+    pub(super) huds: Vec<UiId>,
     pub(super) visible: Vec<UiId>,
     events: std::collections::VecDeque<UiEvent>,
     pub(super) focus: Option<UiId>,
@@ -531,6 +535,7 @@ impl Default for Ui {
             tree: TaffyTree::new(),
             nodes: Vec::new(),
             screens: Vec::new(),
+            huds: Vec::new(),
             visible: Vec::new(),
             events: std::collections::VecDeque::new(),
             focus: None,
@@ -599,6 +604,7 @@ impl Ui {
             access_live: super::UiLive::Off,
             name: String::new(),
             title: false,
+            initial_focus: false,
         }));
         id
     }
@@ -641,6 +647,7 @@ impl Ui {
             }
         }
         self.screens.retain(|s| s.root != id);
+        self.huds.retain(|&h| h != id);
         self.visible.retain(|&n| n != id);
         if self.drag.is_some_and(|d| match d {
             Drag::Scroll(n, _, _) | Drag::Bar(n, _, _) | Drag::Text(n) => n == id,
@@ -771,7 +778,13 @@ impl Ui {
         Some(self.node(id)?.scroll)
     }
     /// Push a detached root; only the top screen is interactive. `modal`
-    /// draws a dim overlay below this screen. Duplicate/parented roots panic.
+    /// draws a dim overlay below this screen. Duplicate/parented roots panic,
+    /// and so does a root shown as a [HUD](Self::show_hud).
+    ///
+    /// The screen opens with its [initial focus](Self::set_initial_focus)
+    /// (the builder's [`focused`](super::UiBuilder::focused)) focused, every
+    /// time it is pushed; without one, nothing is focused until Tab, an
+    /// arrow key or [`set_focus`](Self::set_focus).
     /// ```
     /// use ponko::prelude::*;
     /// let mut ui = ponko::ui::Ui::default(); let root = ui.add(ponko::ui::UiWidget::Panel, ponko::ui::UiLayout::auto());
@@ -786,6 +799,7 @@ impl Ui {
             !self.screens.iter().any(|s| s.root == root),
             "UI screen already on stack"
         );
+        assert!(!self.huds.contains(&root), "UI screen is shown as a HUD");
         self.screens.push(Screen {
             root,
             modal,
@@ -794,6 +808,165 @@ impl Ui {
         self.pressed = None;
         self.drag = None;
         self.hovered = None;
+        self.focus = self.initial_focus_in(root);
+    }
+    /// The first node under `root`, depth-first, marked as its screen's
+    /// initial focus that can take the focus now.
+    fn initial_focus_in(&self, root: UiId) -> Option<UiId> {
+        let n = self.node(root)?;
+        if n.initial_focus && self.can_focus(root) {
+            return Some(root);
+        }
+        n.children.iter().find_map(|&child| self.initial_focus_in(child))
+    }
+    /// Moves the keyboard and gamepad focus to `id`, as Tab or a click
+    /// would: Enter (or a gamepad's South button) then activates it. Returns
+    /// whether it took. Only a button, text input, toggle or slider can
+    /// have the focus, and only while it is enabled, [shown](Self::is_shown)
+    /// and on the top screen; anything else leaves the focus as it is and
+    /// returns `false`. A node with no size after the next layout loses it
+    /// again.
+    ///
+    /// For the node a screen should open on every time it is pushed, mark it
+    /// instead ([`set_initial_focus`](Self::set_initial_focus), or the
+    /// builder's [`focused`](super::UiBuilder::focused)).
+    /// ```
+    /// use ponko::prelude::*;
+    /// use ponko::ui::{UiInput, UiLayout};
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().layout(UiLayout::fill()).id();
+    /// let play = ui.button(root, "Play").layout(UiLayout::row(40.0)).id();
+    /// let quit = ui.button(root, "Quit").layout(UiLayout::row(40.0)).id();
+    /// ui.push_screen(root, false);
+    /// assert!(ui.set_focus(quit));
+    /// ui.frame(vec2(800.0, 600.0), &UiInput { confirm: true, ..Default::default() });
+    /// assert_eq!(ui.events().filter_map(ponko::ui::UiEvent::clicked).last(), Some(quit));
+    /// assert!(!ui.set_focus(root), "a panel can't have the focus");
+    /// # let _ = play;
+    /// ```
+    pub fn set_focus(&mut self, id: UiId) -> bool {
+        let ok = self.can_focus(id);
+        if ok {
+            self.focus = Some(id);
+        }
+        ok
+    }
+    /// Takes the focus away: no node has it until Tab, an arrow key, a click
+    /// or [`set_focus`](Self::set_focus).
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().id();
+    /// let ok = ui.button(root, "OK").focused().id();
+    /// ui.push_screen(root, false);
+    /// assert_eq!(ui.focus(), Some(ok));
+    /// ui.clear_focus();
+    /// assert_eq!(ui.focus(), None);
+    /// ```
+    pub fn clear_focus(&mut self) {
+        self.focus = None;
+    }
+    /// Marks `id` as the node its screen opens on (or unmarks it): every
+    /// [`push_screen`](Self::push_screen) of the screen focuses it, so a
+    /// keyboard or gamepad player can press Enter at once, and a menu that
+    /// is opened again starts on it again. If several nodes of a screen are
+    /// marked, the first one (depth-first) that can take the focus wins. The
+    /// builder's [`focused`](super::UiBuilder::focused) does the same.
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().id();
+    /// let play = ui.button(root, "Play").id();
+    /// ui.set_initial_focus(play, true);
+    /// assert!(ui.is_initial_focus(play));
+    /// ui.push_screen(root, false);
+    /// assert_eq!(ui.focus(), Some(play));
+    /// ```
+    pub fn set_initial_focus(&mut self, id: UiId, on: bool) {
+        if let Some(n) = self.node_mut(id) {
+            n.initial_focus = on;
+        }
+    }
+    /// Whether `id` is marked as the node its screen opens on
+    /// ([`set_initial_focus`](Self::set_initial_focus)).
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().id();
+    /// let play = ui.button(root, "Play").focused().id();
+    /// assert!(ui.is_initial_focus(play));
+    /// assert!(!ui.is_initial_focus(root));
+    /// ```
+    pub fn is_initial_focus(&self, id: UiId) -> bool {
+        self.node(id).is_some_and(|n| n.initial_focus)
+    }
+    /// Whether `id` may take the focus now, before layout gives it a size.
+    fn can_focus(&self, id: UiId) -> bool {
+        self.interactive(id)
+            && self.is_shown(id)
+            && self.node(id).is_some_and(|n| {
+                matches!(
+                    n.widget,
+                    UiWidget::Button | UiWidget::TextInput | UiWidget::Toggle | UiWidget::Slider
+                )
+            })
+    }
+    /// Shows the tree under a detached `root` as a HUD: display-only UI,
+    /// such as a score or a health bar, drawn below every screen and kept
+    /// up while screens open and close above it. Escape (or a gamepad's
+    /// East button) never closes it, its nodes never take the pointer or the
+    /// focus, and it doesn't make [`wants_pointer`](Self::wants_pointer) or
+    /// [`wants_keyboard`](Self::wants_keyboard) true, so the game keeps its
+    /// keys. Anything the player clicks belongs on a screen
+    /// ([`push_screen`](Self::push_screen)). Several HUDs are drawn in the
+    /// order they were shown; showing one again changes nothing. Panics like
+    /// `push_screen` for a node with a parent, or one on the screen stack.
+    /// ```
+    /// use ponko::prelude::*;
+    /// use ponko::ui::{UiInput, UiLayout};
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let hud = ui.root().layout(UiLayout::fill().padding(16.0)).id();
+    /// let coins = ui.label(hud, "Coins: 0").id();
+    /// ui.show_hud(hud);
+    /// assert!(ui.is_shown(coins) && !ui.wants_keyboard());
+    /// ui.frame(vec2(800.0, 600.0), &UiInput { cancel: true, ..Default::default() });
+    /// assert!(ui.is_shown(coins), "Escape leaves a HUD up");
+    /// ```
+    pub fn show_hud(&mut self, root: UiId) {
+        assert!(
+            self.node(root).is_some_and(|n| n.parent.is_none()),
+            "UI HUD must be a detached root"
+        );
+        assert!(!self.is_screen(root), "UI HUD is already a screen");
+        if !self.huds.contains(&root) {
+            self.huds.push(root);
+        }
+    }
+    /// Takes a HUD ([`show_hud`](Self::show_hud)) off the screen. Its nodes
+    /// stay, so it can be shown again. Does nothing for a node that isn't a
+    /// HUD.
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let hud = ui.root().id();
+    /// ui.show_hud(hud);
+    /// ui.hide_hud(hud);
+    /// assert!(!ui.is_hud(hud) && !ui.is_shown(hud));
+    /// ```
+    pub fn hide_hud(&mut self, root: UiId) {
+        self.huds.retain(|&h| h != root);
+    }
+    /// Whether `id` is a HUD's root ([`show_hud`](Self::show_hud)) right now.
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let hud = ui.root().id();
+    /// assert!(!ui.is_hud(hud));
+    /// ui.show_hud(hud);
+    /// assert!(ui.is_hud(hud));
+    /// ```
+    pub fn is_hud(&self, id: UiId) -> bool {
+        self.huds.contains(&id)
     }
     /// Pop a screen, restoring the previous focus. Nodes remain reusable.
     /// ```
@@ -835,7 +1008,7 @@ impl Ui {
         self.screens.iter().any(|s| s.root == id)
     }
     /// Whether the node is shown: it belongs to a screen on the stack (a
-    /// modal above may cover it), and neither it nor a node above it is
+    /// modal above may cover it) or a [HUD](Self::show_hud), and neither it nor a node above it is
     /// [hidden](super::UiLayout::hidden). A tree built but not pushed, or a
     /// popped screen, is not shown. Stale ids are not shown.
     /// ```
@@ -862,7 +1035,7 @@ impl Ui {
             }
             match n.parent {
                 Some(parent) => at = parent,
-                None => return self.is_screen(at),
+                None => return self.is_screen(at) || self.is_hud(at),
             }
         }
     }
@@ -993,7 +1166,7 @@ impl Ui {
         self.pointer_ray = ray;
     }
     /// Keyboard/gamepad belongs to UI while a screen is open (including text
-    /// focus). Check it before the game's own movement and actions, just as
+    /// focus); a [HUD](Self::show_hud) doesn't count. Check it before the game's own movement and actions, just as
     /// [`wants_pointer`](Self::wants_pointer) guards the mouse.
     /// ```
     /// use ponko::prelude::*;
@@ -1060,8 +1233,9 @@ impl Ui {
         let nodes = &self.nodes;
         let text = &mut self.measure;
         let external_fonts = self.external_fonts;
-        for screen in &self.screens {
-            let layout = nodes[screen.root.0].as_ref().unwrap().layout;
+        let roots = self.huds.iter().chain(self.screens.iter().map(|s| &s.root));
+        for root in roots {
+            let layout = nodes[root.0].as_ref().unwrap().layout;
             let _ = self.tree.compute_layout_with_measure(
                 layout,
                 Size {
@@ -1086,11 +1260,9 @@ impl Ui {
                             let font = if external_fonts { n.paint.font } else { Font::DEFAULT };
                             let width = known.width.unwrap_or_else(|| match available.width {
                                 AvailableSpace::Definite(w) if n.paint.wrap => size.x.min(w.max(0.0)),
-                                AvailableSpace::MinContent if n.paint.wrap => n
-                                    .text
-                                    .split_whitespace()
-                                    .map(|word| text.layout(word, font, n.paint.font_size, false).x)
-                                    .fold(0.0, f32::max),
+                                AvailableSpace::MinContent if n.paint.wrap => {
+                                    text.min_content_width(&n.text, font, n.paint.font_size)
+                                }
                                 _ => size.x,
                             });
                             let mut height = 0.0;
@@ -1123,8 +1295,12 @@ impl Ui {
                 },
             );
         }
-        for i in 0..self.screens.len() {
-            let root = self.screens[i].root;
+        // HUDs first: `visible` is drawing order, so they are under the screens.
+        for i in 0..self.huds.len() + self.screens.len() {
+            let root = match i.checked_sub(self.huds.len()) {
+                None => self.huds[i],
+                Some(s) => self.screens[s].root,
+            };
             self.place(
                 root,
                 self.root_offset(root),
@@ -1437,22 +1613,10 @@ impl Ui {
             Font::DEFAULT
         };
         let x = (p.x - n.rect.min.x) / self.scale - layout.padding.left - layout.border.left;
-        let caret_x = self
-            .measure
-            .layout(&n.text[..n.caret], font, n.paint.font_size, false)
-            .x;
+        let caret_x = self.measure.caret_x(&n.text, font, n.paint.font_size, n.caret);
         let available = n.rect.size().x / self.scale - layout.padding.left - layout.padding.right;
         let target = x + (caret_x - available + 3.0).max(0.0);
-        let mut prev = 0.0;
-        for (i, ch) in n.text.char_indices() {
-            let next = i + ch.len_utf8();
-            let width = self.measure.layout(&n.text[..next], font, n.paint.font_size, false).x;
-            if target < (prev + width) * 0.5 {
-                return i;
-            }
-            prev = width;
-        }
-        n.text.len()
+        self.measure.hit(&n.text, font, n.paint.font_size, target)
     }
     fn edit(&mut self, input: &UiInput) {
         let id = self.focus.unwrap();
@@ -1545,6 +1709,9 @@ pub(super) fn intersect(a: Rect, b: Rect) -> Rect {
 }
 
 pub(super) fn wrap_end(text: &mut crate::text::Text, line: &str, font: Font, size: f32, width: f32) -> usize {
+    if let Some(end) = text.wrap_end_shaped_or_none(line, font, size, width) {
+        return end;
+    }
     let mut space = None;
     for (i, ch) in line.char_indices() {
         if ch.is_whitespace() {

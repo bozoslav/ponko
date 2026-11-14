@@ -263,3 +263,17 @@ fn loading_a_texture_twice_gives_the_same_handle() {
         );
     });
 }
+
+#[test]
+fn headless_runs_without_a_control_endpoint_ignore_pause() {
+    // Paused from the start, and paused again by a sim system: every tick runs.
+    fn pause(ctx: &mut Ctx) {
+        record_tick(ctx);
+        ctx.time.pause();
+    }
+    let world = Game::new("t", 1, 1).sim_system(pause).run_headless(5, |ctx| {
+        ctx.world.insert_resource(Ticks(Vec::new()));
+        ctx.time.pause();
+    });
+    assert_eq!(world.resource::<Ticks>().0, [0, 1, 2, 3, 4]);
+}

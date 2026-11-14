@@ -22,7 +22,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-default = ["audio", "window", "inspector", "gamepad", "physics", "physics3d"]
+default = ["audio", "window", "inspector", "gamepad", "physics", "physics3d", "text-shaping"]
 # A window and GPU rendering. Off: ponko_game_run fails with an error and
 # only headless runs work, from a build half the size.
 window = ["ponko/window"]
@@ -42,6 +42,21 @@ physics = ["ponko/physics"]
 # character controller, ray and shape queries). Off: those calls fail with an
 # error.
 physics3d = ["ponko/physics3d"]
+# KTX2 and DDS block-compressed textures through ponko_ctx_load_texture and
+# the other texture loaders (the guide's "Compressed textures"). Off: such
+# files fail with an unsupported error naming the feature.
+compressed-textures = ["ponko/compressed-textures"]
+# Basis Universal UASTC files too, transcoded at load (C++, built with the
+# system's compiler).
+basis-universal = ["compressed-textures", "ponko/basis-universal"]
+# Text shaping: Arabic, Devanagari and other joined scripts, right-to-left
+# and mixed-direction lines, ligatures (ponko_ctx_set_text_shaping). Off:
+# text is laid out character by character; fallback chains still work.
+text-shaping = ["ponko/text-shaping"]
+# The computer's fonts on desktop: ponko_ctx_try_load_system_font and
+# ponko_ctx_set_system_font_fallback. Off by default; off, those report
+# that system fonts are unsupported.
+system-fonts = ["text-shaping", "ponko/system-fonts"]
 # Lets a release build honor PONKO_CONTROL=1 (debug builds always do). Off:
 # a release build opens the control endpoint only after
 # ponko_game_control_endpoint(game, true).

@@ -205,7 +205,7 @@ impl Renderer3D {
                         device,
                         &self.shaders.layout,
                         "3d effect stand-in",
-                        &for_samples(&compose_effect(EFFECT_STAND_IN), self.samples),
+                        &for_samples(&compose_effect(EFFECT_STAND_IN), self.samples, self.float_depth),
                     )
                 });
                 self.effects.pipelines[id] = pipeline;

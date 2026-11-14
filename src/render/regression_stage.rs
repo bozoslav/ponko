@@ -228,6 +228,7 @@ impl Stage {
             || (post.ao_temporal && post.ambient_occlusion.enabled);
         ctx.gfx.frame3d.lod = ctx.scene3d.lod;
         let mut skins = std::mem::take(&mut ctx.gfx.frame3d.skins);
+        skins.motion = ctx.gfx.frame3d.motion.enabled;
         skins.collect(&mut ctx.world, &ctx.gfx.assets3d);
         ctx.gfx.frame3d.collect(
             &mut ctx.world,

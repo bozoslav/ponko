@@ -273,6 +273,60 @@ top screen and emits `ScreenPopped`, consuming the rest of that input snapshot.
 The previous screen's focus is restored when possible. Even the last screen can
 be popped; game code decides whether to reopen it.
 
+### Where the focus starts
+
+A screen opens with nothing focused, so a keyboard or gamepad player would
+press Tab or an arrow key before Enter does anything. Mark the node it
+should open on with `.focused()` (or `ui.set_initial_focus(id, true)`): every
+`push_screen` of that screen focuses it, so the menu is ready for Enter at
+once, and opens on it again the next time it is pushed. `ui.set_focus(id)`
+moves the focus from code at any time (it returns `false`, and leaves the
+focus alone, for a node that can't take it: not a button, text input, toggle
+or slider, disabled, hidden or not on the top screen), and `ui.clear_focus()`
+takes it away.
+
+```rust
+# use ponko::prelude::*;
+# use ponko::ui::UiLayout;
+# fn build(ctx: &mut Ctx) {
+let menu = ctx.ui.root().layout(UiLayout::centered(300.0, 200.0).gap(12.0)).id();
+ctx.ui.button(menu, "Play").layout(UiLayout::row(44.0)).focused();
+let quit = ctx.ui.button(menu, "Quit").layout(UiLayout::row(44.0)).id();
+ctx.ui.push_screen(menu, false); // Play has the focus
+ctx.ui.set_focus(quit); // now Quit has it
+# }
+```
+
+C++: `tree.set_initial_focus(id)`, `tree.set_focus(id)` and
+`tree.clear_focus()`; C: `ponko_ctx_ui_set_initial_focus`,
+`ponko_ctx_ui_set_focus` (`PONKO_INVALID_ARGUMENT` for a node that can't take
+the focus) and `ponko_ctx_ui_clear_focus`.
+
+### HUDs
+
+A HUD (a score, a health bar, a counter in a corner) is UI that is always
+shown and never takes input. Build it as a detached root and show it with
+`ui.show_hud(root)` instead of pushing it: it is drawn below every screen,
+Escape never closes it, its nodes take no clicks and no focus (clicks go
+through to the world), and it doesn't make `wants_pointer()` or
+`wants_keyboard()` true, so the game keeps its keys. Screens open and close
+above it as usual. `ui.hide_hud(root)` takes it down (its nodes stay) and
+`ui.is_hud(root)` tells whether it is up; assistive technology reads it,
+inert, under the screens. Anything the player clicks belongs on a screen.
+
+```rust
+# use ponko::prelude::*;
+# use ponko::ui::UiLayout;
+# fn build(ctx: &mut Ctx) {
+let corner = ctx.ui.root().layout(UiLayout::fill().padding(16.0)).id();
+ctx.ui.label(corner, "Coins: 0").name("hud.coins");
+ctx.ui.show_hud(corner);
+# }
+```
+
+C++: `tree.show_hud(root)`, `tree.hide_hud(root)` and `tree.is_hud(root)`;
+C: `ponko_ctx_ui_show_hud`, `ponko_ctx_ui_hide_hud` and `ponko_ctx_ui_is_hud`.
+
 ## Events, navigation and ownership
 
 <div class="lang-pair">
@@ -311,7 +365,7 @@ Custom hosts/tests can supply it through `ctx.input.insert_text()`.
 
 `ctx.ui.wants_pointer()` includes immediate and retained UI, including captured
 drags. `ctx.ui.wants_keyboard()` reports retained keyboard/gamepad ownership
-while any screen is open. These queries do not erase raw game input: game code
+while any screen is open (a HUD doesn't count). These queries do not erase raw game input: game code
 uses them to suppress world actions. UI screen changes cancel pointer capture,
 so releasing a dialog button cannot activate an underlying screen.
 

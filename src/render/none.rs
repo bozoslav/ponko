@@ -50,6 +50,22 @@ impl Renderer {
     pub fn create_texture(&mut self, _width: u32, _height: u32, _rgba: &[u8]) -> u32 {
         match *self {}
     }
+    #[cfg(feature = "compressed-textures")]
+    pub fn compressed_formats(&self) -> crate::compressed::GpuFormats {
+        match *self {}
+    }
+    #[cfg(feature = "compressed-textures")]
+    pub fn create_compressed_texture(&mut self, _image: &crate::compressed::CompressedImage) -> u32 {
+        match *self {}
+    }
+    #[cfg(feature = "compressed-textures")]
+    pub fn replace_compressed_texture(&mut self, _id: u32, _image: &crate::compressed::CompressedImage) {
+        match *self {}
+    }
+    #[cfg(all(feature = "3d", feature = "compressed-textures"))]
+    pub fn create_compressed_texture_array(&mut self, _layers: &[&crate::compressed::CompressedImage]) -> u32 {
+        match *self {}
+    }
     #[cfg(feature = "3d")]
     pub fn create_render_target(&mut self, _width: u32, _height: u32) -> u32 {
         match *self {}

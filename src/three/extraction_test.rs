@@ -993,6 +993,7 @@ fn skinned_models_keep_up_as_their_number_changes() {
             material: u32::MAX,
             parts: (0, 0),
             lod: u32::MAX,
+            posed_motion: false,
         }
     };
     let plain = scene.check("no skinned model");

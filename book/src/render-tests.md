@@ -71,6 +71,7 @@ Run both before a pull request that touches the renderer. This forces
 | Opaque, transparency, alpha cutout, shadows, skinned meshes, reflections, ambient occlusion, global illumination, post-processing, output formats: one scene each, with a reference image | `regression_render_test` |
 | Sequences: camera cuts by rotation, teleports, resizes, forced tiers and their fallbacks, shader hot reload | `regression_sequence_render_test` |
 | Temporal antialiasing: convergence, motion vectors, ghosting, history resets | `taa_render_test` |
+| Motion vectors of skinned and morphing models: bending limbs, morph targets, the CPU fallback, teleports, back into view, a swing under TAA | `skin_motion_render_test` |
 | Screen-space effects | `ssr_render_test`, `ao_aa_render_test`, `contact_render_test`, `shafts_render_test`, `decal_render_test` |
 | Lighting | `gi_render_test`, `environment_render_test`, `light_shadow_render_test`, `atlas_render_test`, `shadow_cache_render_test`, `effect_shadow_render_test` |
 | Geometry and draw paths | `static_batch_render_test`, `buffer_render_test`, `draw_order_render_test`, `lod_render_test`, `occlusion_render_test`, `far_terrain_render_test`, `skin_render_test`, `single_sample_render_test`, `coverage_render_test` |
@@ -83,8 +84,8 @@ Run both before a pull request that touches the renderer. This forces
 Not covered, so say so when a change touches it: no test runs on a second
 *hardware* GPU (CI's adapter is a software rasteriser), none runs the real
 WebGL2 or browser WebGPU backends (the web smoke test starts a game there
-without comparing pixels). Motion vectors come from model matrices: a pose
-changing under a still matrix writes none, and no test expects it to.
+without comparing pixels). Motion vectors of skinned and morphing models
+are tested on one character-like bar; a real imported character is not.
 
 ## Writing a test
 

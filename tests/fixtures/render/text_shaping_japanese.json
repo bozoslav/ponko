@@ -1,0 +1,17 @@
+{
+  "name": "text_shaping_japanese",
+  "scene": "\"日本語のテキスト\" (Japanese text) in the built-in font with Noto Sans JP as its fallback, white text, 24 px line height, top left corner at (8, 8), on black; 256x56, drawn with the window's sprite pipeline into an sRGB target",
+  "width": 256,
+  "height": 56,
+  "format": "rgba8-srgb",
+  "tolerance": {
+    "channel": 24,
+    "outliers": 0.004,
+    "edge": 1
+  },
+  "adapter": "Apple M4 Max",
+  "backend": "Metal",
+  "driver": "unknown",
+  "checksum": "f630e001c1ec9018",
+  "reason": "New references for shaped text (#409): Arabic, Hindi, Japanese through a fallback font, and a mixed-direction line"
+}

@@ -71,6 +71,18 @@ struct Marker;
 #[derive(Debug, Clone, Copy, PartialEq, Component)]
 struct Aligned(u64);
 
+/// Components of short-lived entities outside the model, which only churn
+/// the world through many archetypes so the model's empty ones get
+/// reclaimed and their slots and buffers reused. Half share a layout with
+/// `Num`, half with `Aligned`.
+#[allow(dead_code)] // Only their layouts matter.
+#[derive(Component)]
+struct Junk<const N: usize>(u32);
+#[allow(dead_code)]
+#[repr(align(32))]
+#[derive(Component)]
+struct JunkAligned<const N: usize>(u64);
+
 fn lock(log: &DropLog) -> std::sync::MutexGuard<'_, Vec<u64>> {
     log.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -356,6 +368,42 @@ impl Case {
     }
 }
 
+/// Spawns and despawns entities with random sets of `Junk` components (and
+/// some of the model's own kinds), so that the world passes through more
+/// archetypes than it keeps empty ones. Leaves the model as it was.
+fn churn(world: &mut World, rng: &mut Rng) {
+    macro_rules! with {
+        ($mask:expr, $e:expr, $($n:literal)*) => {
+            $(if $mask >> $n & 1 != 0 {
+                world.insert($e, Junk::<$n>($n));
+                world.insert($e, JunkAligned::<$n>($n));
+            })*
+        };
+    }
+    let mut junk = Vec::new();
+    for _ in 0..6 {
+        let mask = rng.next_u64();
+        let e = world.spawn((Junk::<0>(0),));
+        with!(mask, e, 1 2 3);
+        if mask & 1 << 8 != 0 {
+            world.insert(e, Num(0));
+        }
+        if mask & 1 << 9 != 0 {
+            world.insert(e, Aligned(0));
+        }
+        if mask & 1 << 10 != 0 {
+            world.insert(e, Marker);
+        }
+        if mask & 1 << 11 != 0 {
+            world.remove::<Junk<0>>(e);
+        }
+        junk.push(e);
+    }
+    for e in junk {
+        assert!(world.despawn(e));
+    }
+}
+
 // ---- comparing world and model ---------------------------------------------------
 
 fn sorted<T: Ord>(mut v: Vec<T>) -> Vec<T> {
@@ -466,6 +514,11 @@ fn check(world: &mut World, model: &mut Model, log: &DropLog) -> Result<(), Stri
 /// `corrupt_at` is set, the model is deliberately broken before that check,
 /// to prove the checker notices.
 fn run(seed: u64, ops: usize, corrupt_at: Option<usize>) -> Result<(), String> {
+    run_churning(seed, ops, corrupt_at, false)
+}
+
+/// [`run`], with [`churn`] before every operation if `churning`.
+fn run_churning(seed: u64, ops: usize, corrupt_at: Option<usize>, churning: bool) -> Result<(), String> {
     let mut case = Case::new(seed);
     let mut recent: Vec<String> = Vec::new();
     let fail = |i: usize, recent: &[String], msg: String| {
@@ -476,6 +529,9 @@ fn run(seed: u64, ops: usize, corrupt_at: Option<usize>) -> Result<(), String> {
         ))
     };
     for i in 0..ops {
+        if churning {
+            churn(&mut case.world, &mut case.rng);
+        }
         let step = catch_unwind(AssertUnwindSafe(|| case.step()));
         match step {
             Ok(Ok(op)) => recent.push(op),
@@ -568,6 +624,31 @@ fn world_matches_reference_model() {
             panic!("{}", seed_failure(seed, &msg));
         }
     }
+}
+
+/// The same model, while the world reclaims empty archetypes (the model's
+/// among them) and builds new ones in their slots with their buffers.
+#[test]
+fn world_matches_reference_model_while_archetypes_are_reclaimed() {
+    report_seed_on_panic();
+    let (cases, ops) = if cfg!(miri) { (1, 40) } else { (40, 300) };
+    for seed in 0..cases {
+        let seed = 0x347_0000 + seed;
+        RUNNING_SEED.set(Some(seed));
+        let result = run_churning(seed, ops, None, true);
+        RUNNING_SEED.set(None);
+        if let Err(msg) = result {
+            panic!("{}", seed_failure(seed, &msg));
+        }
+    }
+    // The churn really reclaims: far fewer slots than component sets.
+    let mut world = World::new();
+    let mut rng = Rng::new(7);
+    for _ in 0..if cfg!(miri) { 20 } else { 200 } {
+        churn(&mut world, &mut rng);
+    }
+    let slots = world.raw_ref().archetypes().len();
+    assert!(slots <= 2 * 64 + 16, "{slots} archetype slots");
 }
 
 // ---- the checker catches inconsistencies ------------------------------------

@@ -55,7 +55,7 @@ use crate::ctx::region;
 use crate::hot_reload::Asset;
 use crate::render::Renderer;
 use crate::render::batch::{DrawList, SpriteInstance, uv_region};
-use crate::text::{Font, Text, TextParams};
+use crate::text::{Font, Text, TextParams, TextShaping};
 use crate::texture::{DrawParams, Texture, TextureFilter};
 
 /// A screenshot someone asked for: where to save it, and who to tell.
@@ -165,6 +165,8 @@ pub struct Graphics {
     pub(crate) ui_list: DrawList,
     pub(crate) clear_color: Color,
     pub(crate) text: Text,
+    /// Reused for a text field's selection spans.
+    pub(crate) selection_scratch: Vec<[f32; 2]>,
     font_atlas: Option<Texture>,
     pub(crate) scale_factor: f32,
     /// A 1x1 white texture, for rectangles and lines.
@@ -179,6 +181,10 @@ pub struct Graphics {
     /// `Ctx::scene3d` (`Ctx::update_quality_autotune`).
     #[cfg(feature = "3d")]
     pub(crate) autotune: Option<crate::three::autotune::Controller>,
+    /// The textures in a block-compressed format on the GPU, and where a
+    /// two-channel normal map keeps its X and Y (materials rebuild Z).
+    #[cfg(feature = "compressed-textures")]
+    pub(crate) compressed: std::collections::HashMap<u32, crate::compressed::NormalChannels>,
 }
 
 impl Graphics {
@@ -215,6 +221,7 @@ impl Graphics {
             ui_list: DrawList::default(),
             clear_color: Color::PONKO_DARK,
             text: Text::new(),
+            selection_scratch: Vec::new(),
             font_atlas: None,
             scale_factor: 1.0,
             white: None,
@@ -225,6 +232,8 @@ impl Graphics {
             frame3d: Default::default(),
             #[cfg(feature = "3d")]
             autotune: None,
+            #[cfg(feature = "compressed-textures")]
+            compressed: Default::default(),
         }
     }
 
@@ -474,6 +483,144 @@ impl Graphics {
         Ok(font)
     }
 
+    /// Sets the fonts tried, in order, for characters `font` has no glyph
+    /// for: a game localized into Arabic, Hindi and Japanese gives its UI
+    /// font one font per script. Replaces the chain set before; an empty
+    /// one turns fallback off. A freed font in the chain is skipped.
+    ///
+    /// Fallback works with or without the `text-shaping` feature: without
+    /// it each character is drawn on its own, which is right for scripts
+    /// whose letters don't join (Japanese, Chinese, Korean); Arabic and
+    /// Devanagari need shaping.
+    ///
+    /// ```no_run
+    /// # use ponko::prelude::*;
+    /// # fn setup(ctx: &mut Ctx) {
+    /// let arabic = ctx.gfx.load_font("fonts/NotoSansArabic.ttf");
+    /// let japanese = ctx.gfx.load_font("fonts/NotoSansJP.otf");
+    /// ctx.gfx.set_font_fallbacks(Font::DEFAULT, &[arabic, japanese]);
+    /// ctx.gfx.draw_text("スコア: 120", vec2(16.0, 16.0), 24.0, Color::WHITE);
+    /// # }
+    /// ```
+    pub fn set_font_fallbacks(&mut self, font: Font, fallbacks: &[Font]) {
+        self.text.set_fallbacks(font, fallbacks);
+    }
+
+    /// `font`'s fallback chain (see
+    /// [`set_font_fallbacks`](Self::set_font_fallbacks)), with the system
+    /// fonts found for it.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// Game::new("t", 1, 1).run_headless(0, |ctx| {
+    ///     assert!(ctx.gfx.font_fallbacks(Font::DEFAULT).is_empty());
+    /// });
+    /// ```
+    pub fn font_fallbacks(&self, font: Font) -> &[Font] {
+        self.text.fallbacks(font)
+    }
+
+    /// Sets which strings are shaped with the `text-shaping` feature (see
+    /// [`TextShaping`]). Without the feature nothing is shaped.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn setup(ctx: &mut Ctx) {
+    /// ctx.gfx.set_text_shaping(TextShaping::Always);
+    /// assert_eq!(ctx.gfx.text_shaping(), TextShaping::Always);
+    /// # }
+    /// ```
+    pub fn set_text_shaping(&mut self, shaping: TextShaping) {
+        self.text.set_shaping(shaping);
+    }
+
+    /// Which strings are shaped; [`TextShaping::Auto`] unless set.
+    pub fn text_shaping(&self) -> TextShaping {
+        self.text.shaping()
+    }
+
+    /// Loads a font installed on the computer by family name ("Noto Sans
+    /// Arabic", "Arial"), its regular face if it has one. Needs the
+    /// `system-fonts` feature and a desktop system; the font folders are
+    /// read on the first call. Loading the same family again returns the
+    /// same handle.
+    ///
+    /// # Panics
+    /// With a clear message if there is no such font, or no system fonts.
+    ///
+    /// ```no_run
+    /// # use ponko::prelude::*;
+    /// # fn setup(ctx: &mut Ctx) {
+    /// let arial = ctx.gfx.load_system_font("Arial");
+    /// # let _ = arial;
+    /// # }
+    /// ```
+    pub fn load_system_font(&mut self, family: &str) -> Font {
+        self.try_load_system_font(family).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`load_system_font`](Self::load_system_font) with errors as values:
+    /// [`NotFound`](crate::error::ErrorKind::NotFound) if no installed font
+    /// has that family,
+    /// [`Unsupported`](crate::error::ErrorKind::Unsupported) without the
+    /// `system-fonts` feature and on the web.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// Game::new("t", 1, 1).run_headless(0, |ctx| {
+    ///     let ui = ctx.gfx.try_load_system_font("Noto Sans").unwrap_or(Font::DEFAULT);
+    ///     # let _ = ui;
+    /// });
+    /// ```
+    pub fn try_load_system_font(&mut self, family: &str) -> Result<Font, crate::error::Error> {
+        self.text.system_font(family)
+    }
+
+    /// With `on`, a character that neither a font nor its fallback chain
+    /// has is looked up among the computer's fonts; the first one with a
+    /// glyph for it is loaded and appended to the chain (feature
+    /// `system-fonts`, desktop). For text the game can't know in advance,
+    /// such as player names in chat. Each character is searched once; the
+    /// first search reads the font folders. Returns whether system fonts
+    /// can be searched in this build.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn setup(ctx: &mut Ctx) {
+    /// if !ctx.gfx.set_system_font_fallback(true) {
+    ///     // Ship fonts for every language and chain them instead.
+    /// }
+    /// # }
+    /// ```
+    pub fn set_system_font_fallback(&mut self, on: bool) -> bool {
+        self.text.system_fallback(on)
+    }
+
+    /// The caret's x in window pixels before byte `index` of the one-line
+    /// `text` drawn at `size` (see [`Text::caret_x`]).
+    pub(crate) fn caret_x(&mut self, text: &str, font: Font, size: f32, index: usize) -> f32 {
+        let scale = self.scale_factor;
+        self.text.caret_x(text, font, size * scale, index) / scale
+    }
+
+    /// The window-pixel spans that show bytes `lo..hi` of `text` selected
+    /// (see [`Text::selection`]).
+    pub(crate) fn selection_spans(
+        &mut self,
+        text: &str,
+        font: Font,
+        size: f32,
+        lo: usize,
+        hi: usize,
+        out: &mut Vec<[f32; 2]>,
+    ) {
+        let scale = self.scale_factor;
+        self.text.selection(text, font, size * scale, lo, hi, out);
+        for span in out {
+            *span = [span[0] / scale, span[1] / scale];
+        }
+    }
+
     /// Loads an image from the `assets/` folder: PNG, and JPEG with the
     /// default `image-jpeg` feature. WebP, BMP, TGA, GIF, TIFF, ICO, QOI,
     /// PNM, DDS, HDR and EXR each have an opt-in `image-*` cargo feature
@@ -527,8 +674,7 @@ impl Graphics {
                 // Acquire, decode (CPU only), then create on the GPU (game thread).
                 let origin = found.origin.clone();
                 let bytes = found.into_bytes().map_err(|e| e.with_path(path))?;
-                let image = assets::decode_image(&bytes, path, &origin.describe(path))?;
-                let texture = self.create_texture(image.width, image.height, &image.rgba);
+                let texture = self.texture_from_file(&bytes, path, &origin.describe(path))?;
                 self.asset_ledger
                     .own(crate::inventory::AssetClass::Texture, texture.id, path);
                 self.loaded_textures.insert(origin.clone(), AssetKind::Texture, texture);
@@ -540,6 +686,107 @@ impl Graphics {
         };
         self.texture_names.add(texture.id, path, texture);
         Ok(texture)
+    }
+
+    /// Decodes a texture file's bytes and makes a game texture of it: a
+    /// block-compressed one for KTX2 and DDS files the GPU samples (feature
+    /// `compressed-textures`), RGBA8 otherwise.
+    pub(crate) fn texture_from_file(
+        &mut self,
+        bytes: &[u8],
+        path: &str,
+        what: &str,
+    ) -> Result<Texture, crate::error::Error> {
+        #[cfg(feature = "compressed-textures")]
+        if let Some(decoded) = crate::compressed::decode(bytes, path, what, self.compressed_formats()) {
+            return Ok(match decoded? {
+                crate::compressed::Decoded::Rgba(image) => self.create_texture(image.width, image.height, &image.rgba),
+                crate::compressed::Decoded::Blocks(image) => {
+                    let texture = self.make_compressed_texture(&image);
+                    self.textures_live.insert(texture.id);
+                    texture
+                }
+            });
+        }
+        let image = assets::decode_image(bytes, path, what)?;
+        Ok(self.create_texture(image.width, image.height, &image.rgba))
+    }
+
+    /// Hot reload of texture file `file` (asset `name`) into `texture` when
+    /// it is a KTX2 or DDS file; `None` for any other file. The size must
+    /// stay the same.
+    #[cfg(feature = "compressed-textures")]
+    pub(crate) fn reload_compressed_texture(
+        &mut self,
+        texture: Texture,
+        file: &std::path::Path,
+        name: &str,
+    ) -> Option<Result<(), String>> {
+        let bytes = assets::read(file).ok()?;
+        let decoded = crate::compressed::decode(&bytes, name, &format!("\"{name}\""), self.compressed_formats())?;
+        let decoded = match decoded {
+            Ok(decoded) => decoded,
+            Err(e) => return Some(Err(format!("could not reload {name}: {e}"))),
+        };
+        let (w, h) = match &decoded {
+            crate::compressed::Decoded::Rgba(image) => (image.width, image.height),
+            crate::compressed::Decoded::Blocks(image) => (image.width, image.height),
+        };
+        if (w, h) != (texture.width(), texture.height()) {
+            return Some(Err(format!(
+                "{name} is now {w} x {h} (was {} x {}); restart the game to use the new size",
+                texture.width(),
+                texture.height()
+            )));
+        }
+        match decoded {
+            crate::compressed::Decoded::Rgba(image) => self.update_texture(texture, &image.rgba),
+            crate::compressed::Decoded::Blocks(image) => {
+                if self.textures_live.contains(texture.id) {
+                    self.asset_ledger.textures.insert(texture.id, image.bytes());
+                    self.compressed.insert(texture.id, image.normal);
+                    if !self.headless {
+                        self.renderer().replace_compressed_texture(texture.id, &image);
+                    }
+                    self.streamed_texture_restored(texture.id);
+                }
+            }
+        }
+        Some(Ok(()))
+    }
+
+    /// The block-compressed formats textures can upload in: the GPU's, or
+    /// every one headless (nothing is uploaded, so nothing is decoded).
+    #[cfg(feature = "compressed-textures")]
+    pub(crate) fn compressed_formats(&self) -> crate::compressed::GpuFormats {
+        match &self.renderer {
+            Some(renderer) if !self.headless => renderer.compressed_formats(),
+            _ => crate::compressed::GpuFormats::ALL,
+        }
+    }
+
+    /// [`make_texture`](Self::make_texture) for a block-compressed image
+    /// (whole blocks, in a format the GPU samples).
+    #[cfg(feature = "compressed-textures")]
+    pub(crate) fn make_compressed_texture(&mut self, image: &crate::compressed::CompressedImage) -> Texture {
+        let (width, height) = (image.width, image.height);
+        let bytes = image.bytes();
+        let id = if self.headless {
+            self.headless_textures += 1;
+            self.headless_textures
+        } else {
+            let renderer = self.renderer();
+            let max = renderer.max_texture_size();
+            assert!(
+                width <= max && height <= max,
+                "ponko: {width} x {height} is larger than this GPU's maximum texture size ({max})"
+            );
+            renderer.create_compressed_texture(image)
+        };
+        self.asset_ledger.textures.insert(id, bytes);
+        self.asset_ledger.made(crate::inventory::AssetClass::Texture, id);
+        self.compressed.insert(id, image.normal);
+        Texture::new(id, width, height)
     }
 
     /// Creates a texture from raw RGBA pixels (4 bytes per pixel, row by row,
@@ -609,6 +856,8 @@ impl Graphics {
         }
         self.asset_ledger.textures.remove(&id);
         self.asset_ledger.freed(crate::inventory::AssetClass::Texture, id);
+        #[cfg(feature = "compressed-textures")]
+        self.compressed.remove(&id);
         #[cfg(feature = "3d")]
         self.asset_ledger.freed(crate::inventory::AssetClass::RenderTarget, id);
         self.forget_streamed_texture_id(id);
@@ -671,6 +920,13 @@ impl Graphics {
         // A freed texture (or `Texture::NONE`) has no pixels of its own.
         if !self.textures_live.contains(texture.id) {
             return;
+        }
+        // A block-compressed texture takes pixels by becoming RGBA8.
+        #[cfg(feature = "compressed-textures")]
+        if self.compressed.remove(&texture.id).is_some() {
+            self.asset_ledger
+                .textures
+                .insert(texture.id, crate::inventory::rgba8_bytes(w, h));
         }
         // A streamed texture at less than full resolution: back to full.
         if self.streaming.reduced_size(texture.id).is_some() {

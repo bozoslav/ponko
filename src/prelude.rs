@@ -52,7 +52,7 @@ pub use crate::random::{Random, Rng};
 pub use crate::reflect::WorldReflect;
 pub use crate::scene::{Placement, PrefabParts};
 pub use crate::sheet::SpriteSheet;
-pub use crate::text::{Font, TextParams};
+pub use crate::text::{Font, TextParams, TextShaping};
 pub use crate::texture::{DrawParams, Texture, TextureFilter};
 pub use crate::time::{Time, Turns};
 pub use crate::{d2, systems};

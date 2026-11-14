@@ -360,3 +360,81 @@ fn collider_json_needs_only_a_shape() {
         .unwrap();
     assert_eq!(*world.get::<Collider>(e).unwrap(), Collider::circle(4.0));
 }
+
+/// Holds physics for ticks 10..30 from a sim system, which keeps running.
+fn pause_menu(ctx: &mut Ctx) {
+    let tick = ctx.time.sim_tick();
+    *ctx.world.resource_mut::<u64>() += 1;
+    if tick == 10 {
+        ctx.physics.set_paused(true);
+    }
+    if tick == 30 {
+        ctx.physics.set_paused(false);
+    }
+}
+
+#[test]
+fn pausing_physics_holds_bodies_while_sim_systems_keep_running() {
+    struct Heights(Vec<f32>);
+    let mut entity = None;
+    let world = Game::new("t", 1, 1)
+        .physics(GRAVITY)
+        .sim_system(pause_menu)
+        .add(Phase::SimLast, move |ctx: &mut Ctx| {
+            let y = ctx.world.query::<&Transform2D>().iter().next().unwrap().position.y;
+            let paused = ctx.physics.is_paused();
+            assert_eq!(
+                paused,
+                (10..30).contains(&ctx.time.sim_tick()),
+                "flag at tick {}",
+                ctx.time.sim_tick()
+            );
+            ctx.world.resource_mut::<Heights>().0.push(y);
+        })
+        .run_headless(60, |ctx| {
+            ctx.world.insert_resource(0_u64);
+            ctx.world.insert_resource(Heights(Vec::new()));
+            entity = Some(ctx.world.spawn(ball(vec2(0.0, 0.0))));
+        });
+    assert_eq!(*world.resource::<u64>(), 60, "the sim system ran every tick");
+    let heights = &world.resource::<Heights>().0;
+    // Sim systems run after the step by default, so the menu's pause on
+    // tick 10 holds ticks 11 to 30. The ball falls before the pause, holds
+    // still through it, and falls on after.
+    assert!(heights[10] > heights[0]);
+    assert!(heights[11..=30].iter().all(|&y| y == heights[10]), "{heights:?}");
+    assert!(heights[31] > heights[30]);
+
+    // Twenty held ticks change nothing else: the ball ends where an
+    // unpaused run puts it twenty ticks earlier.
+    let mut unpaused = Game::new("t", 1, 1).physics(GRAVITY).run_headless(40, |ctx| {
+        ctx.world.spawn(ball(vec2(0.0, 0.0)));
+    });
+    let mut world = world;
+    let held = position(&mut world, entity.unwrap()).y;
+    let free = unpaused.query::<&Transform2D>().iter().next().unwrap().position.y;
+    assert_eq!(held, free);
+}
+
+#[test]
+fn no_collision_events_arrive_while_physics_is_paused() {
+    // The ball starts inside the ground: any step would report the touch.
+    let run = |paused: bool| {
+        let mut entity = None;
+        let mut world = Game::new("t", 1, 1)
+            .physics(GRAVITY)
+            .sim_system(|ctx: &mut Ctx| {
+                let started = ctx.events.read::<CollisionStarted>().len() as u32;
+                *ctx.world.resource_mut::<u32>() += started;
+            })
+            .run_headless(30, |ctx| {
+                ctx.world.insert_resource(0_u32);
+                ctx.physics.set_paused(paused);
+                entity = Some(ctx.world.spawn(ball(vec2(0.0, 185.0))));
+                ctx.world.spawn(ground(vec2(0.0, 200.0)));
+            });
+        (*world.resource::<u32>(), position(&mut world, entity.unwrap()).y)
+    };
+    assert_eq!(run(true), (0, 185.0), "held: no events, no movement");
+    assert!(run(false).0 > 0, "the same scene unpaused reports the touch");
+}

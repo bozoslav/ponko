@@ -624,6 +624,10 @@ impl Renderer3D {
                         targets.scene_texture.as_image_copy(),
                         lit.size(),
                     );
+                    if let Some(copy) = &targets.depth_copy {
+                        passes::mark("depth copy");
+                        copy.record(encoder);
+                    }
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("3d transparent"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1027,6 +1031,12 @@ impl Renderer3D {
                     None => continue,
                 },
             };
+            // The motion pass also reads where each corner was: a posed
+            // model whose pose changed has its last pose posed apart.
+            let previous = match (kind, posed) {
+                (Kind::Velocity, Some(k)) => self.skinning.previous_vertices(k).unwrap_or(vertices),
+                _ => vertices,
+            };
             let mut buffers_set = false;
             let (first_part, parts) = match only_part {
                 Some(part) => (part, &mesh.parts[part..part + 1]),
@@ -1062,13 +1072,17 @@ impl Renderer3D {
                     n.pipelines += 1;
                     bound = Some(pipeline as *const _);
                 }
-                if !buffers_set && bound_buffers != Some((vertices, indices)) {
+                if !buffers_set && bound_buffers != Some((vertices, indices, previous)) {
                     pass.set_vertex_buffer(0, vertices.slice(..));
                     pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
                     n.vertex_buffers += 1;
                     n.index_buffers += 1;
+                    if kind == Kind::Velocity {
+                        pass.set_vertex_buffer(2, previous.slice(..));
+                        n.vertex_buffers += 1;
+                    }
                     buffers_set = true;
-                    bound_buffers = Some((vertices, indices));
+                    bound_buffers = Some((vertices, indices, previous));
                 }
                 if bound_material != *material {
                     pass.set_bind_group(1, &m.bind_group, &[]);

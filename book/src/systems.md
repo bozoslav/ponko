@@ -225,6 +225,9 @@ declarations, so `Game::access_report()` shows them and debug builds check
 that the steps stay inside them. They still take `&mut Ctx` and run alone,
 in order. When you place a step yourself, pass the declaration along:
 
+<div class="lang-pair">
+<div>
+
 ```rust
 # use ponko::systems;
 let game = Game::new("Agents", 1280, 720)
@@ -233,10 +236,20 @@ let game = Game::new("Agents", 1280, 720)
 # let _ = game;
 ```
 
-These declarations are Rust-only for now: C and C++ games add the same
-steps with `ponko_game_physics`, `ponko_game_physics3d` and
-`game::navmesh3d()`, which register them the same way, but have no call
-that returns a built-in step's declaration.
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:builtin_access}}
+```
+
+</div>
+</div>
+
+In C, `ponko_game_add_builtin` adds a built-in by its id with its
+declaration, and `ponko_builtin_access` returns a copy of a built-in's
+declaration (free it with `ponko_access_free`). The built-ins without a
+declaration of their own return an exclusive one.
 
 ## Built-in systems
 
@@ -270,7 +283,8 @@ those spellings are gone, so import them from `ponko::systems`
 ### Replacing a built-in
 
 `Game::remove` takes a built-in out by its id. Add your own system, or the
-same function in another place:
+same function in another place (C++ `game::add_builtin`, C
+`ponko_game_add_builtin`, with the built-in's id):
 
 <div class="lang-pair">
 <div>

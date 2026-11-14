@@ -9,35 +9,15 @@
 #     too, then remove the entry and its table row),
 #   - an entry has no reason or appears twice.
 # The check for a C function of the same name looks only at names of two or
-# more words (`scene_asset_field`, `LodHysteresis`); `font` or `get` would
+# more words (`scene_asset_field`, `SystemView`); `font` or `get` would
 # match unrelated functions.
 #
 # Format: <Rust name>  <chapter>  # what C and C++ do instead
 
-Assets::scene_asset_field        asset-sources.md  # load what the scene names before load_scene
-Query::with_lookup               ecs.md            # component pointers from get, which don't borrow
+Assets::scene_asset_field        asset-sources.md  # C components have no text fields to name an asset in; load it before load_scene
+Query::with_lookup               ecs.md            # generic borrows; component pointers from get don't borrow
 World::get_many_mut              ecs.md            # same
-ActionMap::get                   actions.md        # copy the whole map, or read it as JSON
-ActionMap::iter                  actions.md        # same
-Input::set_action                actions.md        # rebuild the map and install it
-systems::step_physics_access     systems.md        # no call returns a built-in step's declaration
-systems::step_physics3d_access   systems.md        # same
-systems::interpolate_physics3d_access  systems.md  # same
-systems::step_navmesh3d_access   systems.md        # same
 SystemView                       system-access.md  # C and C++ systems take the whole ctx and declare access by name
-LodHysteresis                    3d.md             # no hysteresis on a LodGroup from native code
-LodGroup::instance_levels        3d.md             # native code makes the batch's levels by hand
-RenderPasses::scene_compute      3d.md             # native code has compute passes, effects and target cameras
-RenderPasses::target_effects     3d.md             # same
-AudioRolloff::Keyed              audio.md          # linear or logarithmic rolloff only
-Ctx::ecs_diagnostics             agents.md         # ponko_game_schedule_plan, ponko_game_access_report, the control method
-Storage::world_slots             storage.md        # bytes through storage_write and storage_read
-Storage::delete_world            storage.md        # same
-Storage::is_persistent           storage.md        # same
-Storage::is_saving               storage.md        # same
-Storage::write_json              storage.md        # serialize yourself and storage_write the bytes
+Storage::write_json              storage.md        # generic over Rust types; serialize yourself and storage_write the bytes
 Storage::read_json               storage.md        # storage_read the bytes and parse them yourself
-UiImmediate::font                camera-ui.md      # the theme sets it
-UiImmediate::border_width        camera-ui.md      # the theme sets it
-UiImmediate::scale               camera-ui.md      # ponko_ctx_ui_set_scale sets it; nothing reads it back
-UiAccessAdapter::for_ns_view     ui.md             # the engine's window gets the adapter; ponko_ui_access_* give a snapshot
+UiAccessAdapter::for_ns_view     ui.md             # needs a Rust Ui; the engine's window gets the adapter; ponko_ui_access_* give a snapshot

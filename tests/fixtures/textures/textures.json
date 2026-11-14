@@ -1,0 +1,7 @@
+{
+  "textures": {
+    "bumps*.png": "normal",
+    "bumps_uastc.png": { "kind": "normal", "basis": true },
+    "card_uastc.png": { "kind": "color", "basis": true }
+  }
+}

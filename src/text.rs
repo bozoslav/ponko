@@ -10,6 +10,11 @@ use glam::Vec2;
 
 use crate::color::Color;
 
+#[cfg(feature = "text-shaping")]
+mod shape;
+#[cfg(all(feature = "system-fonts", not(target_arch = "wasm32")))]
+mod system;
+
 /// A loaded font. Get one from [`Graphics::load_font`](crate::gfx::Graphics::load_font);
 /// [`Font::DEFAULT`] is always there.
 ///
@@ -88,6 +93,32 @@ impl TextParams {
     }
 }
 
+/// How text is laid out with the `text-shaping` cargo feature: which
+/// strings go through the shaper (ligatures, OpenType kerning, complex
+/// scripts, right-to-left and mixed-direction lines) and which take the
+/// per-character fast path. Set it with
+/// [`Graphics::set_text_shaping`](crate::gfx::Graphics::set_text_shaping).
+///
+/// Without the feature nothing is shaped and this setting changes nothing.
+///
+/// ```
+/// # use ponko::prelude::*;
+/// # fn setup(ctx: &mut Ctx) {
+/// // Latin text with the font's ligatures ("fi", "ffl") and kerning pairs.
+/// ctx.gfx.set_text_shaping(TextShaping::Always);
+/// # }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[repr(u32)]
+pub enum TextShaping {
+    /// ASCII strings keep the per-character fast path (the font's `kern`
+    /// pairs, no ligatures); every other string is shaped. The default.
+    #[default]
+    Auto = 0,
+    /// Every string is shaped, ASCII ones too.
+    Always = 1,
+}
+
 /// Atlas side length in pixels.
 const ATLAS: u32 = 1024;
 /// Pixels of empty space around each glyph, so linear filtering doesn't
@@ -154,6 +185,14 @@ pub(crate) struct Text {
     line_widths: Vec<f32>,
     /// Signed-distance glyphs for text drawn at any size (3D text).
     pub sdf: SdfAtlas,
+    /// Each font's fallback chain, by font id: fonts tried in order for a
+    /// character the font lacks.
+    fallbacks: Vec<Vec<Font>>,
+    /// Which strings are shaped (with `text-shaping`).
+    shaping: TextShaping,
+    /// Shaping state: font data, shaped strings, glyphs by index.
+    #[cfg(feature = "text-shaping")]
+    shaper: shape::Shaper,
 }
 
 /// The bytes of a font file as a font; not one this engine reads is
@@ -184,6 +223,10 @@ impl Text {
             placed: Vec::new(),
             line_widths: Vec::new(),
             sdf: SdfAtlas::default(),
+            fallbacks: Vec::new(),
+            shaping: TextShaping::Auto,
+            #[cfg(feature = "text-shaping")]
+            shaper: shape::Shaper::default(),
         }
     }
 
@@ -206,11 +249,100 @@ impl Text {
     /// [`ErrorKind::Decode`](crate::error::ErrorKind::Decode) if they aren't a font
     /// this engine can read.
     pub fn add_font(&mut self, bytes: &[u8]) -> Result<Font, crate::error::Error> {
-        let font = decode_font(bytes)?;
+        self.add_font_at(bytes, 0)
+    }
+
+    /// [`add_font`](Self::add_font) for face `index` of a font collection
+    /// (`.ttc`); 0 for a single font.
+    pub fn add_font_at(&mut self, bytes: &[u8], index: u32) -> Result<Font, crate::error::Error> {
+        let font = if index == 0 {
+            decode_font(bytes)?
+        } else {
+            fontdue::Font::from_bytes(
+                bytes,
+                fontdue::FontSettings {
+                    collection_index: index,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| {
+                crate::error::Error::new(
+                    crate::error::ErrorKind::Decode,
+                    format!("not a font file this engine can read: {e}"),
+                )
+            })?
+        };
         self.fonts.push(Some(font));
         let id = self.fonts.len() as u32 - 1;
         self.live.insert(id);
+        #[cfg(feature = "text-shaping")]
+        self.shaper.set_bytes(id, bytes, index);
         Ok(Font(id))
+    }
+
+    /// Sets the fonts tried, in order, for characters `font` has no glyph
+    /// for. Freed fonts in the chain are skipped.
+    pub fn set_fallbacks(&mut self, font: Font, fallbacks: &[Font]) {
+        let i = font.0 as usize;
+        if self.fallbacks.len() <= i {
+            self.fallbacks.resize_with(i + 1, Vec::new);
+        }
+        self.fallbacks[i].clear();
+        self.fallbacks[i].extend(fallbacks.iter().copied().filter(|&f| f != font));
+        #[cfg(feature = "text-shaping")]
+        self.shaper.forget_shapes();
+    }
+
+    /// `font`'s fallback chain.
+    pub fn fallbacks(&self, font: Font) -> &[Font] {
+        self.fallbacks.get(font.0 as usize).map_or(&[], Vec::as_slice)
+    }
+
+    /// Which strings are shaped.
+    pub fn shaping(&self) -> TextShaping {
+        self.shaping
+    }
+
+    /// Sets which strings are shaped.
+    pub fn set_shaping(&mut self, shaping: TextShaping) {
+        self.shaping = shaping;
+    }
+
+    /// Whether `text` goes through the shaper.
+    #[cfg(feature = "text-shaping")]
+    fn shaped_path(&self, text: &str) -> bool {
+        self.shaping == TextShaping::Always || !text.is_ascii()
+    }
+
+    /// Whether characters of `font` may be drawn with another font: it has
+    /// a fallback chain (or system fonts are searched).
+    fn chained(&self, font: Font) -> bool {
+        #[cfg(all(feature = "system-fonts", not(target_arch = "wasm32")))]
+        if self.shaper.system.fallback {
+            return true;
+        }
+        !self.fallbacks(font).is_empty()
+    }
+
+    /// The font `c` is drawn with when the text's font is `font`: itself if
+    /// it has the glyph, else the first font in its chain that does (then
+    /// a system font, if those are searched), else itself.
+    fn font_for(&mut self, font: Font, c: char) -> Font {
+        if self.font(font).lookup_glyph_index(c) != 0 {
+            return font;
+        }
+        let chain = self.fallbacks.get(font.0 as usize).map_or(0, Vec::len);
+        for i in 0..chain {
+            let f = self.fallbacks[font.0 as usize][i];
+            if self.has_font(f) && self.font(f).lookup_glyph_index(c) != 0 {
+                return f;
+            }
+        }
+        #[cfg(all(feature = "system-fonts", not(target_arch = "wasm32")))]
+        if let Some(f) = self.system_font_for(font, c) {
+            return f;
+        }
+        font
     }
 
     /// Drops a loaded font and its glyphs; true if it was live. Text in it
@@ -222,6 +354,8 @@ impl Text {
         self.fonts[font.0 as usize] = None;
         self.glyphs.retain(|k, _| k.0 != font.0);
         self.sdf.glyphs.retain(|k, _| k.0 != font.0);
+        #[cfg(feature = "text-shaping")]
+        self.shaper.forget_font(font.0);
         true
     }
 
@@ -244,6 +378,11 @@ impl Text {
         self.fonts[font.0 as usize] = Some(new);
         self.glyphs.retain(|k, _| k.0 != font.0);
         self.sdf.glyphs.retain(|k, _| k.0 != font.0);
+        #[cfg(feature = "text-shaping")]
+        {
+            self.shaper.forget_font(font.0);
+            self.shaper.set_bytes(font.0, bytes, 0);
+        }
         Ok(())
     }
 
@@ -261,6 +400,8 @@ impl Text {
         if self.sdf.full {
             self.sdf.full = false;
             self.sdf.glyphs.clear();
+            #[cfg(feature = "text-shaping")]
+            self.shaper.sdf_glyphs.clear();
             self.sdf.cursor = [PAD, PAD];
             self.sdf.row = 0;
         }
@@ -269,6 +410,8 @@ impl Text {
         }
         self.full = false;
         self.glyphs.clear();
+        #[cfg(feature = "text-shaping")]
+        self.shaper.glyphs.clear();
         self.cursor = [PAD, PAD];
         self.row = 0;
         true
@@ -280,9 +423,19 @@ impl Text {
     pub fn layout(&mut self, text: &str, font: Font, px: f32, rasterize: bool) -> Vec2 {
         let font = self.resolve(font);
         let key_px = px.round().max(1.0) as u32;
-        self.layout_with(text, font, px, |t, c| match t.glyphs.get(&(font.0, c, key_px)) {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            return self.layout_shaped(text, font, px, |t, f, id| {
+                match t.shaper.glyphs.get(&(f.0, id, key_px)) {
+                    Some(g) => Some(*g),
+                    None if rasterize => t.rasterize_indexed(f, id, px, key_px),
+                    None => None,
+                }
+            });
+        }
+        self.layout_with(text, font, px, |t, f, c| match t.glyphs.get(&(f.0, c, key_px)) {
             Some(g) => Some(*g),
-            None if rasterize => t.rasterize(font, c, px, key_px),
+            None if rasterize => t.rasterize(f, c, px, key_px),
             None => None,
         })
     }
@@ -294,27 +447,44 @@ impl Text {
     #[cfg_attr(not(feature = "3d"), allow(dead_code))]
     pub fn layout_sdf(&mut self, text: &str, font: Font) -> Vec2 {
         let font = self.resolve(font);
-        self.layout_with(text, font, SDF_PX, |t, c| match t.sdf.glyphs.get(&(font.0, c)) {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            return self.layout_shaped(text, font, SDF_PX, |t, f, id| {
+                match t.shaper.sdf_glyphs.get(&(f.0, id)) {
+                    Some(g) => Some(*g),
+                    None => t.make_sdf_indexed(f, id),
+                }
+            });
+        }
+        self.layout_with(text, font, SDF_PX, |t, f, c| match t.sdf.glyphs.get(&(f.0, c)) {
             Some(g) => Some(*g),
-            None => t.make_sdf(font, c),
+            None => t.make_sdf(f, c),
         })
     }
 
+    /// The line metrics of `font` at `px`: ascent and line height.
+    fn line_metrics(&mut self, font: Font, px: f32) -> (f32, f32) {
+        let lines = self.font(font).horizontal_line_metrics(px);
+        lines.map_or((px * 0.8, px), |m| (m.ascent, m.new_line_size))
+    }
+
+    /// The per-character fast path: each character's glyph from the font's
+    /// character map, the `kern` table's pairs, no shaping.
     fn layout_with(
         &mut self,
         text: &str,
         font: Font,
         px: f32,
-        mut glyph_of: impl FnMut(&mut Self, char) -> Option<Glyph>,
+        mut glyph_of: impl FnMut(&mut Self, Font, char) -> Option<Glyph>,
     ) -> Vec2 {
         let mut placed = std::mem::take(&mut self.placed);
         placed.clear();
         self.line_widths.clear();
-        let lines = self.font(font).horizontal_line_metrics(px);
-        let (ascent, line_height) = lines.map_or((px * 0.8, px), |m| (m.ascent, m.new_line_size));
+        let (ascent, line_height) = self.line_metrics(font, px);
+        let chained = self.chained(font);
         let (mut x, mut y, mut width) = (0.0f32, 0.0f32, 0.0f32);
         let mut line = 0;
-        let mut prev: Option<char> = None;
+        let mut prev: Option<(char, Font)> = None;
         for c in text.chars() {
             if c == '\n' {
                 width = width.max(x);
@@ -325,12 +495,15 @@ impl Text {
                 prev = None;
                 continue;
             }
-            let f = self.font(font);
-            if let Some(p) = prev {
+            let used = if chained { self.font_for(font, c) } else { font };
+            let f = self.font(used);
+            if let Some((p, pf)) = prev
+                && pf == used
+            {
                 x += f.horizontal_kern(p, c, px).unwrap_or(0.0);
             }
             let advance = f.metrics(c, px).advance_width;
-            if let Some(glyph) = glyph_of(self, c) {
+            if let Some(glyph) = glyph_of(self, used, c) {
                 let pos = Vec2::new(
                     (x + glyph.offset[0]).round(),
                     (y + ascent - glyph.offset[1] - glyph.size[1] as f32).round(),
@@ -338,7 +511,7 @@ impl Text {
                 placed.push(Placed { pos, glyph, line });
             }
             x += advance;
-            prev = Some(c);
+            prev = Some((c, used));
         }
         width = width.max(x);
         self.line_widths.push(x);
@@ -356,8 +529,139 @@ impl Text {
         &self.placed
     }
 
+    /// The caret's x, in pixels at `px`, before byte `index` of the
+    /// one-line `text` (`index == text.len()`: after the last character).
+    /// Shaped text puts it on the visual edge of the character there, so
+    /// it moves left through right-to-left runs.
+    pub fn caret_x(&mut self, text: &str, font: Font, px: f32, index: usize) -> f32 {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            let font = self.resolve(font);
+            return self.caret_x_shaped(text, font, px, index);
+        }
+        self.layout(&text[..index], font, px, false).x
+    }
+
+    /// The pixel spans, left to right, that show bytes `lo..hi` of the
+    /// one-line `text` selected: one span, or several where a selection
+    /// crosses a change of direction.
+    pub fn selection(&mut self, text: &str, font: Font, px: f32, lo: usize, hi: usize, out: &mut Vec<[f32; 2]>) {
+        out.clear();
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            let font = self.resolve(font);
+            return self.selection_shaped(text, font, px, lo..hi, out);
+        }
+        let a = self.layout(&text[..lo], font, px, false).x;
+        let b = self.layout(&text[..hi], font, px, false).x;
+        out.push([a, b]);
+    }
+
+    /// The byte index of the character boundary of the one-line `text`
+    /// nearest to `x` pixels from its left edge (a click in a text field).
+    pub fn hit(&mut self, text: &str, font: Font, px: f32, x: f32) -> usize {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            let font = self.resolve(font);
+            return self.hit_shaped(text, font, px, x);
+        }
+        let mut prev = 0.0;
+        for (i, ch) in text.char_indices() {
+            let next = i + ch.len_utf8();
+            let width = self.layout(&text[..next], font, px, false).x;
+            if x < (prev + width) * 0.5 {
+                return i;
+            }
+            prev = width;
+        }
+        text.len()
+    }
+
+    /// Where shaped text wraps: the end of `line`'s first line at `width`
+    /// pixels, or `None` for text that takes the fast path (it wraps at
+    /// spaces).
+    #[cfg_attr(not(feature = "text-shaping"), allow(unused_variables))]
+    pub fn wrap_end_shaped_or_none(&mut self, line: &str, font: Font, px: f32, width: f32) -> Option<usize> {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(line) {
+            let font = self.resolve(font);
+            return Some(self.wrap_end_shaped(line, font, px, width));
+        }
+        None
+    }
+
+    /// The widest piece of `text` that can't be wrapped, in pixels: the
+    /// widest word, or for shaped text the widest piece between Unicode
+    /// line-break opportunities (each character of Japanese text).
+    pub fn min_content_width(&mut self, text: &str, font: Font, px: f32) -> f32 {
+        #[cfg(feature = "text-shaping")]
+        if self.shaped_path(text) {
+            let font = self.resolve(font);
+            return self.min_content_shaped(text, font, px);
+        }
+        text.split_whitespace()
+            .map(|word| self.layout(word, font, px, false).x)
+            .fold(0.0, f32::max)
+    }
+
+    /// Whether `line` reads right to left (its first strong character is
+    /// right to left). Always false without `text-shaping`.
+    #[cfg_attr(not(feature = "text-shaping"), allow(unused_variables))]
+    pub fn is_rtl(line: &str) -> bool {
+        #[cfg(feature = "text-shaping")]
+        return shape::is_rtl(line);
+        #[cfg(not(feature = "text-shaping"))]
+        false
+    }
+
+    /// Loads the system font of `family` (feature `system-fonts`, desktop).
+    ///
+    /// # Errors
+    ///
+    /// [`NotFound`](crate::error::ErrorKind::NotFound) if the system has no
+    /// such family; [`Unsupported`](crate::error::ErrorKind::Unsupported)
+    /// without the feature and on the web.
+    pub fn system_font(&mut self, family: &str) -> Result<Font, crate::error::Error> {
+        #[cfg(all(feature = "system-fonts", not(target_arch = "wasm32")))]
+        return self.load_system_font(family);
+        #[cfg(not(all(feature = "system-fonts", not(target_arch = "wasm32"))))]
+        Err(crate::error::Error::new(
+            crate::error::ErrorKind::Unsupported,
+            if cfg!(target_arch = "wasm32") {
+                "system fonts can't be read on the web: load the font from the game's assets".to_owned()
+            } else {
+                "system fonts need the `system-fonts` cargo feature".to_owned()
+            },
+        )
+        .with_path(family))
+    }
+
+    /// Turns the search of system fonts for characters no loaded font has
+    /// on or off; true if it can search (feature `system-fonts`, desktop).
+    #[cfg_attr(
+        not(all(feature = "system-fonts", not(target_arch = "wasm32"))),
+        allow(unused_variables, clippy::unused_self)
+    )]
+    pub fn system_fallback(&mut self, on: bool) -> bool {
+        #[cfg(all(feature = "system-fonts", not(target_arch = "wasm32")))]
+        {
+            self.set_system_fallback(on);
+            true
+        }
+        #[cfg(not(all(feature = "system-fonts", not(target_arch = "wasm32"))))]
+        false
+    }
+
     fn rasterize(&mut self, font: Font, c: char, px: f32, key_px: u32) -> Option<Glyph> {
         let (m, coverage) = self.font(font).rasterize(c, px);
+        let glyph = self.pack(&m, &coverage)?;
+        self.glyphs.insert((font.0, c, key_px), glyph);
+        Some(glyph)
+    }
+
+    /// Packs a rasterized glyph into the atlas and queues its upload;
+    /// `None` if the atlas is full.
+    fn pack(&mut self, m: &fontdue::Metrics, coverage: &[u8]) -> Option<Glyph> {
         let size = [m.width as u32, m.height as u32];
         let offset = [m.xmin as f32, m.ymin as f32];
         let at = if size[0] == 0 || size[1] == 0 {
@@ -379,9 +683,7 @@ impl Text {
             self.uploads.push((at, size, rgba));
             Some(at)
         };
-        let glyph = Glyph { at, size, offset };
-        self.glyphs.insert((font.0, c, key_px), glyph);
-        Some(glyph)
+        Some(Glyph { at, size, offset })
     }
 }
 
@@ -390,6 +692,15 @@ impl Text {
     #[cfg_attr(not(feature = "3d"), allow(dead_code))]
     fn make_sdf(&mut self, font: Font, c: char) -> Option<Glyph> {
         let (m, coverage) = self.font(font).rasterize(c, SDF_PX);
+        let glyph = self.pack_sdf(&m, &coverage)?;
+        self.sdf.glyphs.insert((font.0, c), glyph);
+        Some(glyph)
+    }
+
+    /// Turns a glyph rasterized at [`SDF_PX`] into a distance field, packs
+    /// it into the SDF atlas and queues its upload; `None` if it is full.
+    #[cfg_attr(not(feature = "3d"), allow(dead_code))]
+    fn pack_sdf(&mut self, m: &fontdue::Metrics, coverage: &[u8]) -> Option<Glyph> {
         let spread = SDF_SPREAD;
         let (w, h) = (m.width as u32, m.height as u32);
         let size = if w == 0 || h == 0 {
@@ -416,14 +727,12 @@ impl Text {
             let at = atlas.cursor;
             atlas.cursor[0] += size[0] + PAD;
             atlas.row = atlas.row.max(size[1]);
-            let distance = signed_distance(&coverage, w, h, spread);
+            let distance = signed_distance(coverage, w, h, spread);
             let rgba = distance.iter().flat_map(|&a| [255, 255, 255, a]).collect();
             atlas.uploads.push((at, size, rgba));
             Some(at)
         };
-        let glyph = Glyph { at, size, offset };
-        self.sdf.glyphs.insert((font.0, c), glyph);
-        Some(glyph)
+        Some(Glyph { at, size, offset })
     }
 }
 

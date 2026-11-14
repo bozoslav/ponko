@@ -800,6 +800,22 @@ impl UiBuilder<'_> {
         self.ui.set_enabled(self.id, enabled);
         self
     }
+    /// The node its screen opens on: every [`push_screen`](Ui::push_screen)
+    /// of the screen focuses it, so Enter (or a gamepad's South button)
+    /// presses it at once; see [`Ui::set_initial_focus`].
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().id();
+    /// let play = ui.button(root, "Play").focused().id();
+    /// ui.button(root, "Quit");
+    /// ui.push_screen(root, false);
+    /// assert_eq!(ui.focus(), Some(play));
+    /// ```
+    pub fn focused(self) -> Self {
+        self.ui.set_initial_focus(self.id, true);
+        self
+    }
     /// Slider (0..1) or toggle (0 off, 1 on) value; see [`Ui::set_value`].
     /// ```
     /// use ponko::prelude::*;

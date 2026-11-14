@@ -68,6 +68,7 @@
 //! pass preparation, the targets and `passes.rs`.
 
 mod custom_passes;
+mod depth_copy;
 mod draw_order;
 mod effects;
 mod frame;
@@ -222,6 +223,15 @@ pub(crate) struct Renderer3D {
     /// there they skip it and write their depth while lit; only cut-out
     /// ones, which those GPUs can't drop early, are laid down first.
     solid_prepass: bool,
+    /// Whether shaders read the scene depth as a float texture (the GL
+    /// backend: see [`shaders::reads_depth_as_float`]).
+    float_depth: bool,
+    /// With `float_depth`: the copy of the scene depth that transparent
+    /// surfaces read (see `depth_copy.rs`).
+    depth_copy: Option<depth_copy::DepthCopy>,
+    /// With `float_depth` and one sample: the sampler the scene depth is
+    /// read through (see [`shaders::samples_scene_depth`]).
+    scene_depth_sampler: Option<wgpu::Sampler>,
     scene_layout: wgpu::BindGroupLayout,
     /// The scene bind group of passes that can't see the scene.
     no_scene: wgpu::BindGroup,
@@ -346,6 +356,14 @@ impl Renderer3D {
         // (they read the frame and their material), where there are any.
         let compute = can_compute(device);
         let decals = supports_decals(device);
+        let float_depth = shaders::reads_depth_as_float(device);
+        // Where the scene depth is sampled (the GL backend, one sample).
+        let scene_depth_sampler = shaders::samples_scene_depth(float_depth, samples).then(|| {
+            device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("3d scene depth"),
+                ..Default::default()
+            })
+        });
         let all_stages = if compute {
             wgpu::ShaderStages::VERTEX_FRAGMENT | wgpu::ShaderStages::COMPUTE
         } else {
@@ -430,13 +448,21 @@ impl Renderer3D {
                     binding: 1,
                     visibility: all_stages,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
+                        sample_type: shaders::scene_depth_sample_type(float_depth),
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: samples > 1,
                     },
                     count: None,
                 },
-            ],
+            ]
+            .into_iter()
+            .chain(scene_depth_sampler.as_ref().map(|_| wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: all_stages,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            }))
+            .collect::<Vec<_>>(),
         });
         let storage_layout = |read_only| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -534,7 +560,10 @@ impl Renderer3D {
                 samples,
                 wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             );
-            (scene_bind_group(device, &scene_layout, &color, &depth), depth)
+            (
+                scene_bind_group(device, &scene_layout, &color, &depth, scene_depth_sampler.as_ref()),
+                depth,
+            )
         };
         let material_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("3d material sampler"),
@@ -556,6 +585,7 @@ impl Renderer3D {
                 storage: storage_supported,
             },
             samples,
+            float_depth,
         );
         let post = PostChain::new(device, texture_layout, format, white);
         let frame_buffer = device.new_buffer(&wgpu::BufferDescriptor {
@@ -640,7 +670,7 @@ impl Renderer3D {
         let sky_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3d sky"),
             source: wgpu::ShaderSource::Wgsl(
-                for_samples(&format!("{MESH_PRELUDE}\n{SKY}"), samples)
+                for_samples(&format!("{MESH_PRELUDE}\n{SKY}"), samples, float_depth)
                     .into_owned()
                     .into(),
             ),
@@ -873,6 +903,9 @@ impl Renderer3D {
             sky_layout,
             samples,
             solid_prepass,
+            float_depth,
+            depth_copy: float_depth.then(|| depth_copy::DepthCopy::new(device, samples)),
+            scene_depth_sampler,
             resources: Resources {
                 meshes: Vec::new(),
                 mesh_arena: Default::default(),
@@ -974,6 +1007,14 @@ impl Renderer3D {
         self.render_targets.free(id);
     }
 
+    /// Whether the scene depth is read as a float texture, and the frame's
+    /// transparent surfaces read a copy of it (the GL backend; for tests).
+    #[cfg(test)]
+    pub(crate) fn copies_scene_depth(&self) -> (bool, bool) {
+        let copy = self.targets.as_ref().is_some_and(|t| t.depth_copy.is_some());
+        (self.float_depth, copy)
+    }
+
     /// How many target effects run this frame (for tests).
     #[cfg(test)]
     pub(crate) fn target_effect_count(&self) -> usize {
@@ -1027,7 +1068,12 @@ impl Renderer3D {
                 "this GPU can't run compute passes (WebGL2 has no compute shaders)".to_string(),
             ));
         };
-        let (pipeline, verdict) = self.checked_compute(device, layout, name, &for_samples(&source, self.samples))?;
+        let (pipeline, verdict) = self.checked_compute(
+            device,
+            layout,
+            name,
+            &for_samples(&source, self.samples, self.float_depth),
+        )?;
         let id = self.compute_pipelines.len() as u32;
         self.installed(ShaderKind::Compute, id);
         if let Some(verdict) = verdict {
@@ -1091,7 +1137,12 @@ impl Renderer3D {
         let Some((_, layout)) = layouts else {
             return Ok(());
         };
-        let (pipeline, verdict) = self.checked_compute(device, layout, name, &for_samples(&source, self.samples))?;
+        let (pipeline, verdict) = self.checked_compute(
+            device,
+            layout,
+            name,
+            &for_samples(&source, self.samples, self.float_depth),
+        )?;
         let i = id as usize;
         if i >= self.compute_pipelines.len() {
             return Ok(());
@@ -1844,6 +1895,10 @@ mod tests {
 mod material_render_test;
 
 #[cfg(test)]
+#[path = "gpu3d/webgl2_shaders_test.rs"]
+mod webgl2_shaders_test;
+
+#[cfg(test)]
 #[path = "capabilities_render_test.rs"]
 mod capabilities_render_test;
 #[cfg(test)]
@@ -1852,3 +1907,6 @@ mod post_links_render_test;
 #[cfg(test)]
 #[path = "shader_reload_render_test.rs"]
 mod shader_reload_render_test;
+#[cfg(test)]
+#[path = "skin_motion_render_test.rs"]
+mod skin_motion_render_test;

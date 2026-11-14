@@ -32,9 +32,9 @@ const OCCLUDED_POLL: Duration = Duration::from_millis(100);
 /// `Input` through `SimLast` run once per fixed tick (also headlessly).
 /// `Frame` through `Draw` run once per rendered frame. Systems in the same
 /// phase run in registration order, applying deferred commands after each
-/// one. With [`Game::parallel_systems`] on, view systems that are next to
-/// each other in a phase and don't conflict share a batch and may run at
-/// the same time; see [`SchedulePlan`](crate::schedule::SchedulePlan). A
+/// one. With [`Game::parallel_systems`] on, view systems of a phase that
+/// don't conflict share a batch and may run at the same time; see
+/// [`SchedulePlan`](crate::schedule::SchedulePlan). A
 /// phase always ends before the next one starts.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -302,7 +302,13 @@ type SetupFn = Box<dyn FnOnce(&mut Ctx)>;
 ///
 /// Returned by [`Game::setup`], or by [`Game::configured`] for a game with
 /// no setup of its own. Configure systems and window options on `Game`
-/// first, then register one or more setup callbacks. It is a separate type
+/// first, then register one or more setup callbacks. A configured game still
+/// takes the settings a test or a tool adds without touching the game's
+/// code: [`headless_frames`](Self::headless_frames),
+/// [`input_scenario`](Self::input_scenario) and
+/// [`run_headless_scenario`](Self::run_headless_scenario),
+/// [`data_dir`](Self::data_dir), [`seed`](Self::seed), and systems of its
+/// own ([`system`](Self::system), [`sim_system`](Self::sim_system)). It is a separate type
 /// because its `run()` takes no closure and [`Game::run`] takes one, and
 /// Rust has no two methods of one name on a type.
 #[must_use = "a configured game does nothing until run or run_headless"]
@@ -350,6 +356,79 @@ impl ConfiguredGame {
     /// See [`Game::profile_headless`] for warmup and report semantics.
     pub fn profile_headless(self, warmup: u64, ticks: u64) -> (World, crate::perf::PerfReport) {
         self.game.profile_headless(warmup, ticks, |_| {})
+    }
+
+    /// Runs `scenario` headlessly with the stored setup callbacks and returns
+    /// the world with the scenario's report: [`Game::run_headless_scenario`]
+    /// for a game that is already configured, such as the `game()` of a
+    /// project made with `ponko new`.
+    ///
+    /// ```
+    /// use ponko::prelude::*;
+    /// use ponko::scenario::{InputScenario, ScenarioCheck};
+    ///
+    /// // In a project: `src/lib.rs`.
+    /// fn game() -> ConfiguredGame {
+    ///     Game::new("Menu", 640, 480).setup(|ctx| {
+    ///         let root = ctx.ui.root().layout(ponko::ui::UiLayout::fill()).id();
+    ///         ctx.ui.button(root, "Play").name("menu.play").focused();
+    ///         ctx.ui.push_screen(root, false);
+    ///     })
+    /// }
+    ///
+    /// // In its tests: frames, a scenario and a storage folder of the test's own.
+    /// let scenario = InputScenario::new().expect(0, ScenarioCheck::ui("menu.play").shown(true));
+    /// let (_world, report) = game()
+    ///     .headless_frames(true)
+    ///     .data_dir(std::env::temp_dir().join("menu-test-saves"))
+    ///     .run_headless_scenario(scenario);
+    /// report.assert_passed();
+    /// ```
+    pub fn run_headless_scenario(
+        self,
+        scenario: crate::scenario::InputScenario,
+    ) -> (World, crate::scenario::ScenarioReport) {
+        self.game.run_headless_scenario(scenario, |_| {})
+    }
+
+    /// Runs whole frames in headless runs, UI and frame systems included:
+    /// [`Game::headless_frames`].
+    pub fn headless_frames(mut self, on: bool) -> Self {
+        self.game = self.game.headless_frames(on);
+        self
+    }
+
+    /// Feeds scheduled input into the game by tick: [`Game::input_scenario`].
+    pub fn input_scenario(mut self, scenario: crate::scenario::InputScenario) -> Self {
+        self.game = self.game.input_scenario(scenario);
+        self
+    }
+
+    /// Keeps `ctx.storage`'s files in `dir`, for tests that must not touch the
+    /// player's saves: [`Game::data_dir`].
+    pub fn data_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.game = self.game.data_dir(dir);
+        self
+    }
+
+    /// Sets the seed for [`Ctx::random`]: [`Game::seed`].
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.game = self.game.seed(seed);
+        self
+    }
+
+    /// Adds a frame system after the game's own: [`Game::system`]. For a
+    /// test or a tool that watches or drives a finished game.
+    pub fn system<F: FnMut(&mut Ctx) + 'static>(mut self, system: F) -> Self {
+        self.game = self.game.system(system);
+        self
+    }
+
+    /// Adds a simulation system after the game's own: [`Game::sim_system`].
+    /// For a test or a tool that watches or drives a finished game.
+    pub fn sim_system<F: FnMut(&mut Ctx) + 'static>(mut self, system: F) -> Self {
+        self.game = self.game.sim_system(system);
+        self
     }
 }
 
@@ -731,8 +810,8 @@ impl Game {
     ///   the declaration is enforced by the view, not trusted. View systems
     ///   run one at a time, in order, unless
     ///   [`parallel_systems`](Self::parallel_systems) is on: then the ones
-    ///   that are next to each other in a phase and don't conflict share a
-    ///   batch and may run at the same time;
+    ///   of a phase that don't conflict share a batch and may run at the
+    ///   same time;
     /// - either of them with options: [`named`](IntoSystem::named),
     ///   [`every`](IntoSystem::every) (an interval in ticks) and
     ///   [`access`](IntoSystem::access) (what it reads and writes).
@@ -832,13 +911,15 @@ impl Game {
     /// run at the same time, on several threads. Off by default: then every
     /// system runs alone, in order, as always.
     ///
-    /// On, the systems of each phase are cut into stages
+    /// On, the systems of each phase are put into stages
     /// ([`schedule_plan`](Self::schedule_plan) shows them): view systems
-    /// that are next to each other and whose declarations don't conflict
-    /// share a **batch**; every other system (all `&mut Ctx` systems, and
-    /// view systems that hold sound, a camera, a physics world or
-    /// networking) is a stage of its own. Stages run in order, so systems
-    /// that conflict keep their registration order. Commands recorded in a
+    /// whose declarations don't conflict share a **batch**; every other
+    /// system (all `&mut Ctx` systems, and view systems that hold sound, a
+    /// camera, a physics world or networking) is a stage of its own, which
+    /// no system moves across. Between those, a view system goes to the
+    /// earliest stage after every system whose work it must see, so it may
+    /// run ahead of systems registered before it that it doesn't interact
+    /// with. Systems that conflict keep their registration order. Commands recorded in a
     /// batch are applied, and events sent in it become visible, when the
     /// batch ends, in registration order; the conflict rules make sure no
     /// system could have seen them earlier anyway.
@@ -962,10 +1043,13 @@ impl Game {
         self
     }
 
-    /// Says that `second` must see `first`'s work: the two never share a
-    /// batch, even if their declarations don't conflict (for an order that
-    /// the declarations can't show, such as two systems that talk through
-    /// a file or a channel). `first` must already run before `second`: an
+    /// Says that `second` must see `first`'s work: `second` runs in a later
+    /// stage than `first`, never in the same batch or ahead of it, even if
+    /// their declarations don't conflict (for an order that the
+    /// declarations can't show, such as two systems that talk through a
+    /// file or a channel). With the scheduler on, a view system that
+    /// doesn't interact with the systems registered before it may run
+    /// ahead of them; this is how to stop that for a pair. `first` must already run before `second`: an
     /// earlier phase, or registered first in the same phase. Ids come from
     /// [`add_system`](Self::add_system); a removed system's pair is ignored.
     ///
@@ -2050,10 +2134,15 @@ impl Game {
     /// `setup` runs once, then `ticks` simulation ticks run (fewer if a
     /// system calls `ctx.quit()`). Only **simulation systems** run: frame
     /// systems, the closure returned by `setup`, and drawing need frames, and
-    /// there are none. Sim speed is ignored, and so is pause unless the
+    /// there are none. Sim speed is ignored, and so is
+    /// [`ctx.time.pause()`](crate::time::Time::pause) unless the
     /// [control endpoint](Self::control_endpoint) is on: then a paused game
-    /// waits for tools to step or resume it. Textures still load (for their
-    /// sizes), but nothing is uploaded to a GPU.
+    /// waits for tools to step or resume it. Without it every tick runs, so
+    /// a game that pauses behind a menu still sees the scenario input that
+    /// closes it. To hold only physics (a pause screen whose sim systems keep
+    /// running, in a window and headless alike), use
+    /// [`Physics::set_paused`](crate::d2::Physics::set_paused). Textures
+    /// still load (for their sizes), but nothing is uploaded to a GPU.
     ///
     /// ```
     /// use ponko::prelude::*;

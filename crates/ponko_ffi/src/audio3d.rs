@@ -55,8 +55,9 @@ pub extern "C" fn ponko_audio_effects_default() -> PonkoAudioEffects {
     effects_to_c(AudioEffects::default())
 }
 
-/// How a positional sound fades with distance (Rust `AudioRolloff`; keyed
-/// curves are Rust-only for now).
+/// How a positional sound fades with distance (Rust `AudioRolloff`; a
+/// keyed curve goes through `ponko_ctx_play_sound_at_keyed` and
+/// `ponko_ctx_set_audio_source3d_keyed`).
 /// ```
 /// let _ = ponko_ffi::PonkoAudioRolloff::PONKO_ROLLOFF_LINEAR;
 /// ```
@@ -158,7 +159,7 @@ fn params_from_c(p: PonkoSoundParams) -> SoundParams {
         looping: p.looping,
     }
 }
-fn settings_from_c(s: *const PonkoAudioSettings3D) -> AudioSettings3D {
+pub(crate) fn settings_from_c(s: *const PonkoAudioSettings3D) -> AudioSettings3D {
     // SAFETY: callers pass null or a readable pointer.
     let Some(s) = (unsafe { s.as_ref() }) else {
         return AudioSettings3D::default();

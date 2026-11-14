@@ -326,3 +326,70 @@ fn single_gives_the_only_match_and_says_why_there_is_none() {
         "more than one entity matches the query"
     );
 }
+
+/// Moves `e` to the archetype of `mask` (bits 0 to 6 of the `Bit`s).
+fn set_bits(w: &mut World, e: Entity, mask: u32) {
+    macro_rules! bits {
+        ($($n:literal)*) => {$(
+            if mask >> $n & 1 != 0 {
+                w.insert(e, Bit::<$n>);
+            } else {
+                w.remove::<Bit<$n>>(e);
+            }
+        )*};
+    }
+    bits!(0 1 2 3 4 5 6);
+}
+
+#[test]
+fn queries_skip_emptied_archetypes_and_find_refilled_ones() {
+    // 128 archetypes with `Pos`, filled once each, then all but a few
+    // emptied again: scans visit the world's list of archetypes with
+    // entities, and must see an archetype again as soon as it refills, with
+    // the archetype index (from 64 archetypes on) and without.
+    for policy in [QueryCachePolicy::new(), QueryCachePolicy::off()] {
+        let mut w = World::new();
+        w.set_query_cache_policy(policy);
+        let e = w.spawn((Pos(1.0, 0.0),));
+        for mask in 0..128 {
+            set_bits(&mut w, e, mask);
+        }
+        let kept = w.spawn((Pos(2.0, 0.0), Vel(0.0, 0.0)));
+        set_bits(&mut w, e, 0b101);
+        // Many empty archetypes (some of them reclaimed, at most 64 kept).
+        assert!(w.raw_ref().archetypes().iter().filter(|a| a.is_empty()).count() >= 64);
+        for round in 0..3 {
+            let mut seen = Vec::new();
+            w.query::<(Entity, &Pos)>().for_each(|(e, _)| seen.push(e));
+            let mut sorted = seen.clone();
+            sorted.sort();
+            let mut expected = [e, kept];
+            expected.sort();
+            assert_eq!(sorted, expected, "round {round}");
+            assert_eq!(
+                w.query::<(Entity, &Pos)>().iter().map(|(e, _)| e).collect::<Vec<_>>(),
+                seen
+            );
+            assert_eq!(w.query::<&Pos>().filter::<With<Bit<2>>>().count(), 1);
+            assert_eq!(w.query::<&Pos>().filter::<With<Bit<1>>>().count(), 0);
+            assert!(w.query::<&Pos>().filter::<With<Bit<1>>>().cached().single().is_err());
+            #[cfg(feature = "parallel")]
+            {
+                let mut out = Vec::new();
+                w.query::<(Entity, &Pos)>().par_collect_into(&mut out, |(e, _)| e);
+                assert_eq!(out, seen);
+            }
+            let mut rows = 0;
+            let pos = w.component_id::<Pos>().unwrap();
+            w.raw().for_each_chunk(&[pos], |chunk| rows += chunk.len());
+            assert_eq!(rows, 2);
+            // Refill an archetype that was empty, and empty the one `e` was in.
+            set_bits(&mut w, e, if round % 2 == 0 { 0b1_0110 } else { 0b101 });
+            assert_eq!(
+                w.query::<&Pos>().filter::<With<Bit<1>>>().count(),
+                usize::from(round % 2 == 0)
+            );
+            set_bits(&mut w, e, 0b101);
+        }
+    }
+}

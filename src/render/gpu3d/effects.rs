@@ -213,7 +213,12 @@ impl Renderer3D {
         let source = compose_effect(user);
         crate::render::diagnose(name, ShaderKind::Effect, EFFECT_VARIANT, &source)?;
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let (module, pipeline) = build_effect(device, &self.shaders.layout, name, &for_samples(&source, self.samples));
+        let (module, pipeline) = build_effect(
+            device,
+            &self.shaders.layout,
+            name,
+            &for_samples(&source, self.samples, self.float_depth),
+        );
         match end_scope(scope, self.defer_checks()) {
             Ok(None) => Ok((module, pipeline, None)),
             Ok(Some(error)) => Err(rejected(name, ShaderKind::Effect, EFFECT_VARIANT, &error)),

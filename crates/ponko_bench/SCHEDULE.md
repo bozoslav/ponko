@@ -130,12 +130,69 @@ In every row `auto` matches the better of `seq` and `threads`.
   to threads gains nothing either; in one earlier, disturbed run it was
   slower (5.9 ms median, 14.5 ms at the 95th percentile).
 
+## Batching by dependencies (#388)
+
+Batches used to form only from neighbours in the registration order. Now
+each view system goes to the earliest stage after every earlier system
+whose work it must see, so a system that interacts with nothing
+registered between joins an earlier batch (the guide's "Parallel systems",
+"Stages and batches"). `schedule/interleaved/4x16000/heavy` registers four
+producers and four consumers in pairs, `p0 c0 p1 c1 p2 c2 p3 c3`, where
+`ck` reads what `pk` writes: neighbours give five stages (`p0`, `c0 p1`,
+`c1 p2`, `c2 p3`, `c3`), dependencies give two (every producer, then every
+consumer).
+
+Before is this branch just before the planner change (`0976d3bc`, the
+benchmark added to the 0.2 batch 4 code), after is the new planner; one
+release build each, the same machine and toolchain as above (Apple M4 Max,
+macOS 27.2.1, rustc 1.99.1), 2026-11-14. The machine was very busy (other
+agents compiling, load average 38 to 60, peaks over 100), so the two
+binaries ran alternately, five times each, on the rows below; the table
+gives the median of each run's median, and the range of the three best
+runs in brackets.
+
+| Benchmark | Before | After |
+|---|---|---|
+| interleaved/4x16000/heavy/seq | 3.69 ms | 3.71 ms |
+| interleaved/4x16000/heavy/auto | 3.71 ms (3.66 to 3.71) | 1.00 ms (0.98 to 1.00) |
+| interleaved/4x16000/heavy/threads | 5.42 ms (3.72 to 5.42) | 1.04 ms (0.99 to 1.04) |
+| chain/8x16000/light/auto | 30 µs | 29 µs |
+| tiny/64x100/light/auto | 10 µs | 10 µs |
+| sweep/8x16000/heavy/auto | 1.90 ms (1.29 to 1.90) | 4.36 ms (1.32 to 4.36) |
+| mixed/50000/auto | 12.9 ms (5.8 to 12.9) | 16.6 ms (5.8 to 16.6) |
+
+- `interleaved` gains 3.7× over the old planner: before, each batch was a
+  heavy producer next to a light consumer, under the threshold, so `auto`
+  ran everything in order and matched `seq`; now the four producers share
+  one batch. Every run of the new code whose machine was quiet enough read
+  0.98 to 1.04 ms; the slow ones (5.5 to 8.9 ms) came with load spikes,
+  as did the old code's (up to 14.9 ms with threads).
+- `chain`, `tiny`, `sweep` and `mixed` have the same plan with either
+  planner (a chain, one batch, one batch, and a `&mut Ctx` system that cuts
+  the phase). Their best runs agree within 3%; the medians of `sweep` and
+  `mixed` swing by several times between runs of the same binary under
+  this load, so they show noise, not a change. The planner runs once when
+  the game starts, and the executor does the same work per stage as before
+  (`tests/system_schedule_alloc.rs` still finds no allocation per tick).
+- With the scheduler off nothing changed: `seq` rows agree, and the plan
+  is not even built.
+
+**The reference games and the simulation examples gain nothing**, with
+either planner: `examples/coin_dash`, `examples/ember_hop`, `ants`, `boids`
+and `battle` have only `&mut Ctx` systems, which run alone, so their plans
+have no batch at all. **Decision: the scheduler stays off by default.** It
+only helps view systems with real work, the games we ship have none,
+turning it on starts rayon's thread pool, and `&mut Ctx` systems still cut
+segments (their declarations are only checked in debug builds, so no
+system may move across one).
+
 ## When it doesn't pay off
 
 - Systems that take microseconds: nothing to gain, and `auto` doesn't try.
 - Schedules that are chains (each system reads the previous one's output),
   or where `&mut Ctx` systems sit between the declared ones: there are no
-  batches. `Game::schedule_plan()` shows the stages and why each starts.
+  batches. (View systems that only sit apart in the registration order
+  don't matter any more: see "Batching by dependencies".) `Game::schedule_plan()` shows the stages and why each starts.
 - One dominant system: split its work with `par_for_each` inside the
   system instead (see [PAR_ARCHETYPES.md](PAR_ARCHETYPES.md)).
 - Light, memory-bound systems gain less than compute-bound ones (2.8×

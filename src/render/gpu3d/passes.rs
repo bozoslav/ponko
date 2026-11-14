@@ -96,6 +96,10 @@ pub(crate) enum Resource {
     GiProbes,
     /// The main camera's (multisampled) depth.
     SceneDepth,
+    /// A copy of the scene depth that transparent surfaces read where the
+    /// depth attachment can't be read-only while it is sampled (the GL
+    /// backend: see [`Features::DEPTH_COPY`]).
+    SceneDepthCopy,
     /// The main camera's multisampled color.
     SceneColor,
     /// With temporal antialiasing: the lit frame before it is resolved over
@@ -203,7 +207,7 @@ pub(crate) struct Desc {
 
 impl Resource {
     /// Every resource, in declaration order.
-    pub(crate) const ALL: [Resource; 43] = {
+    pub(crate) const ALL: [Resource; 44] = {
         use Resource::*;
         [
             VisibleDraws,
@@ -226,6 +230,7 @@ impl Resource {
             GiViewImage,
             GiProbes,
             SceneDepth,
+            SceneDepthCopy,
             SceneColor,
             TaaInput,
             Hdr,
@@ -286,6 +291,7 @@ impl Resource {
             Resource::GiViewImage => desc("gi view image", Frame, F::Hdr, One),
             Resource::GiProbes => desc("gi probes", Persistent, F::Hdr, One),
             Resource::SceneDepth => desc("scene depth", Frame, F::Depth, Scene),
+            Resource::SceneDepthCopy => desc("scene depth copy", Frame, F::Depth, Scene),
             Resource::SceneColor => desc("scene color", Frame, F::Hdr, Scene),
             Resource::TaaInput => desc("taa input", Frame, F::Hdr, One),
             Resource::Hdr => desc("lit frame", Frame, F::Hdr, One),
@@ -408,6 +414,9 @@ features! {
     SCENE_BUFFER_COMPUTE = 35, "scene buffer compute";
     /// Scene compute passes over textures.
     SCENE_TEXTURE_COMPUTE = 36, "scene texture compute";
+    /// Scene-reading transparent surfaces read a copy of the scene depth:
+    /// the GL backend can't sample a depth attachment, even a read-only one.
+    DEPTH_COPY = 37, "scene depth copy";
 }
 
 impl Features {
@@ -1057,15 +1066,22 @@ pub(crate) const FRAME_PASSES: [Pass; 8] = [
                 ],
             ),
             step(
+                "depth copy",
+                on(F::DEPTH_COPY),
+                &[u(SceneDepth, A::SampleMs), u(SceneDepthCopy, A::Depth)],
+            ),
+            step(
                 "color",
                 When::ALWAYS,
                 lit_models![
                     u(TargetImage, A::Sample),
                     u(GiProbes, A::Sample),
                     u(SceneCopy, A::Sample),
-                    // Read-only depth: the shaders sample it at the same time.
+                    // Read-only depth: the shaders sample it at the same
+                    // time (or, with the depth copy, the copy).
                     u(SceneDepth, A::DepthRead),
-                    u(SceneDepth, A::SampleMs),
+                    u(SceneDepth, A::SampleMs).off(F::DEPTH_COPY),
+                    u(SceneDepthCopy, A::SampleMs).on(F::DEPTH_COPY),
                     u(SceneColor, A::ColorLoad).on(F::MSAA),
                     u(TaaInput, A::Resolve).on(F::MSAA.with(F::TAA)),
                     u(Hdr, A::Resolve).on(F::MSAA).off(F::TAA),

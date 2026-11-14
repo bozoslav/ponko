@@ -64,13 +64,10 @@ now, and each other line at its step:
 {{#include ../../examples/tutorial_3d/game.rs:game}}
 ```
 
-`src/main.rs` asks for the stored setup with `.configured()`, because
-`game()` returns the builder (the tests in [step 6](#step-6-test-it) add
-test settings to it):
-
-```rust
-{{#include ../../examples/tutorial_3d/main.rs:main}}
-```
+As in the template, `game()` returns a game ready to `run()` (the plugins
+hold all of its setup, which `.configured()` says), so `src/main.rs` stays
+as the template wrote it, and the tests in [step 6](#step-6-test-it) add
+their settings to the same `game()`.
 
 The yard:
 
@@ -81,11 +78,11 @@ The yard:
 - **`ctx.gfx.load_mesh`** loads the file's meshes and materials into one
   `Mesh`, drawn wherever an entity with a `Model` of it stands
   ([Meshes and materials](3d.md#meshes-and-materials)).
-- **To make it solid**, `load_mesh_data` reads the same file's triangles on
-  the CPU, and `ctx.physics3d.trimesh` makes a collision mesh of them. The
-  entity gets a fixed `RigidBody` and a `Collider` of that mesh, so what you
-  walk on is exactly what you see ([3D physics](physics3d.md#bodies-colliders-and-terrain)).
-  A triangle mesh suits level geometry that never moves.
+- **To make it solid**, `ctx.load_collision_mesh` makes a collision mesh of
+  the same file's triangles. The entity gets a fixed `RigidBody` and a
+  `Collider` of that mesh, so what you walk on is exactly what you see
+  ([3D physics](physics3d.md#bodies-colliders-and-terrain)). A triangle mesh
+  suits level geometry that never moves.
 - **`.physics3d(vec3(0.0, -9.81, 0.0))`** turns 3D physics on, in meters,
   with +Y up. The game then ticks 50 times a second, the physics' rate.
 - **The sun**: `sun_direction` is which way the light travels; a low sun
@@ -189,9 +186,12 @@ and the plugin:
 {{#include ../../examples/tutorial_3d/game.rs:hud}}
 ```
 
-- The counter is a label on a screen of its own, pushed at setup. The panel
-  is a second root, pushed on top as a **modal** screen (it dims the screen
-  below and takes all input) when the last lantern is lit.
+- The counter is a label on a **HUD**, shown at setup with `show_hud`: it
+  is always drawn, under every screen, takes no input and Escape never
+  closes it ([HUDs](ui.md#huds)). The panel is a second root, pushed on top
+  as a **modal** screen (it dims what is below and takes all input) when
+  the last lantern is lit. It opens with "Play again" focused
+  (`.focused()`), so Enter presses it.
 - `hud` sets the counter's text every frame from the lanterns themselves,
   so it can't drift from the game.
 - "Play again" (or Escape, which closes the top screen and sends

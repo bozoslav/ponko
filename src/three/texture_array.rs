@@ -212,12 +212,37 @@ impl Graphics {
         kind: TextureKind,
     ) -> Result<TextureArray, crate::error::Error> {
         let mut images = Vec::with_capacity(paths.len());
+        #[cfg(feature = "compressed-textures")]
+        let mut blocks = Vec::new();
         for path in paths {
             let found = self.asset_sources.find(path)?;
             let origin = found.origin.clone();
             let bytes = found.into_bytes().map_err(|e| e.with_path(*path))?;
-            let image = assets::decode_image(&bytes, path, &origin.describe(path))?;
-            images.push(image);
+            let what = origin.describe(path);
+            #[cfg(feature = "compressed-textures")]
+            if let Some(decoded) = crate::compressed::decode(&bytes, path, &what, self.compressed_formats()) {
+                match decoded? {
+                    crate::compressed::Decoded::Rgba(image) => images.push(image),
+                    crate::compressed::Decoded::Blocks(image) => blocks.push((images.len(), image)),
+                }
+                continue;
+            }
+            images.push(assets::decode_image(&bytes, path, &what)?);
+        }
+        #[cfg(feature = "compressed-textures")]
+        if !blocks.is_empty() {
+            if images.is_empty()
+                && let Some(array) = self.compressed_array(paths, &mut blocks, kind)?
+            {
+                return Ok(array);
+            }
+            // Mixed with image files (or of different formats): every
+            // layer as RGBA8.
+            for (at, image) in blocks {
+                let level = crate::compressed::decode_blocks(image.format, image.width, image.height, &image.levels[0])
+                    .map_err(|e| crate::error::Error::decode(paths[at], e))?;
+                images.insert(at, level);
+            }
         }
         let Some(first) = images.first() else {
             return Err(crate::error::Error::new(
@@ -247,6 +272,70 @@ impl Graphics {
     /// Whether this game made `array`, as it is, and hasn't freed it (for
     /// the C API, which takes ids and sizes): [`Ctx::is_live`](crate::ctx::Ctx::is_live), with the
     /// size checked too.
+    /// A texture array of block-compressed layers, if they share one
+    /// size, format and color space; `None` to load them as RGBA8 instead.
+    /// The array's `kind` decides sRGB decoding, as for RGBA8 arrays.
+    #[cfg(feature = "compressed-textures")]
+    fn compressed_array(
+        &mut self,
+        paths: &[&str],
+        layers: &mut [(usize, crate::compressed::CompressedImage)],
+        kind: TextureKind,
+    ) -> Result<Option<TextureArray>, crate::error::Error> {
+        let (_, first) = &layers[0];
+        let (width, height, format) = (first.width, first.height, first.format);
+        if let Some((at, other)) = layers.iter().find(|(_, l)| (l.width, l.height) != (width, height)) {
+            return Err(crate::error::Error::new(
+                crate::error::ErrorKind::Invalid,
+                format!(
+                    "load_texture_array: {} is {} x {}, but {} is {width} x {height}; every layer must be the same size",
+                    paths[*at], other.width, other.height, paths[0]
+                ),
+            )
+            .with_path(paths[*at]));
+        }
+        if layers.iter().any(|(_, l)| l.format != format) {
+            return Ok(None);
+        }
+        let srgb = kind == TextureKind::Color && format.has_srgb();
+        // Every layer keeps the mip levels they all have.
+        let levels = layers.iter().map(|(_, l)| l.levels.len()).min().unwrap_or(1);
+        for (_, layer) in layers.iter_mut() {
+            layer.srgb = srgb;
+            layer.levels.truncate(levels);
+        }
+        let id = self.assets3d.arrays.len() as u32;
+        if let Some(renderer) = self.renderer.as_mut()
+            && !self.headless
+        {
+            let (max, max_layers) = renderer.max_texture_array_size();
+            if width > max || height > max || layers.len() as u32 > max_layers {
+                return Err(crate::error::Error::new(
+                    crate::error::ErrorKind::Limit,
+                    format!(
+                        "a {width} x {height} texture array of {} layers is larger than this GPU takes \
+                         ({max} x {max}, {max_layers} layers)",
+                        layers.len()
+                    ),
+                ));
+            }
+            let refs: Vec<&crate::compressed::CompressedImage> = layers.iter().map(|(_, l)| l).collect();
+            let gpu_id = renderer.create_compressed_texture_array(&refs);
+            debug_assert_eq!(gpu_id, id);
+        }
+        let array = TextureArray {
+            id,
+            width,
+            height,
+            layers: layers.len() as u32,
+        };
+        self.assets3d.arrays.push(array);
+        self.assets3d.array_data.push(kind == TextureKind::Data);
+        self.assets3d.arrays_live.insert(id);
+        self.asset_ledger.made(crate::inventory::AssetClass::TextureArray, id);
+        Ok(Some(array))
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub fn has_texture_array(&self, array: TextureArray) -> bool {

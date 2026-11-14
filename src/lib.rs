@@ -121,6 +121,8 @@ pub mod camera;
 #[cfg(any(feature = "physics", feature = "physics3d"))]
 pub mod collision;
 pub mod color;
+#[cfg(feature = "compressed-textures")]
+pub(crate) mod compressed;
 mod control;
 mod ctx;
 pub mod diagnostics;

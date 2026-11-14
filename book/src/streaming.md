@@ -160,7 +160,10 @@ From C, `ponko_ctx_set_streamed_lod`; from C++, `ctx.set_streamed_lod(e, files)`
 ## Hot reload and freeing
 
 With [hot reload](data-files.md) on, editing a streamed texture's file
-replaces it at full resolution under the same handle. Freeing a streamed
+replaces it at full resolution under the same handle.
+[Compressed textures](drawing.md#compressed-textures) (`.ktx2`) stream
+through the mip levels stored in the file, and count their compressed
+bytes against the budget. Freeing a streamed
 texture or mesh with `ctx.free` works as for any handle; asking for it by
 name again loads it afresh, as a new handle.
 

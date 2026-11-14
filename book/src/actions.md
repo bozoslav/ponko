@@ -249,6 +249,9 @@ one action without rebuilding the map, `ctx.input.set_action("jump", action)`
 replaces it in place. The name keeps its `ActionId`, the other actions keep
 their state and edges, and held sources become the baseline as above:
 
+<div class="lang-pair">
+<div>
+
 ```rust
 # use ponko::prelude::*;
 # use ponko::actions::{Action, ButtonBinding};
@@ -262,8 +265,21 @@ ctx.input.set_action("jump", jump);
 # }
 ```
 
-The read-back and `set_action` are Rust-only for now; C and C++ rebuild the map
-and install it as described above.
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:set_action}}
+```
+
+</div>
+</div>
+
+In C, `ponko_action_map_count`, `ponko_action_map_name` and
+`ponko_action_map_get` read a map back (an unknown name or index is
+`PONKO_NOT_FOUND`), and `ponko_ctx_set_action` changes one installed action.
+C++ has `action_map::size`, `names` and `get` (a `std::optional<action>`),
+and `ctx::set_action`.
 
 `ActionMap::to_json` / `action_map::to_json` save bindings only, with the same
 serde JSON format in both languages. Write that string to your settings file

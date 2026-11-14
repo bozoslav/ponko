@@ -1335,6 +1335,24 @@ fn temporal_antialiasing_is_a_setting_and_can_forget_its_history() {
 }
 
 #[test]
+fn one_teleported_model_drops_only_its_own_motion() {
+    Game::new("reset motion", 64, 64).run_headless(1, |ctx| {
+        ctx.scene3d.post.anti_aliasing = AntiAliasing::Taa;
+        let hero = ctx.world.spawn((Transform::default(),));
+        // ANCHOR: reset_motion
+        // Teleport one object: only its motion is dropped, the rest of the
+        // picture keeps its temporal history.
+        ctx.world.get_mut::<Transform>(hero).unwrap().position = vec3(100.0, 0.0, 0.0);
+        ctx.gfx.reset_motion(hero);
+        // ANCHOR_END: reset_motion
+        // Many in one frame are fine: past a limit the whole history resets.
+        for _ in 0..10_000 {
+            ctx.gfx.reset_motion(hero);
+        }
+    });
+}
+
+#[test]
 fn ao_and_aa_settings_preserve_existing_defaults() {
     Game::new("post settings", 64, 64).run_headless(0, |ctx| {
         assert_eq!(ctx.scene3d.post.anti_aliasing, AntiAliasing::None);

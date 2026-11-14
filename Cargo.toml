@@ -104,6 +104,16 @@ rapier2d = { version = "0.36.1", optional = true }
 rapier3d = { version = "0.36.1", optional = true }
 fontdue = "0.9.5"
 epaint_default_fonts = "0.37.0"
+# Text shaping (feature `text-shaping`): the HarfBuzz project's Rust port
+# (the shaper egui's inspector already brings in), Unicode bidirectional
+# ordering, line-break opportunities and scripts. fontdue keeps rasterizing.
+harfrust = { version = "0.12.0", optional = true }
+unicode-bidi = { version = "0.3.18", optional = true }
+unicode-linebreak = { version = "0.1.5", optional = true }
+unicode-script = { version = "0.5.9", optional = true }
+# Character coverage of system fonts (feature `system-fonts`); the font
+# parser harfrust is built on.
+read-fonts = { version = "0.41.0", default-features = false, features = ["std"], optional = true }
 kira = { version = "0.12.6", default-features = false, features = ["cpal", "ogg", "vorbis", "wav", "pcm", "mp3", "flac"], optional = true }
 # Kira's decoders (its formats turn them on), used directly to stream on the
 # web, where Kira's decoder thread can't run: already built for Kira.
@@ -127,10 +137,31 @@ flate2 = "1.1.10"
 # Accessibility tree data types (feature `accessibility`); the same crate
 # and version the inspector's egui already brings in.
 accesskit = { version = "0.25.2", optional = true }
+# Block-compressed textures (feature `compressed-textures`), all pure Rust
+# so they build for the web too: `ktx2` reads KTX2 containers (no
+# dependencies of its own), `ruzstd` unpacks their Zstandard
+# supercompression, and `texture2ddecoder` decodes BCn, ETC2 and ASTC
+# blocks on the CPU for a GPU that can't sample them.
+ktx2 = { version = "0.5.0", optional = true }
+ruzstd = { version = "0.9.1", optional = true, default-features = false, features = ["std"] }
+texture2ddecoder = { version = "0.1.2", optional = true }
 
 # Waits for the GPU on desktop (feature `window`); the web build awaits it.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pollster = { version = "1.0.1", optional = true }
+# Basis Universal's UASTC transcoder (feature `basis-universal`): the C++
+# library, built with the system's C++ compiler. Not on the web: it can't be
+# built for wasm32-unknown-unknown, so a web build of the feature reads
+# every other compressed texture and reports UASTC files as unsupported.
+basis-universal = { version = "0.3.1", optional = true }
+
+# The system's fonts by family name and coverage (feature `system-fonts`):
+# desktop only, the web has no font files to read.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.fontdb]
+version = "0.24.0"
+optional = true
+default-features = false
+features = ["std", "fs", "memmap"]
 
 [target.'cfg(any(unix, windows))'.dependencies]
 libc = "0.2"
@@ -159,6 +190,9 @@ web-sys = { version = "0.3.107", features = ["Window", "Document", "Element", "H
 # depend on the engine, and a published cycle between the two can't resolve.
 [dev-dependencies]
 ponko_mcp = { path = "crates/ponko_mcp" }
+# The renderer's tests translate its shaders to GLSL ES 3.0, as wgpu does for
+# WebGL2 (src/render/gpu3d/webgl2_shaders_test.rs). The naga wgpu already uses.
+naga = { version = "30.0.1", features = ["wgsl-in", "glsl-out"] }
 
 # The native accessibility test (tests/ui_access_macos.rs) asks an `NSView`
 # what a screen reader would ask it. The same objc2 versions AccessKit's
@@ -231,6 +265,18 @@ physics-determinism = ["physics", "rapier2d/enhanced-determinism", "rapier3d?/en
 # Off: no 3D pass, no glTF loader in the build.
 3d = ["dep:gltf", "dep:half", "image-jpeg", "image-hdr", "image-exr"]
 
+# Text shaping with harfrust: ligatures and kerning from the font's
+# OpenType tables, complex scripts (Arabic joining, Devanagari), right-to-left
+# and mixed-direction lines, and line breaks that follow Unicode's rules.
+# ASCII strings keep the per-character fast path unless
+# `Graphics::set_text_shaping(TextShaping::Always)`. Off: text is laid out
+# character by character, as before; font fallback chains still apply.
+text-shaping = ["dep:harfrust", "dep:unicode-bidi", "dep:unicode-linebreak", "dep:unicode-script"]
+# The system's fonts on desktop: `Graphics::load_system_font` by family name
+# and `set_system_font_fallback`, which finds a system font for characters
+# no loaded font has. Off (and on the web): those calls report `Unsupported`.
+system-fonts = ["text-shaping", "dep:fontdb", "dep:read-fonts"]
+
 # Image formats `load_texture` and the other texture loaders can read, chosen
 # without the `3d` feature. PNG is always built in (screenshots are PNG files).
 # The format of a file is found from its first bytes, so a JPEG named
@@ -275,6 +321,19 @@ image-formats = [
     "image-hdr",
     "image-exr",
 ]
+
+# GPU-compressed textures: KTX2 files (BC1-BC7, ETC2/EAC, ASTC 4x4 or RGBA8,
+# optionally Zstandard or zlib supercompressed) and DDS files with BCn data
+# upload as they are, with their mipmaps, at a quarter to an eighth of
+# RGBA8's video memory. A GPU without the format gets the file decoded to
+# RGBA8 on the CPU. Pure Rust: works on the web. `ponko textures` makes the
+# files. See the guide's "Compressed textures".
+compressed-textures = ["dep:ktx2", "dep:ruzstd", "dep:texture2ddecoder"]
+# Basis Universal UASTC textures in KTX2, transcoded at load to what the GPU
+# samples (BC7/BC5, ASTC 4x4, ETC2/EAC, or RGBA8). Builds Basis Universal's
+# C++ transcoder; desktop and native only: on the web UASTC files fail to
+# load with an `Unsupported` error.
+basis-universal = ["compressed-textures", "dep:basis-universal"]
 
 # Runs on the main thread (AppKit requires it), so it is its own program
 # without the test harness. Does nothing off macOS.

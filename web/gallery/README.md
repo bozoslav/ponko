@@ -62,11 +62,10 @@ controller, which the headless check can't plug in), the smoke-test fixtures
 `bunnymark_ecs`, which is listed).
 
 `webgpu: required` is set where WebGL2 can't show the demo:
-`compute` and `scene_compute` are about compute passes, which WebGL2 lacks;
-`terrain`, `shaders` and `target_effect` stop on WebGL2 today (a pass of
-theirs reads a depth texture with `textureLoad`, which WebGL2's shading
-language can't), so they are marked until the renderer has a WebGL2 path for
-it.
+`compute` and `scene_compute` are about compute passes, which WebGL2 lacks.
+The demos that read the scene depth (`terrain`, `shaders`, `target_effect`)
+run on WebGL2 through the renderer's GL path for it (see the book's shader
+section), and CI checks them there.
 
 ## The pages
 

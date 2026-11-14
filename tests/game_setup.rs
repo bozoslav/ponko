@@ -69,3 +69,87 @@ fn a_game_of_plugins_and_systems_runs_without_a_setup_closure() {
         .run_headless(1);
     assert_eq!(world.resource::<Ticks>().0, 5);
 }
+
+/// A game as `ponko new` makes it: `game()` returns a configured game with a
+/// frame system that reads keys, a menu, and a save in `ctx.storage`.
+mod template {
+    use ponko::prelude::*;
+
+    #[derive(Default)]
+    pub struct Steps(pub i32);
+
+    pub fn game() -> ConfiguredGame {
+        Game::new("Template", 640, 480)
+            .system(|ctx| {
+                if ctx.key_pressed(Key::Right) {
+                    ctx.world.resource_mut::<Steps>().0 += 1;
+                }
+            })
+            .setup(|ctx| {
+                ctx.world.insert_resource(Steps::default());
+                let root = ctx.ui.root().layout(ponko::ui::UiLayout::fill()).id();
+                ctx.ui.label(root, "").name("menu.saved");
+                ctx.ui.show_hud(root);
+                let saved = ctx.storage.read_json::<i32>("steps.json").ok();
+                let text = saved.map_or("new".to_string(), |s| s.to_string());
+                let label = ctx.ui.find("menu.saved").unwrap();
+                ctx.ui.set_text(label, text);
+            })
+    }
+}
+
+#[test]
+fn a_configured_game_takes_headless_frames_a_scenario_and_a_data_folder() {
+    use ponko::actions::InputEvent;
+    use ponko::prelude::Key;
+    use ponko::scenario::{InputScenario, ScenarioCheck};
+
+    let dir = std::env::temp_dir().join(format!("ponko-configured-game-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    ponko::storage::Storage::in_folder(&dir)
+        .write_json("steps.json", &7)
+        .unwrap();
+
+    let scenario = InputScenario::new()
+        .at(2, InputEvent::Key(Key::Right, true))
+        .at(3, InputEvent::Key(Key::Right, false))
+        .expect(1, ScenarioCheck::ui("menu.saved").text("7"))
+        .duration(5);
+    // Frame systems only run with headless frames.
+    let (world, report) = template::game()
+        .headless_frames(true)
+        .data_dir(&dir)
+        .seed(3)
+        .run_headless_scenario(scenario.clone());
+    report.assert_passed();
+    assert_eq!(world.resource::<template::Steps>().0, 1);
+
+    // The same, installed with `input_scenario`, and with test systems added.
+    let world = template::game()
+        .headless_frames(true)
+        .data_dir(&dir)
+        .input_scenario(scenario)
+        .system(|ctx| ctx.world.resource_mut::<template::Steps>().0 += 10)
+        .sim_system(|ctx| ctx.world.resource_mut::<template::Steps>().0 += 100)
+        .run_headless(5);
+    assert_eq!(world.resource::<template::Steps>().0, 1 + 5 * 10 + 5 * 100);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_configured_game_takes_a_seed() {
+    let roll = |seed| {
+        Game::new("seeded", 1, 1)
+            .configured()
+            .seed(seed)
+            .setup(|ctx| {
+                let n = ctx.random().stream(0).u64();
+                ctx.world.insert_resource(n);
+            })
+            .run_headless(0)
+            .resource::<u64>()
+            .to_owned()
+    };
+    assert_eq!(roll(1), roll(1));
+    assert_ne!(roll(1), roll(2));
+}

@@ -87,7 +87,7 @@ const _: () = assert!(
         && PONKO_TILE_FLIP_DIAGONAL == TileMap::FLIP_DIAGONAL
 );
 
-fn vec(v: PonkoVec2) -> Vec2 {
+pub(crate) fn vec(v: PonkoVec2) -> Vec2 {
     Vec2::new(v.x, v.y)
 }
 fn c_vec(v: Vec2) -> PonkoVec2 {
@@ -108,7 +108,7 @@ unsafe fn strings(list: *const *const c_char, count: usize) -> Result<Vec<String
     items.iter().map(|&s| unsafe { text(s) }.map(str::to_string)).collect()
 }
 
-unsafe fn options(o: *const PonkoLevelOptions) -> Result<LevelOptions, Failure> {
+pub(crate) unsafe fn options(o: *const PonkoLevelOptions) -> Result<LevelOptions, Failure> {
     let mut options = LevelOptions::default();
     if o.is_null() {
         return Ok(options);

@@ -36,8 +36,9 @@ where you add it (`system.access(...)`), and turn the scheduler on:
 
 `fall` and `regenerate` write different components, so they share a
 **batch**. `movement` reads the `Vel` that `fall` writes, so it runs after
-that batch. Nothing else is needed: there are no labels and no dependency
-graph, only the declarations and the order the systems were added in.
+that batch. Nothing else is needed: there are no labels to write. The
+declarations and the order the systems were added in are the dependency
+graph.
 
 C and C++ can turn the scheduler on and read the plan
 (`ponko_game_parallel_systems`, `ponko_game_schedule_plan`), which matters
@@ -48,17 +49,43 @@ declaration, so they stay alone.
 ## Stages and batches
 
 Systems run phase after phase, and inside a phase in registration order.
-The scheduler cuts that order into **stages**. A stage is either
+The scheduler puts them into **stages**. A stage is either
 
 - one system that runs alone, or
-- a batch: view systems next to each other in the order, none of which
+- a batch: view systems none of which
   [conflicts](system-access.md#when-two-systems-conflict) with an earlier
   one in the batch.
 
-Stages run one after another, and a system never moves past another one.
-So two systems that conflict are in different stages and keep their
-registration order, and two systems never read and write the same data at
-the same time.
+Stages run one after another. Each view system goes to the **earliest
+stage** that keeps two rules with every system registered before it:
+
+- it runs in a **later stage** than every earlier system whose work it
+  must see: one it conflicts with, or one `Game::order` puts first;
+- it **never runs ahead** of an earlier system when their order would show
+  at all, for example two systems that send the same event type (their
+  events would arrive the other way round). It may share that system's
+  batch, under the barrier rules below.
+
+So two systems that conflict keep their registration order, and two
+systems never read and write the same data at the same time. But a system
+that interacts with nothing registered between may run **ahead** of
+systems registered before it, in an earlier batch: if neither reads what
+the other writes, nobody can tell which ran first. With producers and
+consumers added in pairs,
+
+```text
+produce_a   writes A
+consume_a   reads A, writes X
+produce_b   writes B
+consume_b   reads B, writes Y
+```
+
+the plan has two stages, every producer and then every consumer, not the
+four a strict reading of the order would give.
+
+Nothing moves across a phase, an explicit barrier, or a system that runs
+alone (below): those cut the order into **segments**, and the stages of one
+segment all run before the next segment starts.
 
 `Game::schedule_plan()` shows the stages and why each one starts where it
 does. It is the same plan whether the scheduler is on or off:
@@ -82,7 +109,7 @@ AfterPhysics
   movement (batch of one; after `fall`: conflict on component `Vel`)
 ```
 
-A new stage starts:
+A system is kept out of an earlier stage:
 
 | Where | Why |
 |---|---|
@@ -90,17 +117,29 @@ A new stage starts:
 | before and after a `&mut Ctx` system | it may touch anything |
 | before and after a view system that holds sound, a camera, a physics world or networking | one system at a time may hold those services |
 | before and after a view system that sends *and* reads the same event type | it must see its own events at once |
-| where a system conflicts with one already in the batch | the later one must see the earlier one's work |
+| behind a system it conflicts with | the later one must see the earlier one's work |
 | at `Game::barrier(phase)` | you said so |
-| between the two systems of `Game::order(first, second)` | you said so |
+| behind the first system of `Game::order(first, second)` | you said so |
+| not ahead of an earlier system whose order would show | the plan says `not ahead of` |
 
 A view system can share a batch while reading input, the clock, its random
 stream and the spatial grid.
 
-Because batches only form from *neighbours*, the registration order
-matters for speed: a `&mut Ctx` system between two view systems splits
-them into two stages. Register the view systems of a phase next to each
-other.
+Inside a segment the registration order doesn't matter for speed. Across
+one it does: a `&mut Ctx` system between two groups of view systems still
+splits them, because its declaration is only checked in debug builds and
+can't be trusted to let systems move past it. Register the view systems of
+a phase together, or turn the `Ctx` system into a view system.
+
+When several systems of a batch were placed by different systems, the
+printed plan names each one's reason on its own line:
+
+```text
+AfterPhysics
+  produce_a + produce_b (batch)
+  consume_a + consume_b (batch; after `produce_a`: conflict on component `A`)
+    consume_b; after `produce_b`: conflict on component `B`
+```
 
 A running game gives the same answer as data: `ctx.ecs_diagnostics()` (and
 the `ecs_diagnostics` tool for agents) lists every system's declaration,
@@ -141,7 +180,10 @@ assert_eq!(game.schedule_plan().stages_in(Phase::AfterPhysics).len(), 2);
 ```
 
 `order` doesn't reorder anything: `first` must already run before
-`second`, and the call only keeps them out of one batch.
+`second`, and the call puts `second` in a later stage: never in `first`'s
+batch, and never ahead of it. Use it too for two systems that don't
+interact through anything declared but must still run in their
+registration order.
 
 ## Barriers: where commands apply and events arrive
 
@@ -198,13 +240,17 @@ start the thread pool. On:
   system), as with `ctx.random()`. **Clocks** are read once per batch.
 - **Change ticks** are the same numbers. Run one at a time, every system
   has a change tick of its own; the systems of a batch write in exactly
-  those ticks. So `change_tick()` returns the same value in a system,
-  `Added` and `Changed` compare the same against a tick a system kept, and
-  the world's tick after a stage doesn't depend on the scheduler.
+  those ticks, also a system that runs ahead of ones registered before it.
+  So `change_tick()` returns the same value in a system, `Added` and
+  `Changed` compare the same against a tick a system kept, and the world's
+  tick after a segment doesn't depend on the scheduler.
 - **Lockstep**: peers may run with different settings. `tests/system_schedule.rs`
   keeps one peer with the scheduler off and one with it on in sync, and
   runs randomly generated sets of systems one at a time, in batches on one
-  thread and in batches on several, comparing every result.
+  thread and in batches on thread pools of 1, 2, 3 and 8 threads, comparing
+  every result. Generated systems on threads also check that no two that
+  conflict ever overlap, and `src/schedule.rs` checks every pair of
+  hundreds of generated plans against the rules above.
 - **Profiling**: per-system times, calls and allocations are reported for
   the same systems in the same order. While the profiler is on, batches
   stay on the game's thread, because allocations are counted for the whole
@@ -214,7 +260,9 @@ start the thread pool. On:
 What stays your job, as with any system: don't let systems talk through
 something the engine can't see (a global, a file, a channel) without
 `order` or a barrier, and keep per-entity work inside `par_for_each` free
-of side effects.
+of side effects. Such systems could otherwise share a batch, and a later
+one could even run ahead of an earlier one, since nothing declared ties
+them together.
 
 ### When a system panics
 
@@ -263,6 +311,7 @@ Measured on an Apple M4 Max (10 performance cores), one simulation tick,
 | 8 heavy systems, 16,000 entities each | 7.15 ms | 1.04 ms | 1.04 ms |
 | 2 heavy systems, 64,000 entities each | 7.16 ms | 3.65 ms | 3.66 ms |
 | a chain of 8 (each reads the one before) | 29 µs | 28 µs | 28 µs |
+| 4 producer/consumer pairs, registered in pairs | 3.71 ms | 1.00 ms | 1.04 ms |
 | a mixed simulation with a `Ctx` system | 8.45 ms | 5.71 ms | 5.75 ms |
 | 1 big system and 7 tiny ones | 3.63 ms | 3.62 ms | 3.62 ms |
 
@@ -279,6 +328,11 @@ So:
   systems one at a time. A typical small game should leave it off.
 - **Chains gain nothing**: if every system reads what the previous one
   wrote, every stage has one system.
+- **Systems registered apart still meet.** In the producer/consumer row
+  every consumer reads what the producer before it wrote; the four
+  producers share one batch although consumers sit between them (3.7×;
+  batching only neighbours gained nothing there). Measured on a busy
+  machine; see `SCHEDULE.md`, "Batching by dependencies".
 - **One dominant system gains nothing** from running next to small ones.
   Split its own work with [`par_for_each`](ecs.md) instead.
 - **`&mut Ctx` systems in between** cut batches short, and their own time

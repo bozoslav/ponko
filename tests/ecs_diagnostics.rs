@@ -360,6 +360,58 @@ fn stages_say_which_systems_share_a_batch_and_why_each_stage_starts() {
 }
 
 #[test]
+fn a_system_that_moved_ahead_says_which_system_blocked_it_and_why() {
+    // `stop` writes what `movement` reads, so it waits; `regenerate`,
+    // registered after `stop`, touches neither and joins `movement`'s batch.
+    // `spawner` reads what `regenerate` writes.
+    let game = game()
+        .add(
+            Phase::AfterPhysics,
+            movement.access(SystemAccess::new().write::<Pos>().read::<Vel>()),
+        )
+        .add(Phase::AfterPhysics, stop.access(SystemAccess::new().write::<Vel>()))
+        .add(
+            Phase::AfterPhysics,
+            regenerate.access(SystemAccess::new().write::<Health>()),
+        )
+        .add(
+            Phase::AfterPhysics,
+            spawner.access(SystemAccess::new().read::<Health>()),
+        );
+    let d = diagnose(game, 1, |_| {});
+    let order = |name: &str| d.system(name).unwrap().order;
+    let first = &d.schedule.stages[d.system("movement").unwrap().stage.unwrap()];
+    assert_eq!(first.systems, [order("movement"), order("regenerate")]);
+    assert_eq!((first.first, first.len), (order("movement"), 2));
+    let second = &d.schedule.stages[d.system("stop").unwrap().stage.unwrap()];
+    assert_eq!(second.systems, [order("stop"), order("spawner")]);
+
+    // Each system says what kept it out of the stage before its own.
+    let blocked = |name: &str| d.system(name).unwrap().blocked.clone().unwrap();
+    assert_eq!(blocked("movement").boundary, "phase");
+    assert_eq!(blocked("regenerate").boundary, "phase", "nothing held it back");
+    let stop = blocked("stop");
+    assert_eq!(
+        (stop.boundary.as_str(), stop.after),
+        ("conflict", Some(order("movement")))
+    );
+    assert!(stop.conflicts[0].name.as_deref().unwrap().ends_with("::Vel"));
+    let spawner = blocked("spawner");
+    assert_eq!(
+        (spawner.boundary.as_str(), spawner.after),
+        ("conflict", Some(order("regenerate")))
+    );
+    assert!(spawner.conflicts[0].name.as_deref().unwrap().ends_with("::Health"));
+
+    // The field names agents read.
+    let json = serde_json::to_value(&d).unwrap();
+    let system = &json["systems"][order("spawner")];
+    assert_eq!(system["blocked"]["boundary"], "conflict");
+    assert!(system["blocked"]["after"].is_u64());
+    assert!(json["schedule"]["stages"][0]["systems"].is_array());
+}
+
+#[test]
 fn ordered_systems_start_a_stage_after_the_one_they_follow() {
     let mut game = game();
     let first = game.add_system(Phase::AfterPhysics, movement.access(SystemAccess::new().write::<Pos>()));

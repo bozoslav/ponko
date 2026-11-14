@@ -1,0 +1,26 @@
+{
+  "format": "ponko-world",
+  "version": 1,
+  "game_version": 1,
+  "entities": [
+    {
+      "entity": 0,
+      "components": {
+        "Transform2D": { "position": [10.0, 20.0], "rotation": 0.0, "scale": [1.0, 1.0] },
+        "Health": { "current": 12.0, "max": 40.0 },
+        "Regen": { "per_second": 0.5 },
+        "Speed": { "speed": 3.0 },
+        "Jump": { "jump": 1.5 }
+      }
+    },
+    {
+      "entity": 2,
+      "components": {
+        "Health": { "current": 4.0, "max": 8.0 },
+        "Follows": 0
+      }
+    }
+  ],
+  "resources": { "Purse": 7 },
+  "not_saved": {}
+}

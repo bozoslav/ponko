@@ -16,6 +16,7 @@ use crate::ctx::Ctx;
 use crate::ecs::Transform2D;
 use crate::error::{Error, ErrorKind};
 use crate::hot_reload::Asset;
+use crate::reflect::NotSaved;
 use crate::sheet::SpriteSheet;
 
 /// Custom properties from the editor: Tiled's custom properties, LDtk's
@@ -315,6 +316,9 @@ pub struct LevelOptions {
     pub level: Option<String>,
     /// No colliders at all.
     pub no_colliders: bool,
+    /// None of the objects a world save holds: those spawned as prefabs
+    /// (see [`without_saved_objects`](Self::without_saved_objects)).
+    pub no_saved_objects: bool,
     /// The `z` of the layer the objects are on; layers below get one less
     /// each, layers above one more. Default `0`.
     pub z: f32,
@@ -347,6 +351,32 @@ impl LevelOptions {
     #[must_use]
     pub fn without_colliders(mut self) -> Self {
         self.no_colliders = true;
+        self
+    }
+    /// Spawn none of the objects a world save holds: those of a class
+    /// given a [`prefab`](Self::prefab) (or with a `prefab` property).
+    /// Everything else a level spawns carries [`NotSaved`], so world saves
+    /// hold only the prefab objects, with their state (a coin collected is
+    /// gone, a door opened stays open). After loading such a save, spawn
+    /// the level again with this option: the tiles, colliders and plain
+    /// objects come from the file, the prefab objects from the save.
+    ///
+    /// ```no_run
+    /// # use ponko::prelude::*;
+    /// use ponko::d2::LevelOptions;
+    /// # fn f(ctx: &mut Ctx) -> Result<(), Error> {
+    /// let options = LevelOptions::default().prefab("Coin", "prefabs/coin.json");
+    /// ctx.spawn_level_with("levels/one.tmx", Vec2::ZERO, options.clone())?;
+    /// ctx.storage.save_world(&ctx.world, "slot1")?; // the coins, not the level
+    ///
+    /// // Later: the saved coins, and the level around them.
+    /// ctx.load_world("slot1")?;
+    /// ctx.spawn_level_with("levels/one.tmx", Vec2::ZERO, options.without_saved_objects())?;
+    /// # Ok(()) }
+    /// ```
+    #[must_use]
+    pub fn without_saved_objects(mut self) -> Self {
+        self.no_saved_objects = true;
         self
     }
     /// The `z` of the objects' layer (see [`z`](Self::z)).
@@ -731,6 +761,11 @@ impl Ctx {
     /// - with the `physics` feature, fixed colliders for the solid tiles
     ///   (see [`LevelOptions`]), merged into few rectangles.
     ///
+    /// Everything but the prefab objects carries [`NotSaved`]: world saves
+    /// hold the prefab objects (the game's state), not what the file
+    /// rebuilds. To load such a save, load it, then spawn the level again
+    /// with [`LevelOptions::without_saved_objects`].
+    ///
     /// With [hot reload](crate::game::Game::hot_reload) on, editing the
     /// level (or a tileset or template it uses) despawns what it spawned
     /// and spawns it again, in place; a file that doesn't load keeps the
@@ -762,6 +797,7 @@ impl Ctx {
                 properties: level.properties.clone(),
                 entities,
             },
+            NotSaved,
         ));
         for file in files.into_iter().filter_map(|(_, file)| file) {
             watch_once(&self.assets, path, file);
@@ -865,7 +901,7 @@ impl Ctx {
                         maps[i].1.set_flipped(t.cell.x, t.cell.y, frame, t.flip);
                     }
                     for (_, map) in maps {
-                        spawned.push(self.world.spawn((Transform2D::at(origin), map, info.clone())));
+                        spawned.push(self.world.spawn((Transform2D::at(origin), map, info.clone(), NotSaved)));
                     }
                 }
                 LayerKind::Image(image) if layer.visible => {
@@ -876,12 +912,12 @@ impl Ctx {
                     map.parallax_origin = parallax_origin;
                     map.color = color;
                     map.z = z;
-                    spawned.push(self.world.spawn((Transform2D::at(origin), map, info.clone())));
+                    spawned.push(self.world.spawn((Transform2D::at(origin), map, info.clone(), NotSaved)));
                 }
                 LayerKind::Objects(objects) => {
                     for obj in objects {
                         let e = self.spawn_level_object(level, obj, origin, z, color, options, &mut sheet)?;
-                        spawned.push(e);
+                        spawned.extend(e);
                     }
                 }
                 _ => {}
@@ -904,7 +940,7 @@ impl Ctx {
         color: Color,
         options: &LevelOptions,
         sheet: &mut impl FnMut(&mut Ctx, u16) -> Result<SpriteSheet, Error>,
-    ) -> Result<Entity, Error> {
+    ) -> Result<Option<Entity>, Error> {
         let position = origin + obj.position;
         let prefab = obj.properties.str("prefab").map(str::to_string).or_else(|| {
             options
@@ -914,6 +950,10 @@ impl Ctx {
                 .map(|(_, path)| path.clone())
         });
         if let Some(path) = prefab {
+            // A world save holds it (it isn't `NotSaved`).
+            if options.no_saved_objects {
+                return Ok(None);
+            }
             let e = if obj.rotation == 0.0 {
                 self.spawn_prefab(&path, position)?
             } else {
@@ -924,13 +964,13 @@ impl Ctx {
                 self.spawn_prefab(&path, t)?
             };
             self.world.insert(e, obj.clone());
-            return Ok(e);
+            return Ok(Some(e));
         }
         let transform = Transform2D {
             rotation: obj.rotation,
             ..Transform2D::at(position)
         };
-        let e = self.world.spawn((transform, obj.clone()));
+        let e = self.world.spawn((transform, obj.clone(), NotSaved));
         if let Some((set, id, flip)) = obj.tile
             && obj.visible
             && usize::from(set) < level.tilesets.len()
@@ -949,7 +989,7 @@ impl Ctx {
             self.world.insert(e, Transform2D { scale, ..transform });
             self.world.insert(e, sprite);
         }
-        Ok(e)
+        Ok(Some(e))
     }
 
     /// Fixed colliders: merged rectangles for the solid cells, and the
@@ -958,7 +998,8 @@ impl Ctx {
     fn spawn_level_colliders(&mut self, level: &Level, at: Vec2, options: &LevelOptions, spawned: &mut Vec<Entity>) {
         use crate::physics::{Collider, RigidBody};
         for r in level.solid_rects(options) {
-            spawned.push(self.world.spawn(super::colliders::rect_body(at, r)));
+            let (transform, body, collider) = super::colliders::rect_body(at, r);
+            spawned.push(self.world.spawn((transform, body, collider, NotSaved)));
         }
         for layer in &level.layers {
             let LayerKind::Tiles(tiles) = &layer.kind else {
@@ -992,7 +1033,7 @@ impl Ctx {
                         rotation: s.rotation,
                         ..Transform2D::at(cell + s.position * scale)
                     };
-                    spawned.push(self.world.spawn((transform, RigidBody::fixed(), collider)));
+                    spawned.push(self.world.spawn((transform, RigidBody::fixed(), collider, NotSaved)));
                 }
             }
         }

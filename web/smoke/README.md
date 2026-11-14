@@ -152,7 +152,7 @@ table (and appends it to a GitHub job summary).
 | CI (`web-smoke` job, `main` and `full-ci`, ubuntu-latest, no GPU) | Chromium (headless shell and full browser), Firefox, WebKit from Playwright | Must pass in Chromium and WebKit, for the 2D and 3D fixtures (software GL); `coin_dash` in Chromium. Firefox is tried and reported: headless Firefox has no WebGL2 on that runner, so it reads "unsupported" | Tried; passes as "unsupported", with the reason, where the browser can't show a WebGPU canvas; where it can, the game must draw through it |
 | CI, every pull request (`web-smoke-runner`) | none | the runner's own tests only (and the gallery's) | |
 | Release workflow (`gallery` job, ubuntu-latest, no GPU) | Chromium headless shell | Every gallery page must pass (software GL) | Not tried; the demos that need WebGPU must show their message |
-| Apple Silicon Mac, the gallery (`gallery.mjs`) | Chromium 156 | Every page passes in the headless shell; the 5 demos that need WebGPU show their message | Every page passes in new headless mode on the Metal adapter |
+| Apple Silicon Mac, the gallery (`gallery.mjs`) | Chromium 156 | Every page passes in the headless shell; the 2 demos that need WebGPU (compute passes) show their message | Every page passes in new headless mode on the Metal adapter |
 | Apple Silicon Mac, Chromium new headless mode | Chromium 156 | Passes (ANGLE on Metal) | **Passes** on the Metal adapter: the engine reports `webgpu`, the canvas draws |
 | Apple Silicon Mac, Chromium headless shell | same | Passes (ANGLE on SwiftShader) | Unsupported: a SwiftShader fallback adapter exists, but a WebGPU canvas can't be shown |
 | Apple Silicon Mac, WebKit (Playwright build) | WebKit 27 | Passes | Passes on its own adapter |

@@ -13,9 +13,13 @@ pub(in crate::render) fn use_unbounded_sky(renderer: &mut Renderer3D, device: &w
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("unbounded sky negative control"),
         source: wgpu::ShaderSource::Wgsl(
-            for_samples(&format!("{MESH_PRELUDE}\n{sky}"), renderer.samples)
-                .into_owned()
-                .into(),
+            for_samples(
+                &format!("{MESH_PRELUDE}\n{sky}"),
+                renderer.samples,
+                renderer.float_depth,
+            )
+            .into_owned()
+            .into(),
         ),
     });
     renderer.sky = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
