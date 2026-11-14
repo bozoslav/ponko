@@ -263,7 +263,10 @@ where
             // A screen reader is asking: leave the event loop idle for a
             // moment before the next frame (`about_to_wait` asks for it).
             #[cfg(feature = "accessibility")]
-            if let Some(until) = access_gap(self.access.as_ref().is_some_and(|a| a.is_active()), Instant::now()) {
+            if let Some(until) = access_gap(
+                self.access.as_ref().is_some_and(|a| a.answers_on_event_loop()),
+                Instant::now(),
+            ) {
                 self.access_gap_until = Some(until);
                 return;
             }
@@ -393,9 +396,10 @@ where
         } else {
             attributes
         };
-        // The accessibility adapter has to be on the view before it is
-        // first shown, so the window starts hidden and is shown right after.
-        #[cfg(all(feature = "accessibility", target_os = "macos"))]
+        // The accessibility adapter has to be on the view (macOS) or the
+        // window (Windows) before it is first shown, so the window starts
+        // hidden and is shown right after.
+        #[cfg(all(feature = "accessibility", any(target_os = "macos", target_os = "windows")))]
         let attributes = attributes.with_visible(false);
         let window = event_loop
             .create_window(attributes)
@@ -403,7 +407,7 @@ where
         #[cfg(feature = "accessibility")]
         {
             self.access = Some(crate::ui::UiAccessAdapter::for_window(&window, &self.config.title));
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             window.set_visible(true);
         }
         let window = Arc::new(window);
@@ -474,8 +478,13 @@ where
         }
 
         #[cfg(feature = "accessibility")]
-        if let (WindowEvent::Focused(focused), Some(access)) = (&event, &mut self.access) {
-            access.set_window_focused(*focused);
+        if let Some(access) = &mut self.access {
+            match &event {
+                WindowEvent::Focused(focused) => access.set_window_focused(*focused),
+                // AT-SPI is told where the window is (the others ask it).
+                WindowEvent::Moved(_) | WindowEvent::Resized(_) => access.follow_window(&window),
+                _ => {}
+            }
         }
 
         match event {

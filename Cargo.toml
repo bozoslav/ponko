@@ -168,11 +168,23 @@ libc = "0.2"
 # The control endpoint's token: the OS's secure random source.
 getrandom = "0.4"
 
-# The screen-reader adapter (feature `accessibility`): AccessKit's macOS
-# adapter, which answers the system's accessibility queries for the window's
-# view. The `accesskit` data types themselves are in [dependencies].
+# The screen-reader adapter (feature `accessibility`): AccessKit's adapter
+# for each desktop system, which answers the system's accessibility queries
+# for the game's window from the same tree. The `accesskit` data types
+# themselves are in [dependencies]. macOS: `NSAccessibility` on the
+# window's view.
 [target.'cfg(target_os = "macos")'.dependencies]
 accesskit_macos = { version = "0.27.2", optional = true }
+
+# Windows: UI Automation (Narrator, NVDA, JAWS) on the window's HWND. Its
+# `windows` crate is the release wgpu already brings in.
+[target.'cfg(target_os = "windows")'.dependencies]
+accesskit_windows = { version = "0.35.2", optional = true }
+
+# Linux and the BSDs: AT-SPI over D-Bus (Orca). Pure Rust (zbus); it runs
+# its own small executor thread, so the engine needs no async runtime.
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+accesskit_unix = { version = "0.24.1", optional = true }
 
 # The web build (wasm32): the browser APIs for the canvas and fetching
 # assets, and WebGL2 for browsers without WebGPU.
@@ -225,10 +237,11 @@ audio = ["dep:kira", "dep:cpal", "dep:symphonia"]
 inspector = ["window", "dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 # Screen-reader support for the retained UI (`ctx.ui`): roles, names, values
 # and focus are given to the system's accessibility API, and its requests
-# (press, focus, set value) reach the UI. macOS (VoiceOver) only for now;
-# on other systems the feature builds and does nothing. Off: no adapter;
+# (press, focus, set value) reach the UI. macOS (VoiceOver), Windows (UI
+# Automation: Narrator, NVDA) and Linux (AT-SPI: Orca); on the web the
+# feature builds and does nothing. Off: no adapter;
 # `Ui::accessibility_tree` and `UiAccessTracker` are always there.
-accessibility = ["window", "dep:accesskit", "dep:accesskit_macos"]
+accessibility = ["window", "dep:accesskit", "dep:accesskit_macos", "dep:accesskit_windows", "dep:accesskit_unix"]
 # Gamepads through gilrs (Xbox, PlayStation, Switch and other controllers).
 # Off: `ctx.input.gamepads()` is always empty. On Linux it needs libudev headers.
 gamepad = ["window", "dep:gilrs"]
