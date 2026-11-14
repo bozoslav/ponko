@@ -181,7 +181,11 @@ impl Resources {
     /// Copies the elements of every buffer that keeps its last frame over
     /// that copy: what this frame drew, for the next frame's motion pass.
     /// Recorded after the frame's draws and before the scene compute passes.
-    pub(super) fn record_buffer_pasts(&self, encoder: &mut wgpu::CommandEncoder) {
+    pub(super) fn record_buffer_pasts(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        timestamps: Option<wgpu::ComputePassTimestampWrites<'_>>,
+    ) {
         let Some(pipeline) = &self.past_copy else {
             return;
         };
@@ -191,7 +195,7 @@ impl Resources {
         super::passes::mark("buffer motion copy");
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("GPU buffer motion copy"),
-            timestamp_writes: None,
+            timestamp_writes: timestamps,
         });
         pass.set_pipeline(pipeline);
         for b in self.storage_buffers.iter().flatten() {

@@ -26,6 +26,7 @@ static void setup(PonkoCtx* ctx, void* user) {
     CHECK(ponko_ctx_create_gpu_buffer(ctx, 2, items, 2, &buffer) == PONKO_OK);
     CHECK(ponko_ctx_write_gpu_buffer(ctx, buffer, 1, items, 1) == PONKO_OK);
     CHECK(ponko_ctx_write_gpu_buffer(ctx, buffer, 2, items, 1) == PONKO_INVALID_ARGUMENT);
+    CHECK(ponko_ctx_set_gpu_buffer_motion(ctx, buffer, true) == PONKO_OK);
     CHECK(ponko_ctx_create_gpu_buffer(ctx, 0, NULL, 0, &buffer) == PONKO_INVALID_ARGUMENT);
     PonkoMaterial batch_material;
     PonkoMaterialDesc batch_desc = ponko_material_desc((PonkoColor){1,1,1,1});

@@ -1539,6 +1539,8 @@ fn gpu_particles(ctx: &mut Ctx) -> GpuBuffer {
     ctx.gfx.set_mesh_gpu_buffer(mesh, items, 128);
     // The emitter's extent around its entity, for culling.
     ctx.gfx.set_mesh_gpu_bounds(mesh, Vec3::ZERO, 20.0);
+    // Each particle's own motion for TAA: the buffer keeps its last frame.
+    ctx.gfx.set_gpu_buffer_motion(items, true);
     ctx.world.spawn((Transform::default(), Model::new(mesh)));
     items
 }

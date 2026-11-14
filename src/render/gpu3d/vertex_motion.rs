@@ -44,13 +44,25 @@ thread_local! {
     pub(crate) static NO_VERTEX_PAST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Whether the still motion draws are off on this thread (test controls).
+/// Off for the whole process: the rendering baseline's control
+/// (`PONKO_RENDER_VERTEX_MOTION=0`, see `scene_bench.rs`), set before any
+/// shader is made.
+static OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turns the rewrite and the still motion draws off (`true`) for shaders
+/// made from now on and every frame: what the renderer did before them.
+pub(super) fn set_off(off: bool) {
+    OFF.store(off, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether the rewrite and the still motion draws are off: for the
+/// rendering baseline's control, or on this thread (test controls).
 pub(super) fn disabled() -> bool {
     #[cfg(test)]
     if NO_VERTEX_PAST.get() {
         return true;
     }
-    false
+    OFF.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// What the engine adds after the GPU buffer bindings of a material shader:

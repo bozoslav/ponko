@@ -106,6 +106,7 @@ mod ui_immediate;
 // Text shaping, font fallback and system fonts (#409).
 mod text_shaping;
 // Bindings of 0.3.
+mod buffer_motion;
 mod motion;
 pub use access::*;
 pub use actions::*;
@@ -123,6 +124,7 @@ pub use attach::*;
 pub use attach3d::*;
 pub use audio_curves::*;
 pub use audio3d::*;
+pub use buffer_motion::*;
 pub use builtins::*;
 pub use changes::*;
 pub use collision_files::*;

@@ -330,6 +330,8 @@ static void three_d() {
         ctx.free_gpu_buffer(spare);
         throws([&] { ctx.free_gpu_buffer(spare); });
         throws([&] { ctx.write_gpu_buffer(spare, 0, {{1, 2, 3, 4}}); });
+        ctx.set_gpu_buffer_motion(buffer, true);
+        throws([&] { ctx.set_gpu_buffer_motion(spare, true); });
         auto reused = ctx.create_gpu_buffer(3);  // the freed slot comes back under a new id
         CHECK((reused.id & 0x000FFFFFu) == (spare.id & 0x000FFFFFu) && reused.id != spare.id);  // same 20-bit slot
         throws([&] { ctx.write_gpu_buffer(spare, 0, {{1, 2, 3, 4}}); });

@@ -309,6 +309,18 @@ fn mipped_bytes(width: u32, height: u32) -> u64 {
     }
 }
 
+/// Leaves swaying in the wind, more the higher they are (`PONKO_RENDER_WIND`).
+const WIND: &str = "fn vertex(v: Vertex) -> Vertex {
+    var o = v;
+    let h = max(v.position.y - v.origin.y, 0.0);
+    o.position.x += sin(frame.time.x * 2.0 + v.origin.x * 0.3) * 0.08 * h;
+    return o;
+}";
+
+/// Cubes placed by a GPU buffer's elements (`PONKO_RENDER_WIND`).
+const SPARKS: &str =
+    "fn vertex(v: Vertex) -> Vertex { var o = v; o.position += items[v.instance_index].xyz; return o; }";
+
 impl SceneBench {
     /// The optional features the scenes use where the adapter has them, and
     /// the limits a game's device is opened with.
@@ -385,6 +397,9 @@ impl SceneBench {
                 setup.size.0, setup.size.1
             ));
         }
+        // `PONKO_RENDER_VERTEX_MOTION=0`: shaders' `vertex` motion off, the
+        // renderer as it was before it (the control of what it costs).
+        super::vertex_motion::set_off(std::env::var("PONKO_RENDER_VERTEX_MOTION").is_ok_and(|v| v.trim() == "0"));
         let mut capabilities = crate::render::capabilities::of_device(&info, &device, (setup.samples, samples));
         capabilities.forced_tier = GpuTier::forced();
         // As a game's window: Apple's GPUs skip the solid depth prepass.
@@ -482,6 +497,25 @@ impl SceneBench {
         let id = self
             .renderer
             .create_material(&self.device, &GpuMaterialDesc::new(&desc), &self.textures);
+        assert_eq!(id, material.id, "the renderer's materials follow the game's");
+        self.content.materials += 1;
+        material
+    }
+
+    /// A material drawn with the shader `code`, on the CPU and the GPU
+    /// (each side numbers its shaders itself).
+    fn shaded_material(&mut self, desc: MaterialDesc, code: &str) -> Material {
+        let shader = self.ctx.gfx.create_shader("bench", code);
+        let material = self.ctx.gfx.create_material(MaterialDesc {
+            shader: Some(shader),
+            ..desc
+        });
+        let mut gpu = GpuMaterialDesc::new(&desc);
+        gpu.shader = self
+            .renderer
+            .create_shader(&self.device, "bench", code)
+            .expect("the bench's shader compiles");
+        let id = self.renderer.create_material(&self.device, &gpu, &self.textures);
         assert_eq!(id, material.id, "the renderer's materials follow the game's");
         self.content.materials += 1;
         material
@@ -637,6 +671,31 @@ impl SceneBench {
                 .gfx
                 .create_instance_batch_levels(&levels, transforms, &[], InstanceBatchOptions::default());
         self.upload_batch(batch.id, transforms.len());
+    }
+
+    /// 4,096 small cubes drawn from a GPU buffer of 262,144 elements (the
+    /// rest unused), around the town's center; the buffer keeps its last
+    /// frame for the motion pass.
+    fn sparks(&mut self, seq: &mut Sequence) {
+        let len = 262_144;
+        let data: Vec<glam::Vec4> = (0..len)
+            .map(|_| glam::Vec4::new(seq.around(20.0), seq.between(1.0, 8.0), seq.around(20.0), 0.0))
+            .collect();
+        let b = self.ctx.gfx.create_gpu_buffer(len, &data);
+        self.renderer.create_gpu_buffer(&self.device, b.slot(), len, &data);
+        self.ctx.gfx.set_gpu_buffer_motion(b, true);
+        self.renderer
+            .set_gpu_buffer_motion(&self.device, &self.queue, b.slot(), true);
+        let glow = MaterialDesc {
+            emissive: Color::rgb(1.0, 0.6, 0.2),
+            ..Default::default()
+        };
+        let material = self.shaded_material(glow, SPARKS);
+        let mesh = self.mesh(&MeshData::cube(0.1), material);
+        self.ctx.gfx.set_mesh_gpu_buffer(mesh, b, 4096);
+        self.renderer.set_mesh_gpu_buffer(mesh.slot(), b.slot(), 4096);
+        self.ctx.gfx.set_mesh_gpu_bounds(mesh, Vec3::ZERO, 30.0);
+        self.model(mesh, Transform3D::default());
     }
 
     /// A model that stays where it is.
@@ -1115,11 +1174,22 @@ impl SceneBench {
         };
 
         // Trees: a detailed crown near the camera, a coarse one far away.
-        let leaves = self.material(MaterialDesc {
+        // `PONKO_RENDER_WIND=1`: swaying in the wind, with a GPU buffer of
+        // sparks (for what motion vectors of `vertex` functions cost).
+        let wind = std::env::var("PONKO_RENDER_WIND").is_ok_and(|v| v.trim() == "1");
+        let leaves = MaterialDesc {
             color: Color::rgb(0.25, 0.5, 0.22),
             roughness: 0.9,
             ..Default::default()
-        });
+        };
+        let leaves = if wind {
+            self.shaded_material(leaves, WIND)
+        } else {
+            self.material(leaves)
+        };
+        if wind {
+            self.sparks(seq);
+        }
         let near = self.mesh(&MeshData::sphere(1.0, 16), leaves);
         let far = self.mesh(&MeshData::sphere(1.0, 6), leaves);
         let trees: Vec<Mat4> = (0..self.count(30_000, 16))

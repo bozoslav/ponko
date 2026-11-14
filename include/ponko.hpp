@@ -5916,6 +5916,12 @@ public:
     /// the temporal history: call it after teleporting one object, or when its
     /// animation snaps to another pose with no blend.
     void reset_motion(entity e) { detail::check(ponko_ctx_reset_motion(raw_, e)); }
+    /// Makes GPU buffer `b` keep a copy of the elements the last frame drew
+    /// (`keep`), so TAA and temporal AO see each element's own motion; it
+    /// doubles the buffer's memory. Throws ponko::error for a freed buffer.
+    void set_gpu_buffer_motion(gpu_buffer b, bool keep) {
+        detail::check(ponko_ctx_set_gpu_buffer_motion(raw_, b, keep));
+    }
     /// Saves this frame as a PNG at `path` once it is drawn. Does nothing in headless runs.
     void save_screenshot(const char* path) { detail::check(ponko_ctx_save_screenshot(raw_, path)); }
     /// texture_filter::nearest keeps pixel art square.

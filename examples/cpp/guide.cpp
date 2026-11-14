@@ -2936,6 +2936,8 @@ static void gpu_particles(ponko::ctx& ctx) {
     ctx.set_mesh_gpu_buffer(mesh, items, 128);
     // The emitter's extent around its entity, for culling.
     ctx.set_mesh_gpu_bounds(mesh, {0, 0, 0}, 20);
+    // Each particle's own motion for TAA: the buffer keeps its last frame.
+    ctx.set_gpu_buffer_motion(items, true);
     ctx.world().spawn(ponko::transform3d_at({0, 0, 0}), ponko::model_of(mesh));
 }
 // ANCHOR_END: gpu_buffers
