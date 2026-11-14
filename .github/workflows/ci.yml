@@ -830,15 +830,27 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     runs-on: ubuntu-latest
     # Miri interprets every instruction; tests shrink their sizes under
-    # cfg(miri). The timeout catches a regression instead of hanging CI.
-    timeout-minutes: 20
+    # cfg(miri). The timeout catches a hang instead of blocking CI. The
+    # stacked-borrows run is split three ways (about 25 minutes in one job on
+    # a hosted runner), each part well under the timeout.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Our unsafe code under the strict model, without rayon.
-          - name: ECS, stacked borrows
-            args: --tests --no-default-features --features derive
+          # Our unsafe code under the strict model, without rayon, in three
+          # parts run side by side (see the step below for what each holds).
+          - name: ECS, stacked borrows, 1/3
+            shard: 1
+            args: --no-default-features --features derive
+            flags: ""
+          - name: ECS, stacked borrows, 2/3
+            shard: 2
+            args: --no-default-features --features derive
+            flags: ""
+          - name: ECS, stacked borrows, 3/3
+            shard: 3
+            args: --no-default-features --features derive
             flags: ""
           # The parallel path. rayon's dependency crossbeam-epoch trips Stacked
           # Borrows (not our code), and its global pool outlives main.
@@ -857,7 +869,34 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - run: cargo miri test -p ponko_ecs --no-fail-fast ${{ matrix.args }}
+      # Parts 1 and 2 take the slowest test files under Miri, by hand;
+      # part 3 the library's unit tests and every other file in tests/, so
+      # a new file is never left out. A file named here that's gone fails
+      # the step.
+      - name: cargo miri test
+        env:
+          SHARD: ${{ matrix.shard }}
+          ARGS: ${{ matrix.args }}
+        run: |
+          part1="archetype_alloc borrows_alloc differential views_alloc"
+          part2="queries changes query_cache_differential commands_alloc"
+          targets=()
+          case "$SHARD" in
+            1) for t in $part1; do targets+=(--test "$t"); done ;;
+            2) for t in $part2; do targets+=(--test "$t"); done ;;
+            3)
+              targets+=(--lib)
+              for f in crates/ponko_ecs/tests/*.rs; do
+                t=$(basename "$f" .rs)
+                case " $part1 $part2 " in
+                  *" $t "*) ;;
+                  *) targets+=(--test "$t") ;;
+                esac
+              done
+              ;;
+          esac
+          # shellcheck disable=SC2086 # ARGS holds several flags
+          cargo miri test -p ponko_ecs --no-fail-fast $ARGS "${targets[@]}"
 
   native:
     name: C and C++ (${{ matrix.os }})
