@@ -30,6 +30,7 @@ fn data_dir(name: &str) -> PathBuf {
     dir
 }
 
+// ANCHOR: script
 /// The game with its files in `dir` and `script` deciding, each tick before
 /// the rules, what the player does.
 fn scripted(dir: &Path, script: impl FnMut(&mut Ctx) + 'static) -> Game {
@@ -38,6 +39,7 @@ fn scripted(dir: &Path, script: impl FnMut(&mut Ctx) + 'static) -> Game {
         .sim_system(script)
         .plugin(ShardGrove)
 }
+// ANCHOR_END: script
 
 fn intent(ctx: &mut Ctx) -> &mut Intent {
     ctx.world.resource_mut::<Intent>()

@@ -383,6 +383,7 @@ pub struct Buses {
     pub ambience: AudioBus,
 }
 
+// ANCHOR: warden_graph
 /// The warden's state machine: idle and walk switched by speed; the pulse
 /// and a hit play once from any state, then return to idle.
 pub fn warden_graph(skeleton: &Skeleton, clip: &mut dyn FnMut(&str) -> AnimationClip) -> Arc<AnimationGraph> {
@@ -430,6 +431,7 @@ pub fn warden_graph(skeleton: &Skeleton, clip: &mut dyn FnMut(&str) -> Animation
     )
     .expect("the warden's graph is valid")
 }
+// ANCHOR_END: warden_graph
 
 /// The crawlers' state machine: idle and crawl switched by moving; dazed
 /// while stunned.
@@ -637,6 +639,7 @@ impl Plugin for Rules {
             .sim_system(step_crawlers)
     }
     fn setup(&self, ctx: &mut Ctx) {
+        // ANCHOR: level
         // The level: drawn, solid, and walkable for the crawlers.
         let look = ctx.gfx.load_mesh(LEVEL);
         let solid = ctx.load_collision_mesh(LEVEL).expect("the grove loads");
@@ -648,6 +651,7 @@ impl Plugin for Rules {
         ));
         let data = ctx.gfx.load_mesh_data(LEVEL);
         ctx.world.insert_resource(bake_navigation(&data));
+        // ANCHOR_END: level
 
         let assets = load_assets(ctx);
         ctx.world.insert_resource(assets);
@@ -1144,6 +1148,7 @@ fn win(ctx: &mut Ctx, run: &Run) {
     set_screen(ctx, Screen::Won);
 }
 
+// ANCHOR: crawlers
 /// Sim system: the crawlers decide where to go, then the navigation step
 /// moves them, only while the game is being played.
 pub fn step_crawlers(ctx: &mut Ctx) {
@@ -1196,6 +1201,7 @@ pub fn step_crawlers(ctx: &mut Ctx) {
             c.last = t.position;
         });
 }
+// ANCHOR_END: crawlers
 
 // ---- saves and settings ------------------------------------------------------------
 
@@ -1267,6 +1273,7 @@ fn write_settings(ctx: &mut Ctx) {
     }
 }
 
+// ANCHOR: settings
 /// The settings to the renderer and the mixer: the chosen preset, or the
 /// one recommended for this GPU (`Low` on the web, `Medium` without a GPU).
 pub fn apply_settings(ctx: &mut Ctx) {
@@ -1283,6 +1290,7 @@ pub fn apply_settings(ctx: &mut Ctx) {
     ctx.audio.set_bus_volume(buses.sfx, settings.volume);
     ctx.audio.set_bus_volume(buses.ambience, settings.volume * 0.6);
 }
+// ANCHOR_END: settings
 
 /// The preset's name for the settings menu.
 pub fn quality_name(ctx: &Ctx) -> &'static str {
