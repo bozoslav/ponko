@@ -578,6 +578,24 @@ pub struct Model {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Component)]
 pub struct ShadowMesh(pub Option<Mesh>);
 
+/// Draws the entity's [`Model`] only into the shadow maps: no camera sees
+/// it (the main one or a [`TargetCamera`]), but its shadow falls as usual.
+/// For a first-person character whose body would fill the view from inside
+/// its head but whose shadow should still show, or for a caster that only
+/// stands in for others. Works on plain models and on skinned ones (posed by
+/// a [`Skeleton`] or [`SkinOf`]); [`LodGroup`]s, terrain and instance
+/// batches don't read it. Remove it to show the model again.
+///
+/// ```no_run
+/// # use ponko::prelude::*;
+/// # fn f(ctx: &mut Ctx, body: Entity) {
+/// // First person: the camera sits in the head; keep the body's shadow.
+/// ctx.world.insert(body, ponko::render::ShadowOnly);
+/// # }
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Component)]
+pub struct ShadowOnly;
+
 /// Draws the entity's [`Model`] with this material instead of the ones its
 /// mesh was made with (every part of the mesh), so one uploaded mesh can be
 /// a wet and a dry rock, or a door in three paints, without a second copy

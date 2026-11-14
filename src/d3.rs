@@ -87,7 +87,7 @@ pub use crate::render::{
     GraphicsQuality, InstanceBatch, InstanceBatchOptions, InstanceLevel, Lighting, LodGroup, LodHysteresis, LodLevel,
     LodPick, LodRenderer, LodSettings, LodShadow, Material, MaterialDesc, Mesh, MeshCost, MeshData, Model,
     ModelMaterial, ModelMaterials, Post, ReceivesDecals, RenderPasses, SceneSettings, ScreenEffect, Shader,
-    ShaderDiagnostic, ShaderKind, ShaderOutcome, ShaderStatus, ShadowFilter, ShadowMesh, Sky, StreamedLod,
+    ShaderDiagnostic, ShaderKind, ShaderOutcome, ShaderStatus, ShadowFilter, ShadowMesh, ShadowOnly, Sky, StreamedLod,
     TargetCamera, TargetEffect, Tonemap,
 };
 #[doc(no_inline)]
