@@ -340,7 +340,7 @@ pub unsafe extern "C" fn ponko_ctx_ui_panel(ctx: *mut PonkoCtx, rect: PonkoRect)
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            c.ui.immediate.panel(&mut c.gfx, to_c(rect));
+            c.immediate_ui().panel(to_c(rect));
             Ok(())
         })
     })
@@ -363,7 +363,7 @@ pub unsafe extern "C" fn ponko_ctx_ui_label(
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            let size = c.ui.immediate.label(&mut c.gfx, to_c(pos), text(string)?);
+            let size = c.immediate_ui().label(to_c(pos), text(string)?);
             if !out_size.is_null() {
                 out_size.write(to_c(size));
             }
@@ -392,10 +392,7 @@ pub unsafe extern "C" fn ponko_ctx_ui_button(
             if out_clicked.is_null() {
                 return Err(invalid("output is null"));
             }
-            out(
-                out_clicked,
-                c.ui.immediate.button(&mut c.gfx, &c.input, to_c(rect), label),
-            )
+            out(out_clicked, c.immediate_ui().button(to_c(rect), label))
         })
     })
 }
@@ -517,7 +514,7 @@ pub unsafe extern "C" fn ponko_ctx_load_sound(
             if out_sound.is_null() {
                 return Err(invalid("output is null"));
             }
-            out(out_sound, sound_to_c(c.load_sound(path)))
+            out(out_sound, sound_to_c(c.audio.load(path)))
         })
     })
 }

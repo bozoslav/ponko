@@ -10,7 +10,8 @@ use crate::gfx::Graphics;
 use crate::input::{Input, MouseButton};
 use crate::text::{Font, TextParams};
 
-/// The immediate widgets of the screen's UI: `ctx.ui.immediate`.
+/// The state and look of the immediate widgets: `ctx.ui.immediate`. Draw
+/// them through [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui).
 ///
 /// Each call draws one widget this frame, on top of the world, in
 /// [`style`](Self::style). Positions and sizes are in UI units, the units of
@@ -20,17 +21,16 @@ use crate::text::{Font, TextParams};
 /// it. The look follows the screen's [`UiTheme`](super::UiTheme)
 /// ([`Ui::set_theme`](super::Ui::set_theme)). Nothing is kept between frames but the
 /// rectangles drawn, so [`Ui::wants_pointer`](super::Ui::wants_pointer)
-/// knows the mouse is over them. The widgets say what they use: all draw
-/// through the graphics service, and a button also reads the mouse.
+/// knows the mouse is over them.
 ///
 /// ```
 /// # use ponko::prelude::*;
 /// # fn tools(ctx: &mut Ctx) {
 /// let panel = Rect::new(10.0, 10.0, 220.0, 120.0);
-/// ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+/// ctx.immediate_ui().panel(panel);
 /// let mut at = panel.min + 10.0;
-/// at.y += ctx.ui.immediate.label(&mut ctx.gfx, at, "Simulation").y + 8.0;
-/// if ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, Rect::new(at.x, at.y, 100.0, 32.0), "Pause") {
+/// at.y += ctx.immediate_ui().label(at, "Simulation").y + 8.0;
+/// if ctx.immediate_ui().button(Rect::new(at.x, at.y, 100.0, 32.0), "Pause") {
 ///     ctx.time.pause();
 /// }
 /// # }
@@ -133,7 +133,7 @@ impl UiImmediate {
     /// Game::new("t", 320, 240).run_headless(0, |ctx| {
     ///     let panel = Rect::new(10.0, 10.0, 100.0, 50.0);
     ///     assert!(!ctx.ui.immediate.covers(vec2(20.0, 20.0)));
-    ///     ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+    ///     ctx.immediate_ui().panel(panel);
     ///     assert!(ctx.ui.immediate.covers(vec2(20.0, 20.0)));
     /// });
     /// ```
@@ -145,34 +145,15 @@ impl UiImmediate {
             .any(|r| r.contains(point))
     }
 
-    /// A background panel at `rect` (UI units), in the style's panel color.
-    ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn sidebar(ctx: &mut Ctx) {
-    /// let panel = Rect::new(10.0, 10.0, 220.0, 300.0);
-    /// ctx.ui.immediate.panel(&mut ctx.gfx, panel);
-    /// ctx.ui.immediate.label(&mut ctx.gfx, panel.min + 10.0, "Colony");
-    /// # }
-    /// ```
-    pub fn panel(&mut self, gfx: &mut Graphics, rect: Rect) {
+    /// The implementation behind [`UiImmediateFrame::panel`].
+    pub(crate) fn panel_on(&mut self, gfx: &mut Graphics, rect: Rect) {
         let rect = self.px(rect);
         gfx.ui_fill(rect, self.style.panel, -1.0);
         self.this_frame.push(rect);
     }
 
-    /// Text at `pos` (UI units) in the style's text size and color and the
-    /// immediate font. Returns the space it took, in UI units.
-    ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn stats(ctx: &mut Ctx, ants: usize) {
-    /// let mut at = vec2(20.0, 20.0);
-    /// at.y += ctx.ui.immediate.label(&mut ctx.gfx, at, "Ants").y;
-    /// ctx.ui.immediate.label(&mut ctx.gfx, at, &ants.to_string());
-    /// # }
-    /// ```
-    pub fn label(&self, gfx: &mut Graphics, pos: Vec2, text: &str) -> Vec2 {
+    /// The implementation behind [`UiImmediateFrame::label`].
+    pub(crate) fn label_on(&self, gfx: &mut Graphics, pos: Vec2, text: &str) -> Vec2 {
         let (style, scale) = (self.style, self.scale);
         let size = style.text_size * scale;
         gfx.draw_text_ex(
@@ -188,20 +169,8 @@ impl UiImmediate {
         gfx.measure_text_ex(text, self.font, size) / scale
     }
 
-    /// A button at `rect` (UI units) with `label` centered on it.
-    /// Returns `true` on the frame it's clicked (mouse released over it
-    /// after being pressed over it), reading the mouse (window pixels) from
-    /// `input`.
-    ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn controls(ctx: &mut Ctx) {
-    /// if ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, Rect::new(20.0, 20.0, 100.0, 32.0), "Pause") {
-    ///     ctx.time.pause();
-    /// }
-    /// # }
-    /// ```
-    pub fn button(&mut self, gfx: &mut Graphics, input: &Input, rect: Rect, label: &str) -> bool {
+    /// The implementation behind [`UiImmediateFrame::button`].
+    pub(crate) fn button_on(&mut self, gfx: &mut Graphics, input: &Input, rect: Rect, label: &str) -> bool {
         let (style, scale) = (self.style, self.scale);
         let rect = self.px(rect);
         let mouse = input.mouse_pos();
@@ -242,6 +211,139 @@ impl UiImmediate {
         self.this_frame.push(rect);
         clicked
     }
+
+    /// Deprecated: use [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui)`.panel(rect)`,
+    /// which takes the graphics service itself.
+    #[deprecated(since = "0.2.0", note = "use `ctx.immediate_ui().panel(rect)`")]
+    pub fn panel(&mut self, gfx: &mut Graphics, rect: Rect) {
+        self.panel_on(gfx, rect);
+    }
+
+    /// Deprecated: use [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui)`.label(pos, text)`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.immediate_ui().label(pos, text)`")]
+    pub fn label(&self, gfx: &mut Graphics, pos: Vec2, text: &str) -> Vec2 {
+        self.label_on(gfx, pos, text)
+    }
+
+    /// Deprecated: use [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui)`.button(rect, label)`,
+    /// which takes the graphics and input services itself.
+    #[deprecated(since = "0.2.0", note = "use `ctx.immediate_ui().button(rect, label)`")]
+    pub fn button(&mut self, gfx: &mut Graphics, input: &Input, rect: Rect, label: &str) -> bool {
+        self.button_on(gfx, input, rect, label)
+    }
+}
+
+/// The immediate widgets for one call site: from
+/// [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui). It borrows the
+/// widgets' state ([`ctx.ui.immediate`](UiImmediate)), the graphics service
+/// to draw and the input service to read the mouse, so its calls take only
+/// what to draw. Drop it (end the statement or the block) before using those
+/// services again.
+///
+/// ```
+/// # use ponko::prelude::*;
+/// # fn tools(ctx: &mut Ctx) {
+/// let panel = Rect::new(10.0, 10.0, 220.0, 120.0);
+/// let mut ui = ctx.immediate_ui();
+/// ui.panel(panel);
+/// let mut at = panel.min + 10.0;
+/// at.y += ui.label(at, "Simulation").y + 8.0;
+/// if ui.button(Rect::new(at.x, at.y, 100.0, 32.0), "Pause") {
+///     ctx.time.pause();
+/// }
+/// # }
+/// ```
+pub struct UiImmediateFrame<'a> {
+    widgets: &'a mut UiImmediate,
+    gfx: &'a mut Graphics,
+    input: &'a Input,
+}
+
+impl std::fmt::Debug for UiImmediateFrame<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiImmediateFrame")
+            .field("widgets", &self.widgets)
+            .finish_non_exhaustive()
+    }
+}
+
+impl UiImmediateFrame<'_> {
+    /// A background panel at `rect` (UI units), in the style's panel color.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn sidebar(ctx: &mut Ctx) {
+    /// let panel = Rect::new(10.0, 10.0, 220.0, 300.0);
+    /// ctx.immediate_ui().panel(panel);
+    /// ctx.immediate_ui().label(panel.min + 10.0, "Colony");
+    /// # }
+    /// ```
+    pub fn panel(&mut self, rect: Rect) {
+        self.widgets.panel_on(self.gfx, rect);
+    }
+
+    /// Text at `pos` (UI units) in the style's text size and color and the
+    /// immediate font. Returns the space it took, in UI units.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn stats(ctx: &mut Ctx, ants: usize) {
+    /// let mut at = vec2(20.0, 20.0);
+    /// at.y += ctx.immediate_ui().label(at, "Ants").y;
+    /// ctx.immediate_ui().label(at, &ants.to_string());
+    /// # }
+    /// ```
+    pub fn label(&mut self, pos: Vec2, text: &str) -> Vec2 {
+        self.widgets.label_on(self.gfx, pos, text)
+    }
+
+    /// A button at `rect` (UI units) with `label` centered on it.
+    /// Returns `true` on the frame it's clicked (mouse released over it
+    /// after being pressed over it), reading the mouse (window pixels) from
+    /// the input service.
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn controls(ctx: &mut Ctx) {
+    /// if ctx.immediate_ui().button(Rect::new(20.0, 20.0, 100.0, 32.0), "Pause") {
+    ///     ctx.time.pause();
+    /// }
+    /// # }
+    /// ```
+    pub fn button(&mut self, rect: Rect, label: &str) -> bool {
+        self.widgets.button_on(self.gfx, self.input, rect, label)
+    }
+
+    /// Whether `point` (window pixels) is on a widget drawn this frame or
+    /// the previous one ([`UiImmediate::covers`]).
+    #[must_use]
+    pub fn covers(&self, point: Vec2) -> bool {
+        self.widgets.covers(point)
+    }
+}
+
+impl crate::ctx::Ctx {
+    /// The immediate widgets (panel, label, button) for debug overlays and
+    /// quick tools, drawn the frame they are called. Their look is
+    /// [`ctx.ui.immediate`](crate::ui::UiImmediate) (style, font, border);
+    /// game UI that stays on screen belongs in the retained tree
+    /// ([`ctx.ui`](crate::ui::Ui)).
+    ///
+    /// ```
+    /// # use ponko::prelude::*;
+    /// # fn controls(ctx: &mut Ctx) {
+    /// if ctx.immediate_ui().button(Rect::new(20.0, 20.0, 100.0, 32.0), "Pause") {
+    ///     ctx.time.pause();
+    /// }
+    /// # }
+    /// ```
+    pub fn immediate_ui(&mut self) -> UiImmediateFrame<'_> {
+        UiImmediateFrame {
+            widgets: &mut self.ui.immediate,
+            gfx: &mut self.gfx,
+            input: &self.input,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -255,9 +357,7 @@ mod tests {
     #[test]
     fn the_pointer_follows_the_mouse_between_systems() {
         fn first(ctx: &mut Ctx) {
-            ctx.ui
-                .immediate
-                .panel(&mut ctx.gfx, Rect::new(100.0, 100.0, 50.0, 50.0));
+            ctx.immediate_ui().panel(Rect::new(100.0, 100.0, 50.0, 50.0));
             assert!(!ctx.ui.wants_pointer(), "the mouse is at (0, 0)");
             ctx.input.set_mouse_pos(vec2(120.0, 120.0));
             assert!(
@@ -280,10 +380,10 @@ mod tests {
     fn click(ctx: &mut Ctx, at: Vec2, rect: Rect) -> bool {
         ctx.input.set_mouse_pos(at);
         ctx.input.set_mouse_button(MouseButton::Left, true);
-        ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, rect, "Go");
+        ctx.immediate_ui().button(rect, "Go");
         ctx.input.end_frame();
         ctx.input.set_mouse_button(MouseButton::Left, false);
-        let clicked = ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, rect, "Go");
+        let clicked = ctx.immediate_ui().button(rect, "Go");
         ctx.input.end_frame();
         clicked
     }
@@ -292,14 +392,14 @@ mod tests {
     fn the_screens_scale_sizes_the_widgets_like_the_retained_tree() {
         let mut ctx = Ctx::new(1.0 / 60.0, vec2(800.0, 600.0));
         ctx.set_headless(true);
-        let one = ctx.ui.immediate.label(&mut ctx.gfx, vec2(0.0, 0.0), "Simulation");
+        let one = ctx.immediate_ui().label(vec2(0.0, 0.0), "Simulation");
         ctx.ui.set_scale(2.0);
         assert_eq!(ctx.ui.immediate.scale(), 2.0);
-        let two = ctx.ui.immediate.label(&mut ctx.gfx, vec2(0.0, 0.0), "Simulation");
+        let two = ctx.immediate_ui().label(vec2(0.0, 0.0), "Simulation");
         // The size is in UI units, so it doesn't depend on the scale.
         assert!((one - two).abs().max_element() < 1.0, "{one} at 1x, {two} at 2x");
         // The panel at (10, 10) in UI units is at (20, 20) in window pixels.
-        ctx.ui.immediate.panel(&mut ctx.gfx, Rect::new(10.0, 10.0, 100.0, 50.0));
+        ctx.immediate_ui().panel(Rect::new(10.0, 10.0, 100.0, 50.0));
         assert!(!ctx.ui.immediate.covers(vec2(15.0, 15.0)));
         assert!(ctx.ui.immediate.covers(vec2(25.0, 25.0)));
         assert!(ctx.ui.immediate.covers(vec2(219.0, 119.0)));
@@ -311,7 +411,7 @@ mod tests {
         let mut ctx = Ctx::new(1.0 / 60.0, vec2(800.0, 600.0));
         ctx.set_headless(true);
         assert_eq!(ctx.ui.immediate.scale(), 1.0);
-        ctx.ui.immediate.panel(&mut ctx.gfx, Rect::new(10.0, 10.0, 100.0, 50.0));
+        ctx.immediate_ui().panel(Rect::new(10.0, 10.0, 100.0, 50.0));
         assert!(ctx.ui.immediate.covers(vec2(10.5, 10.5)));
         assert!(!ctx.ui.immediate.covers(vec2(9.5, 9.5)));
         assert!(ctx.ui.immediate.covers(vec2(109.5, 59.5)));
@@ -350,7 +450,7 @@ mod tests {
             .text
             .add_font(epaint_default_fonts::HACK_REGULAR)
             .expect("a font");
-        let plain = ctx.ui.immediate.label(&mut ctx.gfx, vec2(0.0, 0.0), "Simulation");
+        let plain = ctx.immediate_ui().label(vec2(0.0, 0.0), "Simulation");
         ctx.ui.set_theme(UiTheme {
             font: mono,
             border_width: 2.0,
@@ -358,7 +458,7 @@ mod tests {
         });
         assert_eq!(ctx.ui.immediate.font, mono);
         assert_eq!(ctx.ui.immediate.border_width, 2.0);
-        let themed = ctx.ui.immediate.label(&mut ctx.gfx, vec2(0.0, 0.0), "Simulation");
+        let themed = ctx.immediate_ui().label(vec2(0.0, 0.0), "Simulation");
         assert_eq!(themed, ctx.gfx.measure_text_ex("Simulation", mono, 16.0));
         assert_ne!(plain.x, themed.x, "the monospace font is wider");
         // Back to the default theme: the font and the border follow it.

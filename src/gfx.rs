@@ -966,7 +966,7 @@ impl Graphics {
     /// ```
     /// # use ponko::prelude::*;
     /// fn photo_mode(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::F12) {
+    ///     if ctx.input.key_pressed(Key::F12) {
     ///         ctx.gfx.save_screenshot("screenshot.png");
     ///     }
     /// }

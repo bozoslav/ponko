@@ -1,6 +1,6 @@
 # Sample assets
 
-The files the examples, tests and guide load (`ctx.load_texture("crab.png")`
+The files the examples, tests and guide load (`ctx.gfx.load_texture("crab.png")`
 reads `assets/crab.png`). The examples and these assets ship in the `ponko`
 crate; `branding/` does not.
 

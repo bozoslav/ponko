@@ -2232,31 +2232,41 @@ pub unsafe extern "C" fn ponko_ctx_ui_frame(
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         let input = match input.as_ref() {
-            Some(i) => ponko::ui::UiInput {
-                pointer: to_c(i.pointer),
-                pressed: i.pressed,
-                held: i.held,
-                released: i.released,
-                wheel: to_c(i.wheel),
-                next: i.next,
-                previous: i.previous,
-                direction: to_c(i.direction),
-                confirm: i.confirm,
-                cancel: i.cancel,
-                shift: i.shift,
-                select_all: i.select_all,
-                backspace: i.backspace,
-                delete: i.delete,
-                home: i.home,
-                end: i.end,
-                text: optional_text(i.text)?.to_owned(),
-            },
+            Some(i) => ui_input_from_c(i)?,
             None => ponko::ui::UiInput::default(),
         };
         with_ui(ctx, target, |ui| {
             ui.frame(to_c(viewport), &input);
             Ok(())
         })
+    })
+}
+
+/// The Rust input for a C one (the IME composition left empty).
+///
+/// # Safety
+/// `i.text` null or NUL-terminated.
+pub(crate) unsafe fn ui_input_from_c(i: &PonkoUiInput) -> Result<ponko::ui::UiInput, Failure> {
+    Ok(ponko::ui::UiInput {
+        pointer: to_c(i.pointer),
+        pressed: i.pressed,
+        held: i.held,
+        released: i.released,
+        wheel: to_c(i.wheel),
+        next: i.next,
+        previous: i.previous,
+        direction: to_c(i.direction),
+        confirm: i.confirm,
+        cancel: i.cancel,
+        shift: i.shift,
+        select_all: i.select_all,
+        backspace: i.backspace,
+        delete: i.delete,
+        home: i.home,
+        end: i.end,
+        // SAFETY: caller contract.
+        text: unsafe { optional_text(i.text) }?.to_owned(),
+        ..Default::default()
     })
 }
 

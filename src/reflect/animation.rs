@@ -115,7 +115,7 @@ fn animation_from_json(world: &World, value: Value) -> Result<Animation, String>
         .and_then(|t| t.get(&json.texture))
         .ok_or_else(|| {
             let name = &json.texture;
-            format!("texture \"{name}\" isn't loaded: ctx.load_texture(\"{name}\") first")
+            format!("texture \"{name}\" isn't loaded: ctx.gfx.load_texture(\"{name}\") first")
         })?;
     json.into_animation(texture)
 }

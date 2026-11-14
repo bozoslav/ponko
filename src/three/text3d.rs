@@ -23,7 +23,7 @@ pub enum TextAlign3D {
     Right = 2,
 }
 
-/// Text in the world, drawn on its entity's [`Transform3D`]: a shop sign,
+/// Text in the world, drawn on its entity's [`d3::Transform`](crate::d3::Transform): a shop sign,
 /// a name over a head, a damage number. It stays sharp at any size and
 /// distance, and can have an outline and a soft edge (for glows and
 /// shadows). Any loaded [`Font`] works, and one entity's text can't mix

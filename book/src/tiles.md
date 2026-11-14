@@ -11,7 +11,7 @@ right, top to bottom.
 
 ```rust
 # let pos = vec2(100.0, 100.0);
-let tex = ctx.load_texture("units.png");
+let tex = ctx.gfx.load_texture("units.png");
 let sheet = SpriteSheet::new(tex, 32, 32);   // 32 × 32 frames
 ctx.world.spawn((ponko::d2::Transform::at(pos), sheet.sprite(5))); // frame 5
 ```
@@ -36,7 +36,7 @@ For pixel art, turn smoothing off so pixels stay square:
 <div>
 
 ```rust
-# let tex = ctx.load_texture("units.png");
+# let tex = ctx.gfx.load_texture("units.png");
 ctx.gfx.set_texture_filter(tex, TextureFilter::Nearest);
 ```
 
@@ -59,9 +59,9 @@ system (on by default, all cores) advances it every frame:
 <div>
 
 ```rust
-# use ponko::d2::Animation;
+# use ponko::sheet::Animation;
 # let pos = vec2(100.0, 100.0);
-# let sheet = SpriteSheet::new(ctx.load_texture("units.png"), 32, 32);
+# let sheet = SpriteSheet::new(ctx.gfx.load_texture("units.png"), 32, 32);
 ctx.world.spawn((
     ponko::d2::Transform::at(pos),
     sheet.sprite(0),
@@ -101,7 +101,7 @@ made in code has no file to name and isn't saved, like its sprite.
 
 ## Tilemaps
 
-A `TileMap` is a grid of sheet frames on an entity with a `Transform2D`
+A `TileMap` is a grid of sheet frames on an entity with a `d2::Transform`
 (its position is the map's top-left corner). The built-in `draw_tilemaps`
 system draws only the tiles the camera can see, so a map can be huge: the
 tiles example has a million tiles, and zoomed out to 380 000 visible tiles it
@@ -160,8 +160,8 @@ map can scroll slower than the world, for far-away layers:
 <div>
 
 ```rust
-# use ponko::d2::TileMap;
-# let mut map = TileMap::new(SpriteSheet::new(ctx.load_texture("levels/meadow.png"), 16, 16), 40, 15);
+# use ponko::tilemap::TileMap;
+# let mut map = TileMap::new(SpriteSheet::new(ctx.gfx.load_texture("levels/meadow.png"), 16, 16), 40, 15);
 map.parallax = vec2(0.3, 0.3);                      // far away: scrolls slowly
 map.animate(4, &[(4, 0.4), (5, 0.4)]);             // tile 4 shows 4, 5, 4, 5, ...
 map.set_flipped(3, 2, Some(7), TileMap::FLIP_X);   // a mirrored tile
@@ -217,7 +217,7 @@ one call:
   opacity and tint, and a `LevelLayer` with its name and properties. Layers
   are stacked by `z`, bottom to top; LDtk's auto-layers and IntGrid tiles
   too. Image layers become one-tile maps.
-- every object (Tiled) or entity (LDtk) as an entity with a `Transform2D` at
+- every object (Tiled) or entity (LDtk) as an entity with a `d2::Transform` at
   its center and a `LevelObject`: its name, class, layer, size, rotation,
   shape (rectangle, ellipse, point, polygon, polyline), tile and custom
   properties. Objects that show a tile get a `Sprite`.
@@ -230,7 +230,7 @@ Objects are plain data until you give them meaning, by their class:
 <div>
 
 ```rust
-# use ponko::d2::LevelObject;
+# use ponko::tilemap::LevelObject;
 let mut coins = 0;
 for (t, o) in ctx.world.query::<(&ponko::d2::Transform, &LevelObject)>().iter() {
     if o.class == "Coin" {
@@ -253,7 +253,7 @@ for (t, o) in ctx.world.query::<(&ponko::d2::Transform, &LevelObject)>().iter() 
 `LevelOptions` changes what is spawned (`spawn_level_with`):
 
 ```rust
-# use ponko::d2::LevelOptions;
+# use ponko::tilemap::LevelOptions;
 let options = LevelOptions::default()
     .prefab("Chest", "prefabs/chest.json") // objects of class Chest are this prefab
     .solid("Walls")                         // a layer, IntGrid value, tile class or tag that collides
@@ -287,7 +287,7 @@ save, then spawn the level around it without the prefab objects:
 <div>
 
 ```rust
-# use ponko::d2::LevelOptions;
+# use ponko::tilemap::LevelOptions;
 let options = LevelOptions::default().prefab("Chest", "prefabs/chest.json");
 ctx.spawn_level_with("levels/meadow.tmx", Vec2::ZERO, options.clone()).expect("level");
 // ... play ...

@@ -1,7 +1,7 @@
 //! 2D physics with rapier (feature `physics`): rigid bodies and colliders as
 //! components, stepped inside the simulation clock.
 //!
-//! [`Transform2D`] stays the source of truth: set it and the body teleports;
+//! [`d2::Transform`](crate::d2::Transform) stays the source of truth: set it and the body teleports;
 //! dynamic bodies write their new position back after every step.
 //! Physics is opt-in per entity, so the million-entity paths (spatial grid,
 //! flow fields) stay as fast as before.
@@ -18,14 +18,14 @@ use glam::Vec2;
 use ponko_ecs::{Component, Entity, With, World};
 
 /// Makes an entity a physics body. It also needs a [`Collider`] and a
-/// [`Transform2D`].
+/// [`d2::Transform`](crate::d2::Transform).
 ///
 /// ```
 /// use ponko::prelude::*;
 /// let crate_body = ponko::d2::RigidBody::dynamic();
 /// let wall = ponko::d2::RigidBody::fixed();
 /// assert_eq!(crate_body.gravity_scale, 1.0);
-/// assert_eq!(wall.kind, ponko::d2::BodyKind::Fixed);
+/// assert_eq!(wall.kind, ponko::collision::BodyKind::Fixed);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Component)]
 #[serde(default)]
@@ -83,7 +83,7 @@ impl RigidBody {
 }
 
 /// Most corners a [`Shape::Polygon`] can have.
-pub const MAX_POLYGON_POINTS: usize = 8;
+pub(crate) const MAX_POLYGON_POINTS: usize = 8;
 
 /// A collider's shape, in pixels, centered on the entity (plus
 /// [`Collider::offset`]) and turned with it.
@@ -113,12 +113,19 @@ pub enum Shape {
     Polygon {
         /// The corners; only the first `count` are used.
         points: [Vec2; MAX_POLYGON_POINTS],
-        /// How many corners: 3 to [`MAX_POLYGON_POINTS`].
+        /// How many corners: 3 to [`MAX_POLYGON_POINTS`](Shape::MAX_POLYGON_POINTS).
         count: u8,
     },
 }
 
 impl Shape {
+    /// Most corners a [`Shape::Polygon`] can have.
+    ///
+    /// ```
+    /// assert_eq!(ponko::d2::Shape::MAX_POLYGON_POINTS, 8);
+    /// ```
+    pub const MAX_POLYGON_POINTS: usize = MAX_POLYGON_POINTS;
+
     /// A polygon's corners (empty for other shapes).
     ///
     /// ```
@@ -212,7 +219,7 @@ impl Collider {
     ///
     /// # Panics
     ///
-    /// With fewer than 3 or more than [`MAX_POLYGON_POINTS`] points, or a
+    /// With fewer than 3 or more than [`MAX_POLYGON_POINTS`](Shape::MAX_POLYGON_POINTS) points, or a
     /// point that isn't finite.
     #[must_use]
     #[track_caller]
@@ -337,7 +344,7 @@ struct Link {
 
 /// The physics world: `ctx.physics`. Add it to a game with
 /// [`Game::physics`](crate::game::Game::physics); then entities with
-/// [`RigidBody`], [`Collider`] and [`Transform2D`] are simulated.
+/// [`RigidBody`], [`Collider`] and [`d2::Transform`](crate::d2::Transform) are simulated.
 pub struct Physics {
     world: rp::PhysicsWorld,
     /// By entity index.
@@ -408,7 +415,7 @@ impl Physics {
     /// [`Time::pause`](crate::time::Time::pause), the tick counter goes on.
     ///
     /// While paused, [`step_physics`] does nothing: bodies keep their
-    /// [`Transform2D`] and [`Velocity`], no [`CollisionStarted`] or
+    /// [`d2::Transform`](crate::d2::Transform) and [`Velocity`], no [`CollisionStarted`] or
     /// [`CollisionStopped`] events are sent, and ray and overlap queries
     /// see the bodies where the last step left them. Bodies spawned,
     /// changed or despawned meanwhile are picked up by the first step
@@ -420,7 +427,7 @@ impl Physics {
     /// use ponko::prelude::*;
     ///
     /// fn pause_menu(ctx: &mut Ctx) {
-    ///     if ctx.key_pressed(Key::Escape) {
+    ///     if ctx.input.key_pressed(Key::Escape) {
     ///         let held = ctx.physics.is_paused();
     ///         ctx.physics.set_paused(!held);
     ///     }
@@ -646,7 +653,7 @@ pub fn step_physics(ctx: &mut Ctx) {
     if ctx.physics.paused {
         return;
     }
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     step(&mut ctx.physics, &mut ctx.world, &mut ctx.events, dt);
 }
 
@@ -654,7 +661,7 @@ pub fn step_physics(ctx: &mut Ctx) {
 /// service ([`Service::Physics`](crate::access::Service::Physics)), reads
 /// the timestep ([`Service::Time`](crate::access::Service::Time)), reads
 /// [`RigidBody`], [`Collider`] and the count of world loads (a load drops
-/// every body), writes [`Transform2D`] and [`Velocity`], and sends
+/// every body), writes [`d2::Transform`](crate::d2::Transform) and [`Velocity`], and sends
 /// [`CollisionStarted`] and [`CollisionStopped`]. Nothing else: no other
 /// resources, commands, drawing or input.
 ///
@@ -696,7 +703,7 @@ pub fn step_physics_access() -> crate::access::SystemAccess {
 }
 
 /// The step itself, with only what it touches: the physics state, the world
-/// whose [`Transform2D`] / [`RigidBody`] / [`Collider`] / [`Velocity`]
+/// whose [`d2::Transform`](crate::d2::Transform) / [`RigidBody`] / [`Collider`] / [`Velocity`]
 /// components it reads and writes, the event queue that gets the collision
 /// events, and the timestep. No `Ctx`, window or device is needed, so tests
 /// (and a future scheduler) can see and supply exactly these inputs.

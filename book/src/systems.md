@@ -43,7 +43,7 @@ Game::new("Sim", 1280, 720)
 | | `sim_system` | `system` |
 |---|---|---|
 | Runs | at the fixed rate, 0 or more times per frame | once per rendered frame |
-| `ctx.dt()` | the fixed step (1/60 s by default) | real time since last frame |
+| `ctx.time.dt()` | the fixed step (1/60 s by default) | real time since last frame |
 | Use for | gameplay, physics, AI: anything that must behave the same at any FPS | input, camera, debug UI |
 | In headless runs | runs | doesn't run |
 
@@ -117,7 +117,7 @@ imports:
 let game = Game::new("Options", 1280, 720)
     // Listed as "ai" in timings and tools, instead of by the function's path.
     .add(Phase::AfterPhysics, think.named("ai"))
-    // Every 10th tick; inside it `ctx.dt()` is 10 fixed steps.
+    // Every 10th tick; inside it `ctx.time.dt()` is 10 fixed steps.
     .add(Phase::AfterPhysics, get_hungry.every(10))
     // What it reads and writes: see "Declared system access".
     .add(Phase::AfterPhysics, get_hungry.named("hunger").access(SystemAccess::new().write::<Hunger>()))
@@ -185,7 +185,7 @@ What follows from that:
 - **A step that runs every `n` ticks covers `n` ticks.** Take the step out
   (`Game::remove(Systems::PHYSICS)`) and add
   `systems::step_physics.every(n).access(systems::step_physics_access())`
-  to `Phase::Physics`: its `ctx.dt()` is `n` fixed steps, and its events are
+  to `Phase::Physics`: its `ctx.time.dt()` is `n` fixed steps, and its events are
   still read once. Without the declaration it runs alone, like any
   undeclared system.
 - **Navigation moves transforms; it doesn't push.** An agent has no
@@ -349,7 +349,7 @@ impl Plugin for Player {
     fn build(&self, game: Game) -> Game {
         let speed = self.speed;
         game.add(Phase::BeforePhysics, move |ctx: &mut Ctx| {
-            let dt = ctx.dt();
+            let dt = ctx.time.dt();
             ctx.world.query::<&mut ponko::d2::Transform>().for_each(|t| t.position.x += speed * dt);
         })
     }
@@ -364,7 +364,7 @@ impl Plugin for Hud {
     fn build(&self, game: Game) -> Game {
         game.add(Phase::Draw, |ctx: &mut Ctx| {
             let score = ctx.world.resource::<Score>().0;
-            ctx.draw_text(&format!("{score}"), vec2(16.0, 16.0), 24.0, Color::WHITE);
+            ctx.gfx.draw_text(&format!("{score}"), vec2(16.0, 16.0), 24.0, Color::WHITE);
         })
     }
     fn setup(&self, ctx: &mut Ctx) {

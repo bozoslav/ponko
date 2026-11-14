@@ -122,7 +122,7 @@ impl rp::EventHandler for Collector {
 /// The same scene stepped by rapier alone.
 fn rapier_alone() -> usize {
     let mut w = rp::PhysicsWorld::new();
-    w.integration_parameters.dt = 1.0 / ponko::physics3d::PHYSICS3D_HZ as f32;
+    w.integration_parameters.dt = 1.0 / ponko::d3::Physics::HZ as f32;
     w.gravity = rp::Vector::new(0.0, -9.81, 0.0);
     let ground = w.insert_body(rp::RigidBodyBuilder::fixed().translation(rp::Vector::new(0.0, -0.5, 0.0)));
     w.insert_collider(
@@ -240,7 +240,7 @@ fn car_at(i: usize) -> Vec3 {
 /// forces change.
 fn chassis_pushed_in_rapier() -> usize {
     let mut w = rp::PhysicsWorld::new();
-    w.integration_parameters.dt = 1.0 / ponko::physics3d::PHYSICS3D_HZ as f32;
+    w.integration_parameters.dt = 1.0 / ponko::d3::Physics::HZ as f32;
     w.gravity = rp::Vector::new(0.0, -9.81, 0.0);
     let ground = w.insert_body(rp::RigidBodyBuilder::fixed().translation(rp::Vector::new(0.0, -0.5, 0.0)));
     w.insert_collider(rp::ColliderBuilder::cuboid(200.0, 0.5, 200.0), Some(ground));
@@ -362,7 +362,7 @@ fn walkers_in_rapier() -> usize {
         snap_to_ground: Some(CharacterLength::Absolute(c.snap_distance)),
         ..KinematicCharacterController::default()
     };
-    let dt = 1.0 / ponko::physics3d::PHYSICS3D_HZ as f32;
+    let dt = 1.0 / ponko::d3::Physics::HZ as f32;
     let mut w = rp::PhysicsWorld::new();
     w.integration_parameters.dt = dt;
     w.gravity = rp::Vector::new(0.0, -9.81, 0.0);

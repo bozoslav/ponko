@@ -3,7 +3,7 @@
 //! and raycast-wheel vehicles as components, stepped inside the simulation
 //! clock.
 //!
-//! [`Transform3D`] stays the source of truth: set it and the body teleports;
+//! [`d3::Transform`](crate::d3::Transform) stays the source of truth: set it and the body teleports;
 //! moving bodies write their new pose back after every step, and between
 //! steps (in windowed games) a pose blended between the last two steps, so
 //! motion looks smooth at any frame rate.
@@ -42,17 +42,17 @@ pub use vehicle::{FrictionCurve, Vehicle3D, Wheel3D};
 /// The simulation rate [`Game::physics3d`](crate::game::Game::physics3d) sets,
 /// unless the game picked its own with
 /// [`Game::fixed_hz`](crate::game::Game::fixed_hz): 50 steps per second.
-pub const PHYSICS3D_HZ: u32 = 50;
+pub(crate) const PHYSICS3D_HZ: u32 = 50;
 
 /// Makes an entity a 3D physics body. It also needs a [`Collider3D`] and a
-/// [`Transform3D`].
+/// [`d3::Transform`](crate::d3::Transform).
 ///
 /// ```
 /// use ponko::prelude::*;
 /// let crate_body = ponko::d3::RigidBody::dynamic();
 /// let ground = ponko::d3::RigidBody::fixed();
 /// assert_eq!(crate_body.gravity_scale, 1.0);
-/// assert_eq!(ground.kind, ponko::d2::BodyKind::Fixed);
+/// assert_eq!(ground.kind, ponko::collision::BodyKind::Fixed);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Component)]
 #[serde(default)]
@@ -80,7 +80,7 @@ pub struct RigidBody3D {
     /// inertia scales along). `None` (the default): from the density.
     pub mass: Option<f32>,
     /// Its center of mass in its own frame (relative to its
-    /// [`Transform3D`] position), instead of its collider's center. A car
+    /// [`d3::Transform`](crate::d3::Transform) position), instead of its collider's center. A car
     /// wants it low, so it doesn't tip over in turns. `None` (the
     /// default): the collider's.
     pub center_of_mass: Option<Vec3>,
@@ -127,7 +127,7 @@ impl RigidBody3D {
             ..Self::dynamic()
         }
     }
-    /// A body only you move, through its [`Velocity3D`] or [`Transform3D`]
+    /// A body only you move, through its [`Velocity3D`] or [`d3::Transform`](crate::d3::Transform)
     /// (platforms, doors). It pushes dynamic bodies and isn't pushed back.
     #[must_use]
     pub const fn kinematic() -> Self {
@@ -235,9 +235,9 @@ pub enum Shape3D {
 /// const PLAYER: u32 = 1 << 0;
 /// const DEBRIS: u32 = 1 << 1;
 /// // Debris hits everything except other debris.
-/// let debris = ponko::physics3d::CollisionGroups::new(DEBRIS, !DEBRIS);
+/// let debris = ponko::d3::CollisionGroups::new(DEBRIS, !DEBRIS);
 /// assert!(!debris.touches(debris));
-/// assert!(debris.touches(ponko::physics3d::CollisionGroups::new(PLAYER, u32::MAX)));
+/// assert!(debris.touches(ponko::d3::CollisionGroups::new(PLAYER, u32::MAX)));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(C)]
@@ -517,8 +517,8 @@ impl rp::EventHandler for Collector {
 
 /// The 3D physics world: `ctx.physics3d`. Add it to a game with
 /// [`Game::physics3d`](crate::game::Game::physics3d); then entities with
-/// [`RigidBody3D`], [`Collider3D`] and [`Transform3D`] are simulated, and
-/// entities with [`Character3D`] and [`Transform3D`] walk.
+/// [`RigidBody3D`], [`Collider3D`] and [`d3::Transform`](crate::d3::Transform) are simulated, and
+/// entities with [`Character3D`] and [`d3::Transform`](crate::d3::Transform) walk.
 pub struct Physics3D {
     world: rp::PhysicsWorld,
     joints: Vec<joints::Link>,
@@ -590,6 +590,15 @@ pub(crate) fn pose_to_rp(position: Vec3, rotation: Quat) -> rp::Pose {
 }
 
 impl Physics3D {
+    /// The simulation rate [`Game::physics3d`](crate::game::Game::physics3d)
+    /// sets, unless the game picked its own with
+    /// [`Game::fixed_hz`](crate::game::Game::fixed_hz): 50 steps per second.
+    ///
+    /// ```
+    /// assert_eq!(ponko::d3::Physics::HZ, 50);
+    /// ```
+    pub const HZ: u32 = PHYSICS3D_HZ;
+
     /// Physics pulling everything by `gravity` (meters/s²; `vec3(0.0, -9.81, 0.0)`
     /// is Earth's).
     #[must_use]
@@ -711,7 +720,7 @@ impl Physics3D {
         self.world.bodies.get(link.body).map(|b| from_rp(b.center_of_mass()))
     }
 
-    /// Where a body is as of the last physics step: what [`Transform3D`]
+    /// Where a body is as of the last physics step: what [`d3::Transform`](crate::d3::Transform)
     /// holds right after the step (between steps it holds a blend of the
     /// last two, for drawing).
     pub fn position(&self, e: Entity) -> Option<Vec3> {
@@ -759,7 +768,7 @@ impl Physics3D {
     /// heights, row by row along +Z, each row along +X; NaN for a hole), so
     /// the collider matches the drawn ground triangle for triangle. Give it
     /// to a [`TerrainCollider`] on the tile's entity (or a fixed body at the
-    /// tile's [`Transform3D`]: its corner). [`CollisionMeshData::heightfield`]
+    /// tile's [`d3::Transform`](crate::d3::Transform): its corner). [`CollisionMeshData::heightfield`]
     /// builds it on another thread.
     ///
     /// ```
@@ -1067,7 +1076,7 @@ pub(crate) fn start(ctx: &mut Ctx, gravity: Vec3) {
 /// events. Added by [`Game::physics3d`](crate::game::Game::physics3d); remove or
 /// reorder it like any other system.
 pub fn step_physics3d(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     step(&mut ctx.physics3d, &mut ctx.world, &mut ctx.events, dt);
 }
 
@@ -1076,7 +1085,7 @@ pub fn step_physics3d(ctx: &mut Ctx) {
 /// the timestep ([`Service::Time`](crate::access::Service::Time)), reads the
 /// body, collider, joint, contact-modifier, terrain and streaming-focus
 /// components and the count of world loads (a load drops every body), writes
-/// [`Transform3D`], [`Velocity3D`], [`Character3D`], [`Vehicle3D`],
+/// [`d3::Transform`](crate::d3::Transform), [`Velocity3D`], [`Character3D`], [`Vehicle3D`],
 /// [`Ragdoll3D`] and the ragdolls' skeletons, and sends [`CollisionStarted`]
 /// and [`CollisionStopped`]. Nothing else: no other resources, commands,
 /// drawing or input.
@@ -1118,7 +1127,7 @@ pub fn step_physics3d_access() -> crate::access::SystemAccess {
 /// What [`interpolate_physics3d`] uses, as a declaration: it writes the 3D
 /// physics service (the poses it last wrote), reads the frame's place
 /// between two steps ([`Service::Time`](crate::access::Service::Time)) and
-/// writes [`Transform3D`]. [`Game::physics3d`](crate::game::Game::physics3d)
+/// writes [`d3::Transform`](crate::d3::Transform). [`Game::physics3d`](crate::game::Game::physics3d)
 /// registers the blend with it.
 ///
 /// The [`Service`](crate::access::Service) entries of the declaration are
@@ -1187,7 +1196,7 @@ fn step(physics: &mut Physics3D, world: &mut World, events: &mut Events, dt: f32
 }
 
 /// Draws moving bodies smoothly: between two physics steps, sets each
-/// moving body's [`Transform3D`] to a blend of its last two poses, by how
+/// moving body's [`d3::Transform`](crate::d3::Transform) to a blend of its last two poses, by how
 /// far the frame is between them ([`Time::fixed_alpha`](crate::time::Time::fixed_alpha)). Added as the first
 /// frame system by [`Game::physics3d`](crate::game::Game::physics3d), so camera
 /// code sees the blended pose too. Does nothing in headless runs, where

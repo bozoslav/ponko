@@ -25,7 +25,7 @@ use crate::sheet::SpriteSheet;
 /// LDtk arrays, points and entity references as LDtk writes them.
 ///
 /// ```
-/// # use ponko::d2::LevelObject;
+/// # use ponko::tilemap::LevelObject;
 /// # fn f(coin: &LevelObject) {
 /// let value = coin.properties.f32("value").unwrap_or(1.0);
 /// let hidden = coin.properties.bool("hidden").unwrap_or(false);
@@ -171,7 +171,7 @@ pub enum ObjectShape {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::LevelObject;
+/// # use ponko::tilemap::LevelObject;
 /// fn coins(ctx: &mut Ctx) {
 ///     for (t, obj) in ctx.world.query::<(&ponko::d2::Transform, &LevelObject)>().iter() {
 ///         if obj.class == "Coin" {
@@ -298,7 +298,7 @@ pub struct Level {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// use ponko::d2::LevelOptions;
+/// use ponko::tilemap::LevelOptions;
 /// let options = LevelOptions::default()
 ///     .prefab("Coin", "prefabs/coin.json") // objects of class Coin are this prefab
 ///     .solid("Walls") // and the Walls layer (or IntGrid value, or tile tag) is solid
@@ -363,7 +363,7 @@ impl LevelOptions {
     ///
     /// ```no_run
     /// # use ponko::prelude::*;
-    /// use ponko::d2::LevelOptions;
+    /// use ponko::tilemap::LevelOptions;
     /// # fn f(ctx: &mut Ctx) -> Result<(), Error> {
     /// let options = LevelOptions::default().prefab("Coin", "prefabs/coin.json");
     /// ctx.spawn_level_with("levels/one.tmx", Vec2::ZERO, options.clone())?;
@@ -652,7 +652,7 @@ impl Assets {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn f(ctx: &mut Ctx) -> Result<(), Error> {
-    /// let level = ctx.assets.load_level("levels/one.tmx", &ponko::d2::LevelOptions::default())?;
+    /// let level = ctx.assets.load_level("levels/one.tmx", &ponko::tilemap::LevelOptions::default())?;
     /// for layer in &level.layers {
     ///     println!("{}", layer.name);
     /// }
@@ -767,7 +767,7 @@ impl Ctx {
     ///
     /// ```no_run
     /// # use ponko::prelude::*;
-    /// use ponko::d2::LevelOptions;
+    /// use ponko::tilemap::LevelOptions;
     /// # fn setup(ctx: &mut Ctx) {
     /// let options = LevelOptions::default().prefab("Coin", "prefabs/coin.json").level("Level_0");
     /// ctx.spawn_level_with("world.ldtk", Vec2::ZERO, options).expect("level");

@@ -36,11 +36,11 @@ fn read_keys(ctx: &mut Ctx) {
         (Key::Up, -Vec2::Y),
         (Key::Down, Vec2::Y),
     ] {
-        if ctx.key_down(key) {
+        if ctx.input.key_down(key) {
             pad.dir += d;
         }
     }
-    pad.shove = ctx.key_down(Key::Space);
+    pad.shove = ctx.input.key_down(Key::Space);
     ctx.net.set_input(&pad);
 }
 // ANCHOR_END: input
@@ -59,10 +59,10 @@ fn move_crabs(ctx: &mut Ctx) {
     let pads: Vec<Pad> = (0..ctx.net.players())
         .map(|p| ctx.net.input::<Pad>(p).unwrap_or_default())
         .collect();
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let crabs: Vec<(Entity, Vec2, u32)> = ctx
         .world
-        .query::<(Entity, &Transform2D, &Crab)>()
+        .query::<(Entity, &d2::Transform, &Crab)>()
         .iter()
         .map(|(e, t, c)| (e, t.position, c.player))
         .collect();
@@ -76,7 +76,7 @@ fn move_crabs(ctx: &mut Ctx) {
             }
         }
         let crab = *ctx.world.get::<Crab>(e).unwrap();
-        let t = ctx.world.get_mut::<Transform2D>(e).unwrap();
+        let t = ctx.world.get_mut::<d2::Transform>(e).unwrap();
         t.position += (pad.dir.normalize_or_zero() * 250.0 + crab.push) * dt;
         t.position = t.position.clamp(vec2(40.0, 40.0), vec2(760.0, 560.0));
         ctx.world.get_mut::<Crab>(e).unwrap().push = crab.push * 0.9;
@@ -88,7 +88,7 @@ fn draw(ctx: &mut Ctx) {
     ctx.gfx.clear(Color::hex(0x20304a));
     let crabs: Vec<(Vec2, u32)> = ctx
         .world
-        .query::<(&Transform2D, &Crab)>()
+        .query::<(&d2::Transform, &Crab)>()
         .iter()
         .map(|(t, c)| (t.position, c.player))
         .collect();
@@ -110,18 +110,18 @@ fn draw(ctx: &mut Ctx) {
         NetState::Offline => "offline".into(),
         _ => String::new(),
     };
-    ctx.draw_text(&status, vec2(20.0, 20.0), 20.0, Color::WHITE);
+    ctx.gfx.draw_text(&status, vec2(20.0, 20.0), 20.0, Color::WHITE);
     #[cfg(feature = "steam")]
     if ctx.net.state() == NetState::Connecting
         && let Some(lobby) = ctx.net.steam_lobby()
     {
         let text = format!("Steam lobby {}: press I to invite a friend", lobby.raw());
-        ctx.draw_text(&text, vec2(20.0, 50.0), 20.0, Color::WHITE);
-        if ctx.key_pressed(Key::I) {
+        ctx.gfx.draw_text(&text, vec2(20.0, 50.0), 20.0, Color::WHITE);
+        if ctx.input.key_pressed(Key::I) {
             ctx.net.steam_invite();
         }
     }
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }
@@ -155,7 +155,7 @@ fn play(net: Net) {
             ctx.world.reflect::<Crab>(); // compared between peers
             for player in 0..2 {
                 ctx.world.spawn((
-                    Transform2D::at(vec2(250.0 + 300.0 * player as f32, 300.0)),
+                    d2::Transform::at(vec2(250.0 + 300.0 * player as f32, 300.0)),
                     Crab {
                         player,
                         push: Vec2::ZERO,

@@ -617,7 +617,7 @@ mod imp {
     ) -> PonkoStatus {
         boundary(|| {
             let count = count as usize;
-            if !(3..=ponko::physics::MAX_POLYGON_POINTS).contains(&count) {
+            if !(3..=ponko::d2::Shape::MAX_POLYGON_POINTS).contains(&count) {
                 return Err(invalid("a polygon has 3 to 8 points"));
             }
             if points.is_null() {

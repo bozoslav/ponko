@@ -102,6 +102,13 @@ dropped, and `ctx.audio.unlocked()` says whether sound is allowed yet. Music
 loaded with `load_stream` is decoded as it plays rather than all at once
 (see [Sound in a browser](audio.md#in-a-browser)).
 
+**Typing with an IME.** Browsers send composition events only to text
+boxes, so while a text input (or your own widget, through
+`ctx.input.set_ime_allowed`) wants IME, the engine focuses a hidden
+`<textarea>` placed at the caret, where the browser opens its candidate
+window, and reads the composition, the committed text and the keys from it.
+See [Typing with an input method](ui.md#typing-with-an-input-method-ime).
+
 **Not available on the web:** the [control endpoint](control.md) and
 [MCP](agents.md) tools, [hot reload](data-files.md) of files, [hot
 patching](hot-patching.md) of code, and anything that writes files

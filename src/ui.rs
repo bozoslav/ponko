@@ -4,7 +4,7 @@
 //! focus and queued events ([`Ui`]); who has the pointer and the keyboard
 //! ([`Ui::wants_pointer`], [`Ui::wants_keyboard`]); and the immediate
 //! widgets for debug overlays, `ctx.ui.immediate` ([`UiImmediate`]), with
-//! their [`UiStyle`]. A [`UiPanel3D`] carries a tree of its own for a
+//! their [`UiStyle`]. A [`d3::UiPanel`](crate::d3::UiPanel) carries a tree of its own for a
 //! surface in the 3D world.
 //!
 //! **When to call it.** Build the tree in setup, then change its text,
@@ -16,10 +16,11 @@
 //!
 //! **What it needs.** Nothing to build and query: the tree lays itself out
 //! and takes input without a window, so tests drive it headless. Drawing
-//! needs a window. The immediate widgets take what they use as arguments
-//! (`&mut ctx.gfx` to draw, `&ctx.input` for a button's mouse), so `ctx.ui`
-//! borrows apart from the world and the other services: read its events
-//! while playing sounds or changing entities.
+//! needs a window. The immediate widgets are drawn through
+//! [`ctx.immediate_ui()`](crate::ctx::Ctx::immediate_ui), which lends them the
+//! graphics and input services, so `ctx.ui` holds none of them and borrows
+//! apart from the world and the other services: read its events while
+//! playing sounds or changing entities.
 //!
 //! ```
 //! use ponko::prelude::*;
@@ -111,6 +112,12 @@ impl Default for UiStyle {
 pub(crate) struct UiState {
     pub(crate) retained_spare: Option<Ui>,
     pub(crate) retained_input_text: String,
+    /// Reused for the IME preedit handed to the retained UI.
+    pub(crate) retained_preedit: String,
+    /// Reused for a text input's text with its preedit spliced in.
+    pub(crate) shown_scratch: String,
+    /// The retained UI allowed IME for its focused text input.
+    pub(crate) ime_owned: bool,
     /// A click (and typed text) an input scenario asked for, applied by the
     /// retained UI's next frame.
     pub(crate) scripted: Option<retained_draw::ScriptedClick>,
@@ -127,18 +134,17 @@ mod access_native;
 mod build;
 mod immediate;
 #[cfg(feature = "3d")]
-mod panel3d;
+pub(crate) mod panel3d;
 mod retained;
 mod retained_draw;
+mod retained_ime;
 pub use access::{
     UiAccessAction, UiAccessChanges, UiAccessNode, UiAccessTracker, UiAccessTree, UiAccessValue, UiLive, UiRole,
 };
 #[cfg(feature = "accessibility")]
 pub use access_native::UiAccessAdapter;
 pub use build::{UiBuilder, UiLayout, UiTheme};
-pub use immediate::UiImmediate;
-#[cfg(feature = "3d")]
-pub use panel3d::UiPanel3D;
+pub use immediate::{UiImmediate, UiImmediateFrame};
 pub use retained::{Ui, UiEvent, UiId, UiInput, UiPaint, UiTextAlign, UiWidget};
 
 /// Unstable: the [Taffy](https://docs.rs/taffy/0.15.1/taffy/) layout crate

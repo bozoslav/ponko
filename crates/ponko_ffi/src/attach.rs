@@ -1,5 +1,5 @@
 //! Attachments from C: `PonkoAttached` and the system that places them.
-use ponko::d2::Attached;
+use ponko::attach::Attached;
 
 use crate::types::{PonkoEntity, PonkoVec2};
 use crate::{PonkoGame, PonkoStatus, PonkoWorld, builtin};

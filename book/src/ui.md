@@ -359,9 +359,96 @@ Tab/Shift-Tab traverses enabled controls. Arrows/d-pad use spatial navigation;
 Enter, Space or gamepad South activates the focused control. Text inputs reserve
 left/right, Home/End, Backspace/Delete, Shift-selection and Ctrl/Cmd-A for editing;
 Enter submits. Clicking/dragging selects text. Text is UTF-8 with scalar-boundary
-editing; grapheme-cluster editing, clipboard and IME composition are not provided.
+editing; grapheme-cluster editing and the clipboard are not provided. IME
+composition is, see [below](#typing-with-an-input-method-ime).
 Native committed Unicode is available to both UI and games as `ctx.input.typed_text()`.
 Custom hosts/tests can supply it through `ctx.input.insert_text()`.
+
+### Typing with an input method (IME)
+
+Players typing Chinese, Japanese, Korean and many other scripts compose each
+word with an input method editor: they type the sound (`nihon`, `zhongwen`,
+`ㅎ` `ㅏ` `ㄴ`), the IME shows it as a *preedit* and offers candidates in a
+window near the caret, and picking one *commits* it. Text inputs handle this
+on their own:
+
+- While a text input has the focus, the engine allows IME for the window and
+  puts the candidate window at the input's caret. It turns IME off again when
+  the focus leaves text inputs, so keys in the rest of the game stay keys.
+- The preedit is drawn at the caret, underlined, with the IME's own caret in
+  it; the part the IME is converting is underlined thicker. It is not part of
+  the input's text: `ui.text(id)` is only what was committed, and
+  `ui.preedit(id)` is what is being composed.
+- The commit is typed like any text (`UiEvent::Changed`). A cancelled
+  composition leaves the field as it was.
+- While a composition goes on, Enter, Escape, Backspace, Delete, Home, End,
+  the arrows and select-all belong to the IME: Enter picks a candidate rather
+  than submitting, Escape cancels the composition rather than closing the
+  screen.
+- If the focus moves (a click, Tab, or `set_focus` from a system) in the
+  middle of a composition, the composition is dropped, not committed into the
+  next field, and the window system is told to forget it.
+- A field for digits, a key binding or a password can refuse IME:
+  `ui.text_input(root).ime_allowed(false)` (or `ui.set_ime_allowed(id, false)`).
+
+A game with text widgets of its own does the same with `ctx.input`:
+`set_ime_allowed(true)` while its widget has the focus,
+`set_ime_cursor_area(rect)` at its caret, `preedit()` and `preedit_cursor()` to
+draw the composition, `typed_text()` for what is committed, `composing()` to
+leave Enter and the arrows alone mid-composition, and `cancel_composition()`
+when the widget loses the focus.
+
+<div class="lang-pair">
+<div>
+
+```rust
+# use ponko::prelude::*;
+struct Chat {
+    open: bool,
+    text: String,
+}
+
+fn chat_box(ctx: &mut Ctx, chat: &mut Chat) {
+    ctx.input.set_ime_allowed(chat.open);
+    if !chat.open {
+        return;
+    }
+    let caret_x = 20.0 + ctx.gfx.measure_text(&chat.text, 18.0).x;
+    ctx.input.set_ime_cursor_area(Rect::new(caret_x, 400.0, 1.0, 18.0));
+    chat.text.push_str(ctx.input.typed_text()); // committed text, IME or not
+    let shown = format!("{}{}", chat.text, ctx.input.preedit()); // the composition, after the text
+    ctx.gfx.draw_text(&shown, vec2(20.0, 400.0), 18.0, Color::WHITE);
+}
+```
+
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:ime_own_widget}}
+```
+
+</div>
+</div>
+
+Tests replay compositions with input scenarios, through the same path as the
+window's events: `InputScenario::ime(tick, ImeEvent::preedit("にほん",
+Some((9, 9))))`, then `ImeEvent::Commit("日本".into())`; `ImeEvent::cancel()`
+cancels. In the JSON format the steps are `ime_preedit` (`text`, optional
+`cursor`), `ime_commit`, `ime_enabled` and `ime_disabled`.
+`tests/ime.rs` replays Japanese, pinyin and Hangul compositions, cancels, and
+focus moving mid-composition. `Ui::frame` takes the composition in
+`UiInput::preedit`, `preedit_cursor` and `composing`, and a custom host reads
+`ui.wants_ime()`, `ui.ime_area()` and `ui.composition_interrupted()` to drive
+its own window.
+
+On the desktop the window system's IME (Windows, macOS, X11 and Wayland)
+reaches the engine through winit. In a browser, where the canvas can't take
+composition events, the engine focuses a hidden text box at the caret while
+IME is allowed and reads the browser's composition events from it. World-space
+panels show no preedit and don't place the candidate window. The scripted
+tests check everything after the window system's events; each OS's own IME,
+and each browser's, is checked by hand.
 
 `ctx.ui.wants_pointer()` includes immediate and retained UI, including captured
 drags. `ctx.ui.wants_keyboard()` reports retained keyboard/gamepad ownership
@@ -662,6 +749,16 @@ are `uint32_t` holding the constants of the matching `PonkoUi*` enum, and an
 unknown value is an error. `PonkoUiPaint` is `UiPaint`; fonts come from
 `ponko_ctx_load_font`. Text is read back into a buffer you size with
 `ponko_ctx_ui_text` (call once with capacity 0 for the length).
+
+IME composition has the same calls in C: `ponko_ctx_ui_set_ime_allowed`,
+`ponko_ctx_ui_ime_allowed`, `ponko_ctx_ui_wants_ime`, `ponko_ctx_ui_preedit`,
+`ponko_ctx_ui_ime_area` and `ponko_ctx_ui_composition_interrupted` on a tree;
+`ponko_ctx_set_ime_allowed`, `ponko_ctx_set_ime_cursor_area`,
+`ponko_ctx_preedit`, `ponko_ctx_preedit_cursor`, `ponko_ctx_composing`,
+`ponko_ctx_typed_text`, `ponko_ctx_cancel_composition` and
+`ponko_ctx_feed_ime` (a `PonkoImeEvent`) on the context;
+`ponko_ctx_ui_frame_ime` runs a frame with a `PonkoUiComposition`, and
+`ponko_input_scenario_ime` adds a scenario step.
 
 `ponko_ctx_ui_frame` runs a frame by hand with a `PonkoUiInput`, like
 `Ui::frame`, which is how the C and C++ tests click buttons without a window.

@@ -96,7 +96,7 @@ report.assert_passed(); // or look at report.failure
   `checks_passed`, `failure_step`, `failure_tick`, ...) and
   `world.scenario_report_json()` for the whole report, failure included; C:
   `ponko_world_scenario_report` and `ponko_world_scenario_report_json`.
-- **Releasing input.** `ctx.input.cancel_scenario(&mut ctx.world, &mut ctx.time)`, a scenario that replaces
+- **Releasing input.** `ctx.cancel_scenario()`, a scenario that replaces
   it, a failed check and a tool's disconnect release every key, button and axis
   the scenario still holds. A run in game code that simply finishes leaves its
   input as it was, unless the scenario says `.release_when_done()`; a run a tool

@@ -1,10 +1,10 @@
 //! Sprite sheets, animation and tilemaps, checked headless. The built-in
 //! drawing systems are plain functions, so tests call them directly.
 
-use ponko::d2::Animation;
 #[allow(unused_imports)]
 use ponko::d2::{Sprite, Transform as Transform2D};
 use ponko::prelude::*;
+use ponko::sheet::Animation;
 
 fn in_tick(f: impl FnMut(&mut Ctx) + 'static) {
     Game::new("tiles", 800, 600).sim_system(f).run_headless(1, |_| {});
@@ -36,7 +36,7 @@ fn animations_show_their_frame_on_the_sprite() {
 fn tilemaps_draw_only_visible_tiles() {
     in_tick(|ctx| {
         let s = sheet(ctx);
-        let mut map = ponko::d2::TileMap::new(s, 1000, 1000); // 16 000 × 16 000 world units
+        let mut map = ponko::tilemap::TileMap::new(s, 1000, 1000); // 16 000 × 16 000 world units
         map.tiles.fill(1);
         map.set(0, 0, None);
         ctx.world.spawn((Transform2D::default(), map));
@@ -57,7 +57,7 @@ fn tilemaps_draw_only_visible_tiles() {
 fn tile_lookup_by_world_position() {
     in_tick(|ctx| {
         let s = sheet(ctx);
-        let mut map = ponko::d2::TileMap::new(s, 10, 5);
+        let mut map = ponko::tilemap::TileMap::new(s, 10, 5);
         let origin = vec2(100.0, 100.0);
         assert_eq!(map.tile_at(origin, vec2(100.0, 100.0)), Some(UVec2::new(0, 0)));
         assert_eq!(map.tile_at(origin, vec2(259.0, 179.0)), Some(UVec2::new(9, 4)));

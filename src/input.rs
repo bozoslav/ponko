@@ -5,7 +5,8 @@
 //! `gamepad_down`), what changed this frame (`*_pressed`, `*_released`),
 //! pointer position and movement, gamepad axes, the
 //! [`ActionMap`](crate::actions::ActionMap) and its queries (`action_down`,
-//! `action_axis`, ...), text typed this frame, and the cursor lock.
+//! `action_axis`, ...), text typed this frame, IME composition
+//! ([`ImeEvent`], `preedit`, `set_ime_allowed`), and the cursor lock.
 //!
 //! **When to call it:** in any system. Edges (`pressed`, `released`, wheel,
 //! typed text) last one frame and are cleared after the frame's systems; a
@@ -23,6 +24,9 @@
 use glam::Vec2;
 #[cfg(feature = "window")]
 use winit::keyboard::KeyCode;
+
+pub(crate) mod ime;
+pub use ime::ImeEvent;
 
 macro_rules! define_keys {
     ($($(#[$meta:meta])* $name:ident => $code:ident),* $(,)?) => {
@@ -46,6 +50,18 @@ macro_rules! define_keys {
             pub(crate) fn from_winit(code: KeyCode) -> Option<Key> {
                 match code {
                     $(KeyCode::$code => Some(Key::$name),)*
+                    _ => None,
+                }
+            }
+
+            /// The key a browser's `KeyboardEvent.code` names (the names
+            /// winit's key codes take after).
+            #[cfg(all(target_arch = "wasm32", feature = "window"))]
+            pub(crate) fn from_dom_code(code: &str) -> Option<Key> {
+                match code {
+                    $(stringify!($code) => Some(Key::$name),)*
+                    "MetaLeft" | "OSLeft" => Some(Key::LeftSuper),
+                    "MetaRight" | "OSRight" => Some(Key::RightSuper),
                     _ => None,
                 }
             }
@@ -407,6 +423,8 @@ pub struct Input {
     pub(crate) cursor_lock_changed: bool,
     /// Running input scenario and whether tools may start one.
     pub(crate) scenarios: crate::scenario::Scenarios,
+    /// IME composition and the requests for the window system.
+    pub(crate) ime: ime::ImeState,
 }
 
 impl Input {
@@ -425,6 +443,7 @@ impl Input {
             cursor_locked: false,
             cursor_lock_changed: false,
             scenarios: Default::default(),
+            ime: Default::default(),
         }
     }
 
@@ -449,8 +468,9 @@ impl Input {
     }
 
     /// Committed Unicode typed this frame, also readable when UI has focus.
-    /// Cleared with other input after frame systems. Does not include IME
-    /// composition/preedit. Physical keys remain separate.
+    /// Cleared with other input after frame systems. Text committed from an
+    /// IME composition arrives here too; the composition before that is
+    /// [`preedit`](Self::preedit). Physical keys remain separate.
     /// ```
     /// use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
@@ -526,6 +546,7 @@ impl Input {
             pad.end_frame();
         }
         self.typed_text.clear();
+        self.ime.end_frame();
         self.mouse_wheel = Vec2::ZERO;
         self.mouse_motion = Vec2::ZERO;
         self.mouse_pos_at_frame_start = self.mouse_pos;
@@ -542,7 +563,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
-    /// if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
+    /// if ctx.input.key_down(Key::Right) { pos.x += 200.0 * ctx.time.dt(); }
     /// # }
     /// ```
     #[must_use]
@@ -555,7 +576,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, paused: &mut bool) {
-    /// if ctx.key_pressed(Key::P) { *paused = !*paused; }
+    /// if ctx.input.key_pressed(Key::P) { *paused = !*paused; }
     /// # }
     /// ```
     #[must_use]
@@ -568,7 +589,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, charging: &mut bool) {
-    /// if ctx.key_released(Key::Space) { *charging = false; }
+    /// if ctx.input.key_released(Key::Space) { *charging = false; }
     /// # }
     /// ```
     #[must_use]
@@ -594,7 +615,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
-    /// if ctx.input.mouse_pressed(MouseButton::Left) { println!("click at {}", ctx.mouse_pos()); }
+    /// if ctx.input.mouse_pressed(MouseButton::Left) { println!("click at {}", ctx.input.mouse_pos()); }
     /// # }
     /// ```
     #[must_use]
@@ -621,7 +642,7 @@ impl Input {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
-    /// let target = ctx.mouse_pos();
+    /// let target = ctx.input.mouse_pos();
     /// # }
     /// ```
     #[must_use]
@@ -681,7 +702,7 @@ impl Input {
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
     /// if let Some(&pad) = ctx.input.gamepads().first() {
-    ///     *pos += ctx.input.gamepad_stick(pad, ponko::input::GamepadStick::Left) * 300.0 * ctx.dt();
+    ///     *pos += ctx.input.gamepad_stick(pad, ponko::input::GamepadStick::Left) * 300.0 * ctx.time.dt();
     /// }
     /// # }
     /// ```

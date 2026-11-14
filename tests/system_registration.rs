@@ -158,3 +158,41 @@ fn a_wrong_order_is_a_typed_error() {
     assert_eq!((error.first, error.second), ("second", "first"));
     assert!(error.to_string().contains("`first` already runs before `second`"));
 }
+
+#[test]
+fn built_in_systems_keep_their_names_when_added_from_systems() {
+    // `systems` is the one public path of these functions; the names they
+    // are listed under (plans, diagnostics, `remove_system` in C) stay the
+    // ones from before.
+    let game = Game::new("names", 1, 1)
+        .remove(Systems::FOLLOW_ATTACHMENTS)
+        .remove(Systems::REBUILD_SPATIAL_GRID)
+        .add(Phase::SimLast, ponko::systems::follow_attachments)
+        .add(Phase::SimLast, ponko::systems::rebuild_spatial_grid);
+    let names = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = names.clone();
+    game.add(Phase::SimLast, move |ctx: &mut Ctx| {
+        *seen.lock().unwrap() = ctx
+            .ecs_diagnostics()
+            .systems
+            .into_iter()
+            .map(|s| s.name)
+            .collect::<Vec<_>>();
+    })
+    .run_headless(1, |_| {});
+    let names = names.lock().unwrap();
+    for name in [
+        "ponko::sheet::animate_sprites",
+        "ponko::tilemap::draw_tilemaps",
+        "ponko::attach::follow_attachments",
+        "ponko::spatial::rebuild_spatial_grid",
+    ] {
+        assert!(names.iter().any(|n| n == name), "{name} missing from {names:?}");
+    }
+    for moved in [
+        "ponko::systems::follow_attachments",
+        "ponko::systems::rebuild_spatial_grid",
+    ] {
+        assert!(!names.iter().any(|n| n == moved), "{names:?}");
+    }
+}

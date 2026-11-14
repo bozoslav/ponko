@@ -19,7 +19,7 @@ use ponko::d3::{
 };
 #[allow(unused_imports)]
 #[cfg(feature = "physics3d")]
-use ponko::physics3d::{CollisionGroups, CollisionMesh};
+use ponko::d3::{CollisionGroups, CollisionMesh};
 use ponko::prelude::*;
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]

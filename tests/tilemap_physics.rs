@@ -2,8 +2,9 @@
 //! tiles, on merged rectangles and on per-tile collision shapes.
 #![cfg(feature = "physics")]
 
-use ponko::d2::{Collider, LevelOptions, RigidBody, TileMap, Transform as Transform2D};
+use ponko::d2::{Collider, RigidBody, Transform as Transform2D};
 use ponko::prelude::*;
+use ponko::tilemap::{LevelOptions, TileMap};
 
 fn fixture(name: &str) -> String {
     format!("{}/tests/fixtures/tilemaps/{name}", env!("CARGO_MANIFEST_DIR"))

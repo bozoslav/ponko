@@ -266,7 +266,7 @@ impl Audio {
 pub(crate) fn update_audio3d(ctx: &mut Ctx) {
     ctx.sync_audio_camera();
     let listener = ctx.audio.listener();
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let inverse_dt = if dt > 0.0 { dt.recip() } else { 0.0 };
     let velocity = ctx
         .audio

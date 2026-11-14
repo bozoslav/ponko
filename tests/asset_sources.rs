@@ -29,10 +29,10 @@ fn a_texture_loads_by_name_from_a_memory_source() {
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("tiles/red.png", png(3, 2)));
-        let red = ctx.load_texture("tiles/red.png");
+        let red = ctx.gfx.load_texture("tiles/red.png");
         assert_eq!((red.width(), red.height()), (3, 2));
         assert_eq!(
-            ctx.load_texture("tiles/red.png"),
+            ctx.gfx.load_texture("tiles/red.png"),
             red,
             "loading again returns the same handle"
         );
@@ -46,7 +46,7 @@ fn a_scene_and_the_texture_it_names_load_from_a_memory_source() {
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("red.png", png(2, 2)));
-        let red = ctx.load_texture("red.png");
+        let red = ctx.gfx.load_texture("red.png");
         let mut sprite = Sprite::new(red);
         sprite.z = 2.0;
         ctx.world.spawn((Transform2D::at(vec2(4.0, 5.0)), sprite));
@@ -62,7 +62,7 @@ fn a_scene_and_the_texture_it_names_load_from_a_memory_source() {
         assert_eq!(sprite.z, 2.0);
         assert_eq!(
             sprite.texture,
-            ctx.load_texture("red.png"),
+            ctx.gfx.load_texture("red.png"),
             "the scene loaded the source's texture"
         );
         assert_eq!((sprite.texture.width(), sprite.texture.height()), (2, 2));
@@ -114,7 +114,7 @@ fn corrupt_bytes_name_the_asset_and_its_source() {
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("broken.png", b"not a png".to_vec()));
-        ctx.load_texture("broken.png");
+        ctx.gfx.load_texture("broken.png");
     });
 }
 
@@ -166,9 +166,9 @@ fn repeated_loads_read_a_source_once() {
             reads: counted.clone(),
             bytes: png(1, 1),
         });
-        let first = ctx.load_texture("shared.png");
+        let first = ctx.gfx.load_texture("shared.png");
         for _ in 0..3 {
-            assert_eq!(ctx.load_texture("shared.png"), first);
+            assert_eq!(ctx.gfx.load_texture("shared.png"), first);
         }
     });
     assert_eq!(reads.get(), 1);
@@ -181,7 +181,11 @@ fn the_same_name_in_two_sources_is_two_assets_and_the_first_wins() {
             .add_source(MemorySource::new("first").with("shared.png", png(1, 1)));
         ctx.assets
             .add_source(MemorySource::new("second").with("shared.png", png(2, 2)));
-        assert_eq!(ctx.load_texture("shared.png").width(), 1, "the first source added wins");
+        assert_eq!(
+            ctx.gfx.load_texture("shared.png").width(),
+            1,
+            "the first source added wins"
+        );
     });
     game().run_headless(0, |ctx| {
         ctx.assets
@@ -189,7 +193,7 @@ fn the_same_name_in_two_sources_is_two_assets_and_the_first_wins() {
         ctx.assets
             .add_source(MemorySource::new("first").with("shared.png", png(1, 1)));
         assert_eq!(
-            ctx.load_texture("shared.png").width(),
+            ctx.gfx.load_texture("shared.png").width(),
             2,
             "swapped order, the other asset"
         );
@@ -202,7 +206,7 @@ fn a_name_only_in_a_later_source_falls_through_to_it() {
         ctx.assets.add_source(MemorySource::new("a"));
         ctx.assets
             .add_source(MemorySource::new("b").with("only-b.png", png(5, 1)));
-        assert_eq!(ctx.load_texture("only-b.png").width(), 5);
+        assert_eq!(ctx.gfx.load_texture("only-b.png").width(), 5);
     });
 }
 
@@ -210,13 +214,13 @@ fn a_name_only_in_a_later_source_falls_through_to_it() {
 fn sources_are_asked_before_the_assets_folder() {
     // assets/crab.png exists in this repo; a source's own crab.png wins.
     game().run_headless(0, |ctx| {
-        let from_folder = ctx.load_texture("crab.png");
+        let from_folder = ctx.gfx.load_texture("crab.png");
         assert_ne!((from_folder.width(), from_folder.height()), (7, 7));
     });
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("crab.png", png(7, 7)));
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         assert_eq!((crab.width(), crab.height()), (7, 7));
     });
 }
@@ -273,7 +277,7 @@ fn hot_reload_skips_assets_from_added_sources() {
         .run_headless(5, |ctx| {
             ctx.assets
                 .add_source(MemorySource::new("mem").with("red.png", png(1, 1)));
-            tex = Some(ctx.load_texture("red.png"));
+            tex = Some(ctx.gfx.load_texture("red.png"));
         });
     assert_eq!(tex.unwrap().width(), 1);
 }
@@ -295,7 +299,7 @@ fn embedded_files_load_by_name_like_files_in_assets() {
         );
 
         // From here on, loads by name look there first.
-        let crab = ctx.load_texture("sprites/crab.png");
+        let crab = ctx.gfx.load_texture("sprites/crab.png");
         ctx.assets.load_resource::<Tuning>(&mut ctx.world, "tuning.json");
         // ANCHOR_END: embedded
         assert!(crab.width() > 0);
@@ -328,17 +332,17 @@ fn a_sound_loads_by_name_from_a_memory_source() {
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("sfx/tone.wav", wav(8000, 4000)));
-        let tone = ctx.load_sound("sfx/tone.wav");
+        let tone = ctx.audio.load("sfx/tone.wav");
         // Without the `audio` feature nothing is decoded and sounds last 0 s.
         if cfg!(feature = "audio") {
             assert!((tone.seconds() - 0.5).abs() < 0.01, "{}", tone.seconds());
         }
         assert_eq!(
-            ctx.load_sound("sfx/tone.wav"),
+            ctx.audio.load("sfx/tone.wav"),
             tone,
             "loading again returns the same handle"
         );
-        ctx.play_sound(tone);
+        ctx.audio.play(tone);
     });
 }
 
@@ -361,9 +365,9 @@ fn repeated_sound_loads_read_a_source_once() {
     let counted = reads.clone();
     game().run_headless(0, move |ctx| {
         ctx.assets.add_source(CountingSounds(counted.clone()));
-        let first = ctx.load_sound("tone.wav");
+        let first = ctx.audio.load("tone.wav");
         for _ in 0..3 {
-            assert_eq!(ctx.load_sound("tone.wav"), first);
+            assert_eq!(ctx.audio.load("tone.wav"), first);
         }
     });
     assert_eq!(reads.get(), 1);
@@ -376,7 +380,7 @@ fn the_same_sound_name_in_two_sources_is_two_sounds_and_the_first_wins() {
             .add_source(MemorySource::new("first").with("tone.wav", wav(8000, 800)));
         ctx.assets
             .add_source(MemorySource::new("second").with("tone.wav", wav(8000, 8000)));
-        let tone = ctx.load_sound("tone.wav");
+        let tone = ctx.audio.load("tone.wav");
         if cfg!(feature = "audio") {
             assert!((tone.seconds() - 0.1).abs() < 0.01, "the first source wins");
         }
@@ -388,7 +392,7 @@ fn a_missing_sound_reports_the_sources_and_folders_searched() {
     let caught = std::panic::catch_unwind(|| {
         game().run_headless(0, |ctx| {
             ctx.assets.add_source(MemorySource::new("mem"));
-            ctx.load_sound("nowhere.wav");
+            ctx.audio.load("nowhere.wav");
         });
     })
     .unwrap_err();
@@ -408,7 +412,7 @@ fn corrupt_sound_bytes_name_the_asset_and_its_source() {
     game().run_headless(0, |ctx| {
         ctx.assets
             .add_source(MemorySource::new("mem").with("broken.wav", b"not audio".to_vec()));
-        ctx.load_sound("broken.wav");
+        ctx.audio.load("broken.wav");
     });
 }
 
@@ -483,7 +487,7 @@ fn music_streams_by_name_from_a_memory_source() {
             "loading again returns the same handle"
         );
         assert_ne!(
-            ctx.load_sound("music/theme.wav"),
+            ctx.audio.load("music/theme.wav"),
             theme,
             "the same name decoded whole is another sound"
         );
@@ -624,7 +628,7 @@ fn a_scene_loads_the_assets_custom_component_fields_name() {
         assert_eq!(item.icon, "icons/apple.png", "the component keeps the name");
         // Loaded before the entities: the inventory has all three already.
         assert_eq!(ctx.asset_inventory().get(AssetClass::Texture).live, 3);
-        assert_eq!(ctx.load_texture(&item.icon).width(), 3);
+        assert_eq!(ctx.gfx.load_texture(&item.icon).width(), 3);
     });
     assert_eq!(
         reads.take(),

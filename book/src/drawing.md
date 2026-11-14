@@ -5,14 +5,14 @@ renderer.
 
 ## Sprites as components
 
-Give an entity a `Transform2D` and a `Sprite`, and the built-in
+Give an entity a `d2::Transform` and a `Sprite`, and the built-in
 `draw_sprites` system draws it every frame:
 
 <div class="lang-pair">
 <div>
 
 ```rust
-let crab = ctx.load_texture("crab.png");
+let crab = ctx.gfx.load_texture("crab.png");
 ctx.world.spawn((
     ponko::d2::Transform::at(vec2(400.0, 300.0)).rotated(0.3).scaled(vec2(2.0, 2.0)),
     ponko::d2::Sprite::new(crab).with_color(Color::RED).with_z(1.0),
@@ -29,7 +29,7 @@ ctx.world.spawn((
 </div>
 </div>
 
-- `Transform2D`: `position`, `rotation` (radians, clockwise on screen),
+- `d2::Transform`: `position`, `rotation` (radians, clockwise on screen),
   `scale` (negative flips).
 - `Sprite`: `texture`, `color` (tint), `z` (higher is on top), `pivot`
   (`(0.5, 0.5)` is the center).
@@ -42,9 +42,9 @@ For UI, effects and quick prototypes, draw directly every frame:
 <div>
 
 ```rust
-# let crab = ctx.load_texture("crab.png");
+# let crab = ctx.gfx.load_texture("crab.png");
 ctx.gfx.clear(Color::hex(0x203040));
-ctx.draw(crab, vec2(100.0, 100.0));
+ctx.gfx.draw(crab, vec2(100.0, 100.0));
 let params = DrawParams::default()
     .with_rotation(0.5)
     .with_scale(vec2(2.0, 2.0))
@@ -72,7 +72,7 @@ what they need with `with_*` methods (`with_scale`, `with_rotation`,
 
 ## Textures
 
-- `ctx.load_texture("path.png")` loads an image file. PNG and JPEG load
+- `ctx.gfx.load_texture("path.png")` loads an image file. PNG and JPEG load
   in every default build, with no `3d` feature (see [Image formats](#image-formats)).
 - `ctx.gfx.create_texture(w, h, &rgba)` makes one from pixels.
 
@@ -89,7 +89,7 @@ what they need with `with_*` methods (`with_scale`, `with_rotation`,
 
 In C++, `Sprite` values are `ponko::sprite` (`sprite_of(texture, tint, z)`).
 They can be spawned, read and set, but not used as query columns, because
-the engine stores sprites in a Rust layout. `Transform2D` can.
+the engine stores sprites in a Rust layout. `d2::Transform` can.
 
 ## Blend modes and sprite shaders
 
@@ -119,9 +119,9 @@ outline):
 <div>
 
 ```rust
-# use ponko::d2::{BlendMode, SpriteMaterialDesc};
-let crab = ctx.load_texture("crab.png");
-let noise = ctx.load_texture("noise.png"); // grey: where it burns first
+# use ponko::render::{BlendMode, SpriteMaterialDesc};
+let crab = ctx.gfx.load_texture("crab.png");
+let noise = ctx.gfx.load_texture("noise.png"); // grey: where it burns first
 // A glow that brightens what's behind it:
 ctx.world.spawn((
     ponko::d2::Transform::at(vec2(400.0, 300.0)),
@@ -257,12 +257,12 @@ saved, as for sprites.
 
 ## 2D lights and shadows
 
-Lights are components too. A `d2::PointLight2D` shines from its entity's
-`d2::Transform`, a `d2::SpotLight2D` shines a cone along the transform's
-rotation, and a `d2::DirectionalLight2D` (a sun or moon, no transform needed)
+Lights are components too. A `d2::PointLight` shines from its entity's
+`d2::Transform`, a `d2::SpotLight` shines a cone along the transform's
+rotation, and a `d2::DirectionalLight` (a sun or moon, no transform needed)
 lights the whole view from one direction. An ambient light
 (`ctx.gfx.set_ambient_light2d`) is what places no light reaches get. With
-`shadows: true`, a light is blocked by `d2::Occluder2D` shapes: a box, a
+`shadows: true`, a light is blocked by `d2::Occluder` shapes: a box, a
 circle, a polygon, a thin line, or the outline of a tile map's walls.
 
 <div class="lang-pair">
@@ -270,6 +270,7 @@ circle, a polygon, a thin line, or the outline of a tile map's walls.
 
 ```rust
 # use ponko::d2::*;
+# use ponko::tilemap::TileMap;
 # let tiles = ctx.gfx.create_texture(32, 16, &[200; 32 * 16 * 4]);
 # let tile_normals = ctx.gfx.create_texture(32, 16, &[128; 32 * 16 * 4]);
 # let crate_box = tiles;
@@ -283,7 +284,7 @@ ctx.gfx.set_ambient_light2d(Some(Color::rgb(0.1, 0.11, 0.18)));
 // A warm torch whose light the walls and the crate block.
 ctx.world.spawn((
     Transform::at(vec2(160.0, 120.0)),
-    PointLight2D {
+    PointLight {
         color: Color::rgb(1.0, 0.6, 0.3),
         radius: 250.0,
         shadows: true,
@@ -293,7 +294,7 @@ ctx.world.spawn((
 // A lantern: a cone along its rotation (here, to the right).
 ctx.world.spawn((
     Transform::at(vec2(60.0, 60.0)),
-    SpotLight2D { angle: 0.4, ..Default::default() },
+    SpotLight { angle: 0.4, ..Default::default() },
 ));
 // The walls (tile 1) of the map cast shadows; so does a crate.
 let walls = map.occluder(|tile| tile == WALL);
@@ -301,7 +302,7 @@ ctx.world.spawn((Transform::at(Vec2::ZERO), map, walls));
 ctx.world.spawn((
     Transform::at(vec2(220.0, 150.0)),
     Sprite::new(crate_box),
-    Occluder2D::rect(vec2(16.0, 16.0)),
+    Occluder::rect(vec2(16.0, 16.0)),
 ));
 // Bumpy tiles: light shades their bevels.
 ctx.gfx.set_normal_map(tiles, Some(tile_normals));
@@ -392,7 +393,7 @@ Game::new("Art test", 1280, 720)
         }
     })
     .setup(|ctx| {
-        let level = ctx.load_texture("level.png");
+        let level = ctx.gfx.load_texture("level.png");
         ctx.world.insert_resource(Level(level));
     })
     .run();
@@ -420,7 +421,7 @@ second.
 <div>
 
 ```rust
-if ctx.key_pressed(Key::F12) {
+if ctx.input.key_pressed(Key::F12) {
     ctx.gfx.save_screenshot("shot.png");
 }
 ```

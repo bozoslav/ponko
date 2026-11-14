@@ -54,10 +54,10 @@ fn textures_and_sounds_are_counted_with_their_bytes() {
 #[test]
 fn loading_the_same_texture_again_adds_nothing() {
     headless(|ctx| {
-        let _ = ctx.load_texture("crab.png");
+        let _ = ctx.gfx.load_texture("crab.png");
         let base = ctx.asset_inventory();
         for _ in 0..10 {
-            let _ = ctx.load_texture("crab.png");
+            let _ = ctx.gfx.load_texture("crab.png");
         }
         assert!(ctx.asset_inventory().growth_since(&base).is_empty());
     });
@@ -280,8 +280,8 @@ fn models_showing_a_freed_mesh_or_material_are_listed_as_dangling() {
         let other = ctx.gfx.create_material(MaterialDesc::default());
         let e = ctx
             .world
-            .spawn((Transform3D::default(), Model::new(mesh), ModelMaterial(other)));
-        ctx.world.spawn((Transform3D::default(), Model::new(Mesh::NONE)));
+            .spawn((d3::Transform::default(), Model::new(mesh), ModelMaterial(other)));
+        ctx.world.spawn((d3::Transform::default(), Model::new(Mesh::NONE)));
         assert!(ctx.asset_inventory().dangling.is_empty());
         ctx.free(other);
         ctx.free(mesh);
@@ -306,7 +306,7 @@ fn a_model_keeping_a_freed_mesh_never_shows_the_next_one() {
     headless(|ctx| {
         let material = ctx.gfx.default_material();
         let old = ctx.gfx.create_mesh(&MeshData::cube(1.0), material);
-        let holder = ctx.world.spawn((Transform3D::default(), Model::new(old)));
+        let holder = ctx.world.spawn((d3::Transform::default(), Model::new(old)));
         ctx.free(old);
         let new = ctx.gfx.create_mesh(&MeshData::cube(1.0), material);
         let slot = ponko::__ffi::SLOT_MASK;
@@ -360,7 +360,7 @@ fn records_say_when_and_by_whom_each_handle_was_made() {
             done.set(true);
         })
         .run_headless(5, |ctx| {
-            let _ = ctx.load_texture("crab.png");
+            let _ = ctx.gfx.load_texture("crab.png");
         });
     assert!(checked.get());
 }
@@ -471,7 +471,7 @@ mod files {
                 for i in 0..30 {
                     let name = format!("models/house{i}.glb");
                     let house = ctx.gfx.load_mesh(&name);
-                    ctx.world.spawn((Transform3D::default(), Model::new(house)));
+                    ctx.world.spawn((d3::Transform::default(), Model::new(house)));
                 }
                 assert!(!ctx.asset_inventory().growth_since(&base).is_empty());
                 for i in 0..30 {

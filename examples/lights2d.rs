@@ -17,6 +17,7 @@
 
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::tilemap::TileMap;
 use serde_json::json;
 
 #[path = "common/web_smoke.rs"]
@@ -89,11 +90,11 @@ fn setup(ctx: &mut Ctx) {
         let mut t = Transform::at(at);
         t.rotation = rng.range(0.0, 1.5);
         let sprite = Sprite::new(crate_texture).with_z(1.0);
-        ctx.world.spawn((t, sprite, Occluder2D::rect(vec2(20.0, 20.0))));
+        ctx.world.spawn((t, sprite, Occluder::rect(vec2(20.0, 20.0))));
     }
 
     // A crab in the middle of the room, lit flat (it has no normal map).
-    let crab = ctx.load_texture("crab.png");
+    let crab = ctx.gfx.load_texture("crab.png");
     ctx.world
         .spawn((Transform::at(vec2(400.0, 300.0)), Sprite::new(crab).with_z(1.0)));
 
@@ -108,7 +109,7 @@ fn setup(ctx: &mut Ctx) {
     ];
     for (i, &color) in colors.iter().enumerate() {
         let center = vec2(130.0 + (i % 3) as f32 * 270.0, 160.0 + (i / 3) as f32 * 280.0);
-        let light = PointLight2D {
+        let light = PointLight {
             color,
             radius: 230.0,
             intensity: 1.3,
@@ -127,7 +128,7 @@ fn setup(ctx: &mut Ctx) {
     // The lantern: a spot light at the mouse.
     let lantern = ctx.world.spawn((
         Transform::at(vec2(400.0, 300.0)),
-        SpotLight2D {
+        SpotLight {
             color: Color::rgb(1.0, 0.95, 0.8),
             radius: 360.0,
             angle: 0.45,
@@ -178,7 +179,7 @@ fn controls(ctx: &mut Ctx) {
         if dungeon.many.is_empty() {
             let mut rng = Rng::new(3);
             for _ in 0..100 {
-                let light = PointLight2D {
+                let light = PointLight {
                     color: Color::rgb(rng.range(0.3, 1.0), rng.range(0.3, 1.0), rng.range(0.3, 1.0)),
                     radius: 70.0,
                     intensity: 0.8,
@@ -201,7 +202,7 @@ fn controls(ctx: &mut Ctx) {
             }
         }
     }
-    let lights = ctx.world.query::<&PointLight2D>().count() + ctx.world.query::<&SpotLight2D>().count();
+    let lights = ctx.world.query::<&PointLight>().count() + ctx.world.query::<&SpotLight>().count();
     let ticks = ctx.world.resource::<Ticks>().0;
     dungeon.smoke.frame(
         ctx,

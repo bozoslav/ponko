@@ -1,4 +1,5 @@
 //! Retained UI on a screen in the 3D world: `cargo run --features 3d --example ui_panel`.
+use ponko::render::{MaterialDesc, MeshData};
 use ponko::{d3::*, prelude::*, ui::UiLayout};
 pub fn setup(ctx: &mut Ctx) {
     ctx.scene3d.camera.position = vec3(0.0, 1.6, 1.0);

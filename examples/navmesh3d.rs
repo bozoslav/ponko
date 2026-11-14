@@ -6,6 +6,7 @@ use ponko::d3::*;
 #[cfg(feature = "navmesh")]
 use ponko::nav::{NavBakeSettings, NavSource};
 use ponko::prelude::*;
+use ponko::render::MeshData;
 
 // ANCHOR: bake
 fn navigation() -> NavMesh {

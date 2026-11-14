@@ -11,7 +11,7 @@ fn main() {
     let shot = std::env::var("SHOT").ok();
     Game::new("Ponko: point and spot lights", 1280, 720)
         .system(move |ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
             if ctx.time.frame() == 5

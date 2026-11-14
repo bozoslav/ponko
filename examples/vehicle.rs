@@ -13,6 +13,8 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{Material, MaterialDesc, MeshData};
+use ponko::terrain::{TerrainMaterialDesc, TextureKind};
 
 const N: usize = 129;
 const SIZE: f32 = 512.0;
@@ -63,7 +65,7 @@ fn spawn_car(ctx: &mut Ctx, at: Vec3) -> Entity {
 /// speed.
 fn drive(ctx: &mut Ctx) {
     let controls = *ctx.world.resource::<Controls>();
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let car = ctx.world.resource::<Player>().car;
     let forward = forward_speed(&ctx.world, car);
     let wanted = controls.steer * 0.6 / (1.0 + forward.abs() * 0.08);
@@ -110,12 +112,12 @@ fn forward_speed(world: &World, car: Entity) -> f32 {
 fn keys(ctx: &mut Ctx) {
     let axis = |plus: bool, minus: bool| plus as i32 as f32 - minus as i32 as f32;
     let controls = Controls {
-        throttle: axis(ctx.key_down(Key::W), ctx.key_down(Key::S)),
-        steer: axis(ctx.key_down(Key::D), ctx.key_down(Key::A)),
-        handbrake: ctx.key_down(Key::Space),
+        throttle: axis(ctx.input.key_down(Key::W), ctx.input.key_down(Key::S)),
+        steer: axis(ctx.input.key_down(Key::D), ctx.input.key_down(Key::A)),
+        handbrake: ctx.input.key_down(Key::Space),
     };
     *ctx.world.resource_mut::<Controls>() = controls;
-    if ctx.key_pressed(Key::R) {
+    if ctx.input.key_pressed(Key::R) {
         let car = ctx.world.resource::<Player>().car;
         if let Some(t) = ctx.world.get_mut::<Transform>(car) {
             let p = t.position;
@@ -151,7 +153,7 @@ fn chase(ctx: &mut Ctx) {
     };
     let back = -t.forward().with_y(0.0).normalize_or(Vec3::Z);
     let eye = t.position + back * 9.0 + Vec3::Y * 3.5;
-    let k = (ctx.dt() * 4.0).min(1.0);
+    let k = (ctx.time.dt() * 4.0).min(1.0);
     ctx.scene3d.camera.position = ctx.scene3d.camera.position.lerp(eye, k);
     let look = Transform::at(ctx.scene3d.camera.position).looking_at(t.position + Vec3::Y);
     ctx.scene3d.camera.rotation = look.rotation;
@@ -225,7 +227,7 @@ fn grass(ctx: &mut Ctx) -> Material {
 /// The script for `HEADLESS=1`: full throttle for 4 s, then steer right
 /// for 2 s, then brake to a stop and hold it with the handbrake.
 fn autopilot(ctx: &mut Ctx) {
-    let t = ctx.time.sim_tick() as f32 * ctx.dt();
+    let t = ctx.time.sim_tick() as f32 * ctx.time.dt();
     let car = ctx.world.resource::<Player>().car;
     let rolling = forward_speed(&ctx.world, car) > 0.3;
     *ctx.world.resource_mut::<Controls>() = Controls {

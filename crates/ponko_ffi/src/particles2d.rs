@@ -5,8 +5,10 @@
 //! draw with the sprites at the settings' `z`, with a `PONKO_BLEND_*` mode
 //! and optionally a sprite material.
 
-use ponko::d2::{ParticleEmitter, ParticleSettings, ParticleShape, ParticleSpace, SpriteMaterial};
+use ponko::d2::{ParticleEmitter, ParticleSettings, ParticleShape};
+use ponko::particles::ParticleSpace;
 use ponko::prelude::{Ctx, Vec2};
+use ponko::render::SpriteMaterial;
 
 use crate::ctx::{ctx_access, out};
 use crate::particles::{PonkoParticleColorKey, PonkoParticleKey, curve_from_c, entity, finite, gradient_from_c, keys};
@@ -207,7 +209,7 @@ unsafe fn settings_from_c(s: &PonkoParticleSettings2D) -> Result<ParticleSetting
         },
         _ => return Err(invalid("unknown particle shape")),
     };
-    let blend = ponko::d2::BlendMode::from_u32(s.blend)
+    let blend = ponko::render::BlendMode::from_u32(s.blend)
         .ok_or_else(|| invalid("blend must be 0 (alpha), 1 (additive), 2 (multiply) or 3 (premultiplied)"))?;
     let space = match s.space {
         0 => ParticleSpace::World,

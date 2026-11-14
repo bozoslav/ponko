@@ -88,7 +88,7 @@ impl Graphics {
     /// ```no_run
     /// # use ponko::prelude::*;
     /// # fn f(ctx: &mut Ctx) {
-    /// let bricks = ctx.load_texture("bricks.png");
+    /// let bricks = ctx.gfx.load_texture("bricks.png");
     /// let wall = ctx.gfx.create_material(ponko::render::MaterialDesc::default().with_texture(bricks).with_roughness(0.9));
     /// # }
     /// ```
@@ -1551,7 +1551,7 @@ impl Ctx {
 
     /// Advances visual particle pools after frame systems.
     pub(crate) fn update_particles(&mut self) {
-        let dt = self.dt();
+        let dt = self.time.dt();
         let mut emitters = self
             .world
             .query::<(&mut super::ParticleEmitter3D, &super::Transform3D)>();
@@ -1570,7 +1570,7 @@ impl Ctx {
     /// game runs it after the frame systems, so draw systems (and the
     /// renderer) see this frame's pose.
     pub(crate) fn update_animators(&mut self) {
-        let dt = self.dt();
+        let dt = self.time.dt();
         #[cfg(feature = "physics3d")]
         let mut finished: Vec<ponko_ecs::Entity> = Vec::new();
         #[cfg(feature = "physics3d")]
@@ -1719,7 +1719,7 @@ impl Ctx {
         {
             return; // no drawable 3D scene
         }
-        let time = (self.time.elapsed() as f32, self.dt());
+        let time = (self.time.elapsed() as f32, self.time.dt());
         self.gfx.assets3d.decals_supported = self.gfx.supports_decals();
         self.gfx.assets3d.gi_supported = self.gfx.renderer.as_ref().is_some_and(|r| r.supports_gi());
         let fallback = if self.scene3d.passes.effects.iter().any(|e| e.material.is_none())

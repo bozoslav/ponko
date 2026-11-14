@@ -49,7 +49,7 @@ mod sealed {
 /// [`Compute`](crate::render::Compute), [`Effect`](crate::render::Effect),
 /// [`GpuBuffer`](crate::render::GpuBuffer), [`InstanceBatch`](crate::render::InstanceBatch),
 /// [`TextureArray`](crate::terrain::TextureArray) and [`TerrainTile`](crate::terrain::TerrainTile)
-/// (with `physics3d`, [`CollisionMesh`](crate::physics3d::CollisionMesh) too).
+/// (with `physics3d`, [`CollisionMesh`](crate::d3::CollisionMesh) too).
 /// Render targets are textures.
 ///
 /// Check one with [`Ctx::is_live`] and release it with [`Ctx::free`].

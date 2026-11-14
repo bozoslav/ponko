@@ -33,7 +33,7 @@ unsafe extern "C" fn slice_rows(chunk: *const PonkoChunk, user: *mut c_void) {
 }
 
 fn allocations() -> u64 {
-    ponko::alloc_count::alloc_counts().count
+    ponko::perf::alloc_counts().count
 }
 
 const MARKERS: [&std::ffi::CStr; 5] = [c"C0", c"C1", c"C2", c"C3", c"C4"];

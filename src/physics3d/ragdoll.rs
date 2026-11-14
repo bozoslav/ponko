@@ -13,7 +13,7 @@ use ponko_ecs::Component;
 /// is, and how far its joint to the parent bone bends.
 /// ```
 /// use ponko::prelude::*;
-/// let thigh = ponko::physics3d::RagdollBone::new("thigh_l", 0.08).swing(0.9).twist(0.2);
+/// let thigh = ponko::d3::RagdollBone::new("thigh_l", 0.08).swing(0.9).twist(0.2);
 /// assert_eq!(thigh.radius, 0.08);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
@@ -37,7 +37,7 @@ impl RagdollBone {
     /// A bone at `joint`, `radius` thick, with the default limits.
     /// ```
     /// use ponko::prelude::*;
-    /// assert_eq!(ponko::physics3d::RagdollBone::new("spine", 0.12).swing, 0.7);
+    /// assert_eq!(ponko::d3::RagdollBone::new("spine", 0.12).swing, 0.7);
     /// ```
     #[must_use]
     pub fn new(joint: &str, radius: f32) -> Self {
@@ -52,7 +52,7 @@ impl RagdollBone {
     /// With a swing cone of `radians`.
     /// ```
     /// use ponko::prelude::*;
-    /// assert_eq!(ponko::physics3d::RagdollBone::new("arm", 0.05).swing(1.2).swing, 1.2);
+    /// assert_eq!(ponko::d3::RagdollBone::new("arm", 0.05).swing(1.2).swing, 1.2);
     /// ```
     #[must_use]
     pub fn swing(self, radians: f32) -> Self {
@@ -61,7 +61,7 @@ impl RagdollBone {
     /// With a twist limit of `radians` either way.
     /// ```
     /// use ponko::prelude::*;
-    /// assert_eq!(ponko::physics3d::RagdollBone::new("arm", 0.05).twist(0.1).twist, 0.1);
+    /// assert_eq!(ponko::d3::RagdollBone::new("arm", 0.05).twist(0.1).twist, 0.1);
     /// ```
     #[must_use]
     pub fn twist(self, radians: f32) -> Self {
@@ -82,7 +82,7 @@ struct Bone {
 }
 
 /// A skeleton in physics' hands, on the entity with the [`Skeleton`] and
-/// [`Transform3D`]; made by [`Ctx::start_ragdoll`], ended by
+/// [`d3::Transform`](crate::d3::Transform); made by [`Ctx::start_ragdoll`], ended by
 /// [`Ctx::stop_ragdoll`]. While it lasts, the entity's
 /// [`Animator`](crate::anim::Animator) is paused and the pose follows the bodies.
 /// Push it with [`Physics3D::apply_impulse`] on [`body`](Self::body).
@@ -96,7 +96,7 @@ struct Bone {
 ///         ponko::anim::Joint { name: "head".into(), parent: Some(0), rest: ponko::d3::Transform::at(vec3(0.0, 0.8, 0.0)) },
 ///     ]);
 ///     let body = ctx.world.spawn((ponko::d3::Transform::default(), skeleton));
-///     ctx.start_ragdoll(body, &[ponko::physics3d::RagdollBone::new("hips", 0.15), ponko::physics3d::RagdollBone::new("head", 0.1)]).unwrap();
+///     ctx.start_ragdoll(body, &[ponko::d3::RagdollBone::new("hips", 0.15), ponko::d3::RagdollBone::new("head", 0.1)]).unwrap();
 ///     let ragdoll = ctx.world.get::<ponko::d3::Ragdoll>(body).unwrap();
 ///     assert_eq!(ragdoll.bodies().count(), 2);
 /// });
@@ -119,7 +119,7 @@ impl Ragdoll3D {
     /// # Game::new("t", 1, 1).physics3d(Vec3::ZERO).run_headless(1, |ctx| {
     /// # let skeleton = ponko::anim::Skeleton::new(vec![ponko::anim::Joint { name: "hips".into(), parent: None, rest: ponko::d3::Transform::default() }]);
     /// # let e = ctx.world.spawn((ponko::d3::Transform::default(), skeleton));
-    /// ctx.start_ragdoll(e, &[ponko::physics3d::RagdollBone::new("hips", 0.15)]).unwrap();
+    /// ctx.start_ragdoll(e, &[ponko::d3::RagdollBone::new("hips", 0.15)]).unwrap();
     /// let hips = ctx.world.get::<ponko::d3::Ragdoll>(e).unwrap().body(0).unwrap();
     /// ctx.physics3d.apply_impulse(hips, vec3(0.0, 0.0, -50.0));
     /// # });
@@ -133,7 +133,7 @@ impl Ragdoll3D {
     /// # Game::new("t", 1, 1).physics3d(Vec3::ZERO).run_headless(1, |ctx| {
     /// # let skeleton = ponko::anim::Skeleton::new(vec![ponko::anim::Joint { name: "hips".into(), parent: None, rest: ponko::d3::Transform::default() }]);
     /// # let e = ctx.world.spawn((ponko::d3::Transform::default(), skeleton));
-    /// # ctx.start_ragdoll(e, &[ponko::physics3d::RagdollBone::new("hips", 0.15)]).unwrap();
+    /// # ctx.start_ragdoll(e, &[ponko::d3::RagdollBone::new("hips", 0.15)]).unwrap();
     /// for (joint, body) in ctx.world.get::<ponko::d3::Ragdoll>(e).unwrap().bodies() {
     ///     println!("joint {joint} is body {body:?}");
     /// }
@@ -149,7 +149,7 @@ impl Ragdoll3D {
     /// # Game::new("t", 1, 1).physics3d(Vec3::ZERO).run_headless(1, |ctx| {
     /// # let skeleton = ponko::anim::Skeleton::new(vec![ponko::anim::Joint { name: "hips".into(), parent: None, rest: ponko::d3::Transform::default() }]);
     /// # let e = ctx.world.spawn((ponko::d3::Transform::default(), skeleton));
-    /// # ctx.start_ragdoll(e, &[ponko::physics3d::RagdollBone::new("hips", 0.15)]).unwrap();
+    /// # ctx.start_ragdoll(e, &[ponko::d3::RagdollBone::new("hips", 0.15)]).unwrap();
     /// assert!(!ctx.world.get::<ponko::d3::Ragdoll>(e).unwrap().is_blending());
     /// # });
     /// ```
@@ -167,7 +167,7 @@ impl Ctx {
     /// Hands `entity`'s skeleton to physics, posed as it is now: one capsule
     /// body per bone in `bones`, joined to the nearest chosen bone above it.
     /// Needs [`Game::physics3d`](crate::game::Game::physics3d), and a [`Skeleton`] and
-    /// [`Transform3D`] on `entity`. Starting again restarts it.
+    /// [`d3::Transform`](crate::d3::Transform) on `entity`. Starting again restarts it.
     ///
     /// Remove or disable the entity's own collider or [`Character3D`] first,
     /// or the bones collide with it. Bones joined to each other don't collide.
@@ -323,7 +323,7 @@ impl Ctx {
     /// # Game::new("t", 1, 1).physics3d(Vec3::ZERO).run_headless(1, |ctx| {
     /// # let skeleton = ponko::anim::Skeleton::new(vec![ponko::anim::Joint { name: "hips".into(), parent: None, rest: ponko::d3::Transform::default() }]);
     /// # let e = ctx.world.spawn((ponko::d3::Transform::default(), skeleton));
-    /// # ctx.start_ragdoll(e, &[ponko::physics3d::RagdollBone::new("hips", 0.15)]).unwrap();
+    /// # ctx.start_ragdoll(e, &[ponko::d3::RagdollBone::new("hips", 0.15)]).unwrap();
     /// ctx.stop_ragdoll(e, 0.5); // half a second back to the animation
     /// # });
     /// ```

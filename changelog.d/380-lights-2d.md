@@ -1,10 +1,10 @@
 ### Added
-- 2D lights, without the `3d` feature: `d2::PointLight2D`, `d2::SpotLight2D`
-  (a cone along the transform's rotation) and `d2::DirectionalLight2D`
+- 2D lights, without the `3d` feature: `d2::PointLight`, `d2::SpotLight`
+  (a cone along the transform's rotation) and `d2::DirectionalLight`
   components, and an ambient light (`Graphics::set_ambient_light2d`). They
   light sprites, tile maps and particles; UI and text stay unlit. Lights add
   up and multiply the world, up to twice its color.
-- 2D shadows: a light with `shadows: true` is blocked by `d2::Occluder2D`
+- 2D shadows: a light with `shadows: true` is blocked by `d2::Occluder`
   shapes (`rect`, `circle`, `polygon`, `line`), which turn, scale and mirror
   with their transform; `TileMap::occluder` outlines a map's wall tiles as one
   occluder with merged edges.

@@ -38,7 +38,7 @@ fn main() {
     let quit_after = env_number("SECONDS", 0.0);
 
     Game::new("Ponko: bunnymark", 1280, 720).vsync(false).run(move |ctx| {
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
         let mut crabs: Vec<Crab> = Vec::new();
 
@@ -68,11 +68,11 @@ fn main() {
             frames_since += 1;
 
             if ctx.input.mouse_down(MouseButton::Left) {
-                spawn(&mut crabs, 1000, ctx.mouse_pos());
+                spawn(&mut crabs, 1000, ctx.input.mouse_pos());
             }
 
             let update_start = ponko::perf::Instant::now();
-            let dt = ctx.dt();
+            let dt = ctx.time.dt();
             let bounds = ctx.window_size();
             let gravity = 600.0;
             for c in &mut crabs {
@@ -101,7 +101,7 @@ fn main() {
                 update_ms_sum = 0.0;
             }
 
-            if ctx.key_pressed(Key::Escape) || (quit_after > 0.0 && ctx.time.elapsed() >= quit_after) {
+            if ctx.input.key_pressed(Key::Escape) || (quit_after > 0.0 && ctx.time.elapsed() >= quit_after) {
                 ctx.quit();
             }
         }

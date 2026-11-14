@@ -6,7 +6,7 @@
 use std::ffi::c_char;
 
 use ponko::__ffi;
-use ponko::d3::StreamedLod;
+use ponko::render::StreamedLod;
 use ponko::streaming::AssetState;
 use ponko::streaming::ResidencyKind;
 use ponko::streaming::ResidencyStats;

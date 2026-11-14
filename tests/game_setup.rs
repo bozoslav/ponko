@@ -81,7 +81,7 @@ mod template {
     pub fn game() -> ConfiguredGame {
         Game::new("Template", 640, 480)
             .system(|ctx| {
-                if ctx.key_pressed(Key::Right) {
+                if ctx.input.key_pressed(Key::Right) {
                     ctx.world.resource_mut::<Steps>().0 += 1;
                 }
             })

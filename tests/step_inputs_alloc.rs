@@ -11,10 +11,10 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[allow(unused_imports)]
-use ponko::alloc_count::CountingAllocator;
 use ponko::d3::{NavAgent as NavAgent3D, NavMesh as NavMesh3D};
 use ponko::nav::{NavBakeSettings, NavSource};
+#[allow(unused_imports)]
+use ponko::perf::CountingAllocator;
 use ponko::prelude::*;
 use ponko::render::MeshData;
 use ponko::{prelude::Systems, systems};

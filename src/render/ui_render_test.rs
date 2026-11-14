@@ -788,8 +788,8 @@ fn mixed_screen(painter: &Painter, scale: f32, immediate_text: f32) -> (Image, [
         Rect::new(180.0, 20.0, 120.0, 40.0),
     ];
     ctx.ui.immediate.style.text_size = immediate_text;
-    ctx.ui.immediate.panel(&mut ctx.gfx, rects[2]);
-    ctx.ui.immediate.button(&mut ctx.gfx, &ctx.input, rects[3], "Run");
+    ctx.immediate_ui().panel(rects[2]);
+    ctx.immediate_ui().button(rects[3], "Run");
     let scaled = |r: Rect| Rect {
         min: r.min * scale,
         max: r.max * scale,
@@ -863,5 +863,96 @@ fn immediate_widgets_match_the_retained_ones_at_1x_and_2x() {
     assert!(
         immediate.y < retained.y * 0.7,
         "retained {retained}, immediate {immediate}"
+    );
+}
+
+/// A focused text input holding "to " and, at its caret, `preedit`
+/// (composed with an IME, cursor `cursor`), drawn at 2x. Returns the
+/// picture, the field's inner rectangle and the field's fill.
+fn composing_field(
+    painter: &Painter,
+    preedit: &str,
+    cursor: Option<(usize, usize)>,
+    committed: &str,
+) -> (Image, crate::camera::Rect, [u8; 4]) {
+    use crate::ui::UiLayout;
+    let scale = 2.0;
+    let size = vec2(400.0, 80.0) * scale;
+    let mut screen = painter.screen(size);
+    let ctx = &mut screen.ctx;
+    ctx.ui.set_scale(scale);
+    let root = ctx.ui.root().layout(UiLayout::fill()).id();
+    let field = ctx.ui.text_input(root).layout(UiLayout::fixed(360.0, 40.0)).id();
+    ctx.ui.push_screen(root, false);
+    ctx.ui.set_focus(field);
+    let input = UiInput {
+        text: format!("to {committed}"),
+        preedit: preedit.to_string(),
+        preedit_cursor: cursor,
+        composing: !preedit.is_empty(),
+        ..Default::default()
+    };
+    ctx.ui.frame(size, &input);
+    assert_eq!(ctx.ui.preedit(field).unwrap_or(""), preedit);
+    ctx.draw_retained_ui();
+    let rect = ctx.ui.rect(field).unwrap().expand(-6.0 * scale);
+    let fill = ctx.ui.paint(field).unwrap().hover.to_rgba8();
+    (painter.shot(&mut screen, size), rect, fill)
+}
+
+/// The longest horizontal run of pixels away from `fill` in `rect`, per row
+/// from the top of `rect`.
+fn runs(image: &Image, rect: crate::camera::Rect, fill: [u8; 4]) -> Vec<u32> {
+    (rect.min.y as u32..rect.max.y as u32)
+        .map(|y| {
+            let (mut best, mut run) = (0, 0);
+            for x in rect.min.x as u32..rect.max.x as u32 {
+                let p = image.pixel(x, y);
+                if (0..3).any(|c| p[c].abs_diff(fill[c]) > 80) {
+                    run += 1;
+                    best = best.max(run);
+                } else {
+                    run = 0;
+                }
+            }
+            best
+        })
+        .collect()
+}
+
+#[test]
+fn an_ime_preedit_is_underlined_and_committed_text_is_not() {
+    let Some(painter) = Painter::new() else { return };
+    let word = "nihon";
+    let (composing, rect, fill) = composing_field(&painter, word, Some((5, 5)), "");
+    // The negative control: the same letters committed draw no underline.
+    let (committed, _, _) = composing_field(&painter, "", None, word);
+    let width = {
+        let mut screen = painter.screen(vec2(8.0, 8.0));
+        screen
+            .ctx
+            .gfx
+            .measure_text_ex(word, crate::text::Font::DEFAULT, 2.0 * 20.0)
+            .x
+    };
+    let (with, without) = (runs(&composing, rect, fill), runs(&committed, rect, fill));
+    let longest = |r: &[u32]| r.iter().copied().max().unwrap_or(0) as f32;
+    eprintln!(
+        "underline: {} px with a preedit, {} without; the word is {width} px",
+        longest(&with),
+        longest(&without)
+    );
+    assert!(longest(&with) >= 0.8 * width, "the preedit is underlined: {with:?}");
+    assert!(longest(&without) < 0.5 * width, "committed text is not: {without:?}");
+
+    // The part being converted is underlined thicker than the rest.
+    let (converting, _, _) = composing_field(&painter, word, Some((0, 5)), "");
+    let thick = |r: &[u32]| r.iter().filter(|&&n| n as f32 >= 0.8 * width).count();
+    let converting = runs(&converting, rect, fill);
+    assert!(
+        thick(&converting) > thick(&with),
+        "converting: {} rows, composing: {} rows",
+        thick(&converting),
+        thick(&with)
     );
 }

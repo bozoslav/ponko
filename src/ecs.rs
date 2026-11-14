@@ -64,13 +64,13 @@ impl Transform2D {
     }
 }
 
-/// Makes an entity visible: drawn at its [`Transform2D`] by the built-in
+/// Makes an entity visible: drawn at its [`d2::Transform`](crate::d2::Transform) by the built-in
 /// [`draw_sprites`] system.
 ///
 /// ```
 /// # use ponko::prelude::*;
 /// # fn setup(ctx: &mut Ctx) {
-/// let crab = ctx.load_texture("crab.png");
+/// let crab = ctx.gfx.load_texture("crab.png");
 /// ctx.world.spawn((
 ///     ponko::d2::Transform::at(vec2(400.0, 300.0)),
 ///     ponko::d2::Sprite::new(crab).with_color(Color::RED).with_z(1.0),
@@ -140,7 +140,7 @@ impl Sprite {
     }
 }
 
-/// Built-in system: draws every entity that has a [`Transform2D`] and a
+/// Built-in system: draws every entity that has a [`d2::Transform`](crate::d2::Transform) and a
 /// [`Sprite`]. [`Game`](crate::game::Game) runs it every frame by default.
 ///
 /// Replace it with your own renderer like this:

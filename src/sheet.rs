@@ -14,7 +14,7 @@ use ponko_ecs::Component;
 /// ```
 /// # use ponko::prelude::*;
 /// # fn setup(ctx: &mut Ctx) {
-/// let tex = ctx.load_texture("crab.png"); // say it holds 16 × 16 frames
+/// let tex = ctx.gfx.load_texture("crab.png"); // say it holds 16 × 16 frames
 /// let sheet = SpriteSheet::new(tex, 16, 16);
 /// ctx.world.spawn((ponko::d2::Transform::at(vec2(100.0, 100.0)), sheet.sprite(3)));
 /// # }
@@ -98,11 +98,11 @@ impl SpriteSheet {
 }
 
 /// Plays frames of a [`SpriteSheet`] on an entity's [`Sprite`]. The built-in
-/// [`animate_sprites`] system advances it every frame.
+/// [`animate_sprites`](crate::systems::animate_sprites) system advances it every frame.
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// # use ponko::d2::Animation;
+/// # use ponko::sheet::Animation;
 /// # fn setup(ctx: &mut Ctx, sheet: SpriteSheet) {
 /// ctx.world.spawn((
 ///     ponko::d2::Transform::at(vec2(200.0, 200.0)),
@@ -146,7 +146,7 @@ impl Animation {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::Animation;
+    /// # use ponko::sheet::Animation;
     /// # fn f(sheet: SpriteSheet) {
     /// let explode = Animation::new(sheet, 8..16, 24.0).once();
     /// # }
@@ -160,7 +160,7 @@ impl Animation {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::Animation;
+    /// # use ponko::sheet::Animation;
     /// # fn f(sheet: SpriteSheet) {
     /// let walk = Animation::new(sheet, 4..8, 10.0);
     /// assert_eq!(walk.current_frame(), 4);
@@ -182,7 +182,7 @@ impl Animation {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # use ponko::d2::Animation;
+    /// # use ponko::sheet::Animation;
     /// # fn cleanup(ctx: &mut Ctx) {
     /// let done: Vec<Entity> = ctx.world.query::<(Entity, &Animation)>().iter()
     ///     .filter(|(_, a)| a.finished())
@@ -197,17 +197,10 @@ impl Animation {
     }
 }
 
-/// Built-in system: advances every [`Animation`] and shows its frame on the
-/// entity's [`Sprite`]. [`Game`](crate::game::Game) runs it every frame, before
-/// [`draw_sprites`](crate::systems::draw_sprites).
-///
-/// ```no_run
-/// # use ponko::prelude::*;
-/// // Animations driven by your own clock instead:
-/// Game::new("t", 800, 600).remove(Systems::ANIMATE_SPRITES).run(|_| {});
-/// ```
-pub fn animate_sprites(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+/// The system behind [`systems::animate_sprites`](crate::systems::animate_sprites); it keeps
+/// this path for its name (`ponko::sheet::animate_sprites`).
+pub(crate) fn animate_sprites(ctx: &mut Ctx) {
+    let dt = ctx.time.dt();
     ctx.world
         .query::<(&mut Animation, &mut Sprite)>()
         .par_for_each(|(a, s)| {

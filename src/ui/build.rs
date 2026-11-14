@@ -800,6 +800,19 @@ impl UiBuilder<'_> {
         self.ui.set_enabled(self.id, enabled);
         self
     }
+    /// Let a text input take IME composition, or not (for digits, a key
+    /// binding or a password); see [`Ui::set_ime_allowed`].
+    /// ```
+    /// use ponko::prelude::*;
+    /// let mut ui = ponko::ui::Ui::default();
+    /// let root = ui.root().id();
+    /// let pin = ui.text_input(root).ime_allowed(false).id();
+    /// assert!(!ui.ime_allowed(pin));
+    /// ```
+    pub fn ime_allowed(self, allowed: bool) -> Self {
+        self.ui.set_ime_allowed(self.id, allowed);
+        self
+    }
     /// The node its screen opens on: every [`push_screen`](Ui::push_screen)
     /// of the screen focuses it, so Enter (or a gamepad's South button)
     /// presses it at once; see [`Ui::set_initial_focus`].

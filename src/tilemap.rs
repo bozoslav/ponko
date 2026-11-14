@@ -37,14 +37,14 @@ use crate::sheet::SpriteSheet;
 use ponko_ecs::Component;
 
 /// A grid of tiles, each a frame of `sheet` or empty. Put it on an entity
-/// with a [`Transform2D`]: its position is the map's top-left corner (the
-/// rotation and scale are ignored). The built-in [`draw_tilemaps`] system
+/// with a [`d2::Transform`](crate::d2::Transform): its position is the map's top-left corner (the
+/// rotation and scale are ignored). The built-in [`draw_tilemaps`](crate::systems::draw_tilemaps) system
 /// draws the tiles the camera can see, so maps can be huge.
 ///
 /// ```
 /// # use ponko::prelude::*;
 /// # fn setup(ctx: &mut Ctx, tiles: SpriteSheet) {
-/// let mut map = ponko::d2::TileMap::new(tiles, 200, 100); // 200 × 100 tiles, all empty
+/// let mut map = ponko::tilemap::TileMap::new(tiles, 200, 100); // 200 × 100 tiles, all empty
 /// for x in 0..200 {
 ///     map.set(x, 99, Some(0)); // a floor of tile 0
 /// }
@@ -172,8 +172,8 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(map: &mut ponko::d2::TileMap) {
-    /// use ponko::d2::TileMap;
+    /// # fn f(map: &mut ponko::tilemap::TileMap) {
+    /// use ponko::tilemap::TileMap;
     /// map.set_flipped(2, 3, Some(5), TileMap::FLIP_X); // tile 5, mirrored
     /// assert_eq!(map.flip(2, 3), TileMap::FLIP_X);
     /// # }
@@ -207,7 +207,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(map: &mut ponko::d2::TileMap) {
+    /// # fn f(map: &mut ponko::tilemap::TileMap) {
     /// const WATER: u16 = 8;
     /// map.animate(WATER, &[(8, 0.2), (9, 0.2), (10, 0.2)]); // every water tile ripples
     /// # }
@@ -235,7 +235,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(map: &mut ponko::d2::TileMap) {
+    /// # fn f(map: &mut ponko::tilemap::TileMap) {
     /// map.set(3, 4, Some(7));
     /// map.set(3, 5, None);
     /// # }
@@ -250,7 +250,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn f(map: &ponko::d2::TileMap) {
+    /// # fn f(map: &ponko::tilemap::TileMap) {
     /// let solid = map.get(10, 2).is_some();
     /// # }
     /// ```
@@ -268,7 +268,7 @@ impl TileMap {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// # fn paint(ctx: &mut Ctx, map: &mut ponko::d2::TileMap) {
+    /// # fn paint(ctx: &mut Ctx, map: &mut ponko::tilemap::TileMap) {
     /// if let Some(tile) = map.tile_at(Vec2::ZERO, ctx.mouse_world()) {
     ///     map.set(tile.x, tile.y, Some(1));
     /// }
@@ -282,15 +282,9 @@ impl TileMap {
     }
 }
 
-/// Built-in system: draws the visible tiles of every [`TileMap`].
-/// [`Game`](crate::game::Game) runs it every frame, before
-/// [`draw_sprites`](crate::systems::draw_sprites).
-///
-/// ```no_run
-/// # use ponko::prelude::*;
-/// Game::new("No maps here", 800, 600).remove(Systems::DRAW_TILEMAPS).run(|_| {});
-/// ```
-pub fn draw_tilemaps(ctx: &mut Ctx) {
+/// The system behind [`systems::draw_tilemaps`](crate::systems::draw_tilemaps); it keeps
+/// this path for its name (`ponko::tilemap::draw_tilemaps`).
+pub(crate) fn draw_tilemaps(ctx: &mut Ctx) {
     let view = ctx.camera.visible_rect();
     let center = (view.min + view.max) * 0.5;
     let time = ctx.time.elapsed();

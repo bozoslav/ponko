@@ -15,6 +15,8 @@ use std::collections::HashMap;
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{Material, MaterialDesc, Sky};
+use ponko::terrain::{TerrainTile, TerrainTileData};
 
 const N: usize = 129;
 const TILE: f32 = 256.0;
@@ -70,7 +72,7 @@ fn surface(s: Surface) -> Surface {
 
 /// A cell's tile: still being built, or in the world.
 enum Tile {
-    Building(ponko::stream::Job<TerrainTileData>),
+    Building(ponko::streaming::Job<TerrainTileData>),
     Live(Entity, TerrainTile),
 }
 
@@ -85,7 +87,7 @@ fn tile_data(corner: Vec3) -> TerrainTileData {
 fn main() {
     let bench = std::env::var("BENCH").is_ok();
     let shot = std::env::var("SHOT").ok();
-    let mut cells = ponko::stream::CellStreamer::new(TILE, LOAD, KEEP);
+    let mut cells = ponko::streaming::CellStreamer::new(TILE, LOAD, KEEP);
     let mut tiles: HashMap<(i32, i32), Tile> = HashMap::new();
     let mut ground: Option<Material> = None;
     let (mut yaw, mut speed, mut altitude) = (0.4f32, if bench { 600.0f32 } else { 120.0 }, 90.0f32);
@@ -94,26 +96,26 @@ fn main() {
     Game::new("Ponko: streaming", 1280, 720)
         .vsync(!bench)
         .system(move |ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
-            let dt = ctx.dt();
-            if ctx.key_down(Key::Left) {
+            let dt = ctx.time.dt();
+            if ctx.input.key_down(Key::Left) {
                 yaw += dt * 0.8;
             }
-            if ctx.key_down(Key::Right) {
+            if ctx.input.key_down(Key::Right) {
                 yaw -= dt * 0.8;
             }
-            if ctx.key_down(Key::W) {
+            if ctx.input.key_down(Key::W) {
                 speed = (speed + 80.0 * dt).min(600.0);
             }
-            if ctx.key_down(Key::S) {
+            if ctx.input.key_down(Key::S) {
                 speed = (speed - 80.0 * dt).max(0.0);
             }
-            if ctx.key_down(Key::E) {
+            if ctx.input.key_down(Key::E) {
                 altitude += 40.0 * dt;
             }
-            if ctx.key_down(Key::Q) {
+            if ctx.input.key_down(Key::Q) {
                 altitude = (altitude - 40.0 * dt).max(5.0);
             }
             // Fly on, keeping above the hills ahead.
@@ -129,7 +131,7 @@ fn main() {
             cells.update(at, STARTS);
             for &cell in cells.to_load() {
                 let corner = cells.corner(cell);
-                tiles.insert(cell, Tile::Building(ponko::stream::Job::spawn(move || tile_data(corner))));
+                tiles.insert(cell, Tile::Building(ponko::streaming::Job::spawn(move || tile_data(corner))));
             }
             for cell in cells.to_drop() {
                 // A job still building is dropped with its result.

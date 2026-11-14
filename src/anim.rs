@@ -1,5 +1,5 @@
-//! Sprite and skeletal animation, clips, blending and IK.
-pub use crate::sheet::{Animation, SpriteSheet, animate_sprites};
+//! Skeletal animation, clips, blending and IK (feature `3d`). Sprite-sheet
+//! animation is [`sheet`](crate::sheet).
 #[cfg(feature = "3d")]
 pub use crate::three::{
     AnimationClip, AnimationCondition, AnimationEvent, AnimationGraph, AnimationGraphError, AnimationLayer,

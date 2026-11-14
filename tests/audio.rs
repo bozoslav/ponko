@@ -44,7 +44,7 @@ fn generated_sounds_know_their_length() {
     in_tick(|ctx| {
         let beep = ctx.audio.create(8000, &vec![0.0; 4000]);
         assert!((beep.seconds() - 0.5).abs() < 1e-3, "{}", beep.seconds());
-        let playing = ctx.play_sound(beep);
+        let playing = ctx.audio.play(beep);
         ctx.audio.stop(playing); // silent headless, but fine to call
     });
 }
@@ -54,7 +54,7 @@ fn generated_sounds_know_their_length() {
 fn wav_files_load() {
     let path = temp_file("tone.wav", &wav(22_050, &vec![1000; 22_050 / 4]));
     in_tick(move |ctx| {
-        let tone = ctx.load_sound(&path);
+        let tone = ctx.audio.load(&path);
         assert!((tone.seconds() - 0.25).abs() < 0.01, "{}", tone.seconds());
         ctx.audio.play_ex(
             tone,
@@ -73,7 +73,7 @@ fn wav_files_load() {
 fn files_that_are_not_sound_say_so() {
     let path = temp_file("bad.ogg", b"this is not audio");
     Game::new("audio", 1, 1).run_headless(0, move |ctx| {
-        ctx.load_sound(&path);
+        ctx.audio.load(&path);
     });
 }
 
@@ -81,7 +81,7 @@ fn files_that_are_not_sound_say_so() {
 #[should_panic(expected = "not found in assets/")]
 fn missing_sounds_say_where_they_looked() {
     Game::new("audio", 1, 1).run_headless(0, |ctx| {
-        ctx.load_sound("no-such-sound.ogg");
+        ctx.audio.load("no-such-sound.ogg");
     });
 }
 
@@ -90,8 +90,8 @@ fn missing_sounds_say_where_they_looked() {
 fn loading_a_sound_file_twice_gives_the_same_sound() {
     let path = temp_file("twice.wav", &wav(22_050, &vec![1000; 2205]));
     in_tick(move |ctx| {
-        let a = ctx.load_sound(&path);
-        let b = ctx.load_sound(&path);
+        let a = ctx.audio.load(&path);
+        let b = ctx.audio.load(&path);
         assert_eq!(a, b);
         assert_ne!(a, ctx.audio.create(8000, &[0.0; 80]));
     });

@@ -67,7 +67,7 @@ fn setup(ctx: &mut Ctx) {
 /// Sim system: moves every walker and bounces it off the world's edges.
 pub fn walk(ctx: &mut Ctx) {
     let settings = ctx.world.resource::<Settings>();
-    let (size, step) = (settings.size, settings.speed * ctx.dt());
+    let (size, step) = (settings.size, settings.speed * ctx.time.dt());
     let mut bounces = 0;
     ctx.world.query::<&mut Walker>().for_each(|w| {
         w.position += w.heading * step;

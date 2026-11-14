@@ -13,7 +13,7 @@ struct Pos(f32);
 struct Ticks(Vec<u64>);
 
 fn fall(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world.query::<&mut Pos>().for_each(|p| p.0 -= 10.0 * dt);
 }
 
@@ -103,7 +103,7 @@ fn commands_from_setup_and_systems_apply() {
 #[test]
 fn textures_load_without_a_gpu() {
     let world = Game::new("t", 1, 1).run_headless(1, |ctx| {
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
         assert!(crab.width() > 0 && crab.height() > 0);
         let made = ctx.gfx.create_texture(2, 3, &[255; 24]);
         assert_eq!((made.width(), made.height()), (2, 3));
@@ -128,7 +128,7 @@ struct Log(Vec<(&'static str, u64, f32)>);
 
 fn logger(name: &'static str) -> impl FnMut(&mut Ctx) {
     move |ctx| {
-        let (tick, dt) = (ctx.time.sim_tick(), ctx.dt());
+        let (tick, dt) = (ctx.time.sim_tick(), ctx.time.dt());
         ctx.world.resource_mut::<Log>().0.push((name, tick, dt));
     }
 }
@@ -253,8 +253,8 @@ fn run_without_the_window_feature_says_to_use_run_headless() {
 #[test]
 fn loading_a_texture_twice_gives_the_same_handle() {
     Game::new("cache", 1, 1).run_headless(0, |ctx| {
-        let a = ctx.load_texture("crab.png");
-        let b = ctx.load_texture("crab.png");
+        let a = ctx.gfx.load_texture("crab.png");
+        let b = ctx.gfx.load_texture("crab.png");
         assert_eq!(a, b);
         assert_ne!(
             a,

@@ -22,7 +22,7 @@ system after the systems that move things:
 </div>
 </div>
 
-Every tick, each attached entity's `Transform2D` gets:
+Every tick, each attached entity's `d2::Transform` gets:
 
 - **position**: the followed entity's position plus `offset`, turned by its
   rotation and stretched by its scale (so flipping a sprite with a negative
@@ -61,7 +61,7 @@ component.
 
 ## In 3D
 
-`d3::Attached` (`Attached3D`) does the same for `Transform3D`: its
+`attach::Attached3D` does the same for `Transform3D`: its
 `offset` is a whole transform in the followed entity's space, so the
 attached entity's position, rotation **and** scale are the parent's
 composed with it (a lamp on a post, a sword in a hand, a turret on a tank
@@ -74,7 +74,7 @@ kinds, parents first; chains, loops and despawns work as in 2D.
 let post = world.spawn((ponko::d3::Transform::at(vec3(4.0, 0.0, 0.0)),));
 let lamp = world.spawn((
     ponko::d3::Transform::default(),
-    ponko::d3::Attached::to(post).offset(ponko::d3::Transform::at(vec3(0.0, 3.0, 0.0))),
+    ponko::attach::Attached3D::to(post).offset(ponko::d3::Transform::at(vec3(0.0, 3.0, 0.0))),
 ));
 # let _ = lamp;
 # }

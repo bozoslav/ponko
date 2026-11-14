@@ -10,6 +10,7 @@
 #[allow(unused_imports)]
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::spatial::SpatialGrid;
 
 /// Reflected, so tools and agents (ponko-mcp) can read and change velocities.
 #[derive(serde::Serialize, serde::Deserialize, Component)]
@@ -29,7 +30,7 @@ fn env_number(name: &str, default: f64) -> f64 {
 fn flocking(bounds: Vec2) -> impl FnMut(&mut Ctx) {
     let mut grid = SpatialGrid::with_data(RADIUS);
     move |ctx: &mut Ctx| {
-        let dt = ctx.dt();
+        let dt = ctx.time.dt();
         // Keep boids that are close in space close in memory, so neighbor
         // lookups hit the cache (1M boids: 62 -> 40 ms/tick).
         if ctx
@@ -38,17 +39,17 @@ fn flocking(bounds: Vec2) -> impl FnMut(&mut Ctx) {
             .is_multiple_of(ponko::spatial::SpatialGrid::<()>::SORT_EVERY)
         {
             ctx.world
-                .sort_by::<Transform2D>(|t| ponko::spatial::spatial_key(t.position, RADIUS));
+                .sort_by::<d2::Transform>(|t| ponko::spatial::spatial_key(t.position, RADIUS));
         }
         grid.rebuild_with_data(
             ctx.world
-                .query::<(Entity, &Transform2D, &Vel)>()
+                .query::<(Entity, &d2::Transform, &Vel)>()
                 .iter()
                 .map(|(e, t, v)| (e, t.position, v.0)),
         );
         let grid = &grid;
         ctx.world
-            .query::<(Entity, &mut Transform2D, &mut Vel)>()
+            .query::<(Entity, &mut d2::Transform, &mut Vel)>()
             .par_for_each(|(me, t, v)| {
                 let (mut away, mut heading, mut center, mut n) = (Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, 0.0);
                 grid.for_each_in_radius(t.position, RADIUS, |o| {
@@ -75,29 +76,29 @@ fn flocking(bounds: Vec2) -> impl FnMut(&mut Ctx) {
 // ANCHOR_END: flocking
 
 fn controls(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::Space) {
+    if ctx.input.key_pressed(Key::Space) {
         if ctx.time.is_paused() {
             ctx.time.resume()
         } else {
             ctx.time.pause()
         }
     }
-    if ctx.key_pressed(Key::Period) {
+    if ctx.input.key_pressed(Key::Period) {
         ctx.time.step();
     }
     for (key, speed) in [(Key::Num1, 1.0), (Key::Num2, 4.0), (Key::Num3, 16.0), (Key::Num4, 64.0)] {
-        if ctx.key_pressed(key) {
+        if ctx.input.key_pressed(key) {
             ctx.time.set_speed(speed);
         }
     }
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }
 
 fn spawn_boids(ctx: &mut Ctx, n: usize, bounds: Vec2) {
     ctx.world.reflect::<Vel>();
-    let tex = ctx.load_texture("crab.png");
+    let tex = ctx.gfx.load_texture("crab.png");
     let mut s = 0x9E37_79B9_7F4A_7C15u64;
     let mut rand = move || {
         s ^= s << 13;
@@ -111,7 +112,7 @@ fn spawn_boids(ctx: &mut Ctx, n: usize, bounds: Vec2) {
         let vel = Vec2::from_angle(rand() * std::f32::consts::TAU) * MIN_SPEED;
         let tint = Color::rgb(0.5 + rand() * 0.5, 0.7 + rand() * 0.3, 0.9);
         batch.push((
-            Transform2D::at(pos).scaled(Vec2::splat(0.5)),
+            d2::Transform::at(pos).scaled(Vec2::splat(0.5)),
             Sprite::new(tex).with_color(tint),
             Vel(vel),
         ));

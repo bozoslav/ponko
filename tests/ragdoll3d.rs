@@ -4,14 +4,14 @@
 #[cfg(feature = "3d")]
 use ponko::anim::{Joint, Skeleton};
 #[allow(unused_imports)]
+#[cfg(feature = "physics3d")]
+use ponko::d3::RagdollBone;
+#[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use ponko::d3::Transform;
 #[allow(unused_imports)]
 #[cfg(feature = "physics3d")]
 use ponko::d3::{Collider, Ragdoll, RigidBody};
-#[allow(unused_imports)]
-#[cfg(feature = "physics3d")]
-use ponko::physics3d::RagdollBone;
 use ponko::prelude::*;
 
 const GRAVITY: Vec3 = Vec3::new(0.0, -9.81, 0.0);

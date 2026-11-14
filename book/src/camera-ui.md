@@ -26,7 +26,7 @@ pixels per world unit). Its methods do the usual jobs:
 | Want to | Call |
 |---|---|
 | follow something | `ctx.camera.look_at(hero)` every frame |
-| zoom toward the mouse | `ctx.camera.zoom_at(ctx.mouse_pos(), 1.1)` |
+| zoom toward the mouse | `ctx.camera.zoom_at(ctx.input.mouse_pos(), 1.1)` |
 | know what the mouse points at | `ctx.mouse_world()` |
 | put a label on a unit | `ctx.camera.world_to_screen(unit)` |
 | skip work for things off screen | `ctx.camera.visible_rect().contains(p)` |
@@ -106,7 +106,7 @@ from a corner and a size, like Rust's `Rect::new`.
 <div>
 
 ```rust
-ctx.draw_text("Hello", vec2(20.0, 20.0), 24.0, Color::WHITE);
+ctx.gfx.draw_text("Hello", vec2(20.0, 20.0), 24.0, Color::WHITE);
 let size = ctx.gfx.measure_text("Paused", 32.0); // for centering
 let title = ctx.gfx.load_font("fonts/Title.ttf"); // TrueType or OpenType
 ctx.gfx.draw_text_ex("Colony", vec2(20.0, 60.0), TextParams::default().with_font(title).with_size(40.0));
@@ -249,15 +249,17 @@ Call them every frame:
 </div>
 </div>
 
-The widgets are on `ctx.ui.immediate` and say what they use: all of them
-draw through `ctx.gfx`, and a button also reads the mouse from `ctx.input`
-(C++: `ctx.ui_panel(rect)`, `ctx.ui_label(pos, text)`, `ctx.ui_button(rect, label)`).
+`ctx.immediate_ui()` hands out the widgets: it borrows their state
+(`ctx.ui.immediate`), the graphics service to draw and the input service to
+read the mouse, so each call takes only what to draw (C++:
+`ctx.ui_panel(rect)`, `ctx.ui_label(pos, text)`, `ctx.ui_button(rect, label)`).
+Keep it in a variable for several widgets (`let mut ui = ctx.immediate_ui();`)
+and let it go before using `ctx.gfx` or `ctx.input` again.
 
-- `panel(&mut ctx.gfx, rect)`: a background.
-- `label(&mut ctx.gfx, pos, text)`: text in the style's size and color;
-  returns the space it took, so you can stack lines.
-- `button(&mut ctx.gfx, &ctx.input, rect, label)`: `true` on the frame it's
-  clicked.
+- `panel(rect)`: a background.
+- `label(pos, text)`: text in the style's size and color; returns the space
+  it took, so you can stack lines.
+- `button(rect, label)`: `true` on the frame it's clicked.
 - `ctx.ui.immediate.style` sets colors, text size and padding (C++: `ui_style()`,
   `set_ui_style(s)`). It follows the screen UI's theme: `ctx.ui.set_theme(..)`
   styles the retained tree and these widgets together, and keeps the fields

@@ -3,8 +3,8 @@
 //! `Ctx::spawn_level` and `ponko::tilemap` in Rust.
 use std::ffi::c_char;
 
-use ponko::d2::{AutoTile, LevelLayer, LevelObject, LevelOptions, LevelRoot, ObjectShape, TileMap};
 use ponko::prelude::Vec2;
+use ponko::tilemap::{AutoTile, LevelLayer, LevelObject, LevelOptions, LevelRoot, ObjectShape, TileMap};
 use ponko_ecs::Entity;
 
 use crate::ctx::{PonkoCtx, ctx_access, out, text};
@@ -681,7 +681,7 @@ pub unsafe extern "C" fn ponko_tilemap_solid_rects(
 
 /// Spawns fixed physics bodies for the tiles of `entity`'s tilemap whose
 /// value is in `solid_tiles`, merged into few rectangles, where the map's
-/// `Transform2D` puts it. Writes how many to `out_count`. Needs the
+/// `d2::Transform` puts it. Writes how many to `out_count`. Needs the
 /// `physics` feature; despawn the bodies (rigid body + collider entities)
 /// to take the collision away.
 /// ```

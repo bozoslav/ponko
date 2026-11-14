@@ -3,10 +3,16 @@
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use ponko::anim::Joint;
+use ponko::anim::{
+    AnimationCondition, AnimationGraph, AnimationLayer, AnimationParameter, AnimationState, AnimationTrack,
+    AnimationTransition, Animator, AttachToJoint, Interpolation, JointAnimation, Motion, ParamId, Skeleton, SkinOf,
+    StateId,
+};
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{MaterialDesc, MeshData};
 
 const JOINTS: usize = 8;
 const STEP: f32 = 0.5;
@@ -80,7 +86,7 @@ fn sway(ctx: &mut Ctx) {
     ctx.world.query::<&mut Animator>().for_each(|a| {
         a.set_bool(ParamId(0), ((time / 3.0) as u32).is_multiple_of(2));
     });
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }

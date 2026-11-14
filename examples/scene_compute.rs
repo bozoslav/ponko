@@ -20,6 +20,7 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{ComputePass, MaterialDesc, MeshData, ScreenEffect, Sky};
 
 /// The light meter: the average brightness of 16 x 9 points of the frame,
 /// blended into what the texel held (`c.value`, the last frames' average)
@@ -50,7 +51,7 @@ fn effect(p: Pixel) -> vec3<f32> {
 fn main() {
     Game::new("Ponko: scene compute", 1280, 720)
         .system(|ctx: &mut Ctx| {
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
             // A day in 40 seconds: the sun rises, crosses and sets.

@@ -81,8 +81,8 @@ impl ProfileScope {
     /// (apart from one atomic load) while profiling is off.
     ///
     /// ```
-    /// use ponko::scope::ProfileScope;
-    /// static SCOPE: ponko::scope::ProfileScope = ponko::scope::ProfileScope::new("expensive");
+    /// use ponko::perf::ProfileScope;
+    /// static SCOPE: ponko::perf::ProfileScope = ponko::perf::ProfileScope::new("expensive");
     /// let _timing = SCOPE.enter();
     /// ```
     #[inline]
@@ -182,7 +182,7 @@ pub fn scope_named(name: &str) -> &'static ProfileScope {
 macro_rules! profile_scope {
     ($name:expr) => {
         let _ponko_scope_guard = {
-            static SCOPE: $crate::scope::ProfileScope = $crate::scope::ProfileScope::new($name);
+            static SCOPE: $crate::perf::ProfileScope = $crate::perf::ProfileScope::new($name);
             SCOPE.enter()
         };
     };

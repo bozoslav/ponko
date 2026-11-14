@@ -76,13 +76,13 @@ use ponko::prelude::*;
 
 fn main() {
     Game::new("My Game", 800, 600).run(|ctx| {
-        let sprite = ctx.load_texture("crab.png");
+        let sprite = ctx.gfx.load_texture("crab.png");
         let mut position = vec2(400.0, 300.0);
         move |ctx: &mut Ctx| {
-            if ctx.key_down(Key::Right) { position.x += 200.0 * ctx.dt(); }
-            if ctx.key_down(Key::Left) { position.x -= 200.0 * ctx.dt(); }
-            if ctx.key_pressed(Key::Escape) { ctx.quit(); }
-            ctx.draw(sprite, position);
+            if ctx.input.key_down(Key::Right) { position.x += 200.0 * ctx.time.dt(); }
+            if ctx.input.key_down(Key::Left) { position.x -= 200.0 * ctx.time.dt(); }
+            if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
+            ctx.gfx.draw(sprite, position);
         }
     });
 }
@@ -106,8 +106,8 @@ use ponko::prelude::*;
 struct Velocity(Vec2);
 
 fn movement(ctx: &mut Ctx) {
-    let dt = ctx.dt();
-    ctx.world.query::<(&mut Transform2D, &Velocity)>()
+    let dt = ctx.time.dt();
+    ctx.world.query::<(&mut d2::Transform, &Velocity)>()
         .par_for_each(|(transform, velocity)| transform.position += velocity.0 * dt);
 }
 
@@ -116,7 +116,7 @@ fn main() {
         .sim_system(movement)
         .setup(|ctx| {
             ctx.world.spawn_batch((0..1_000_000).map(|i| (
-                Transform2D::at(vec2(i as f32, 0.0)),
+                d2::Transform::at(vec2(i as f32, 0.0)),
                 Velocity(vec2(1.0, 0.0)),
             )));
         })

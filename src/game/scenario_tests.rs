@@ -221,7 +221,7 @@ fn cancelling_takes_back_the_unrun_ticks_the_scenario_queued() {
     );
     assert!(ctx.take_one_step());
     frame(&mut game, &mut ctx, 1);
-    assert!(ctx.input.cancel_scenario(&mut ctx.world, &mut ctx.time));
+    assert!(ctx.cancel_scenario());
     assert_eq!(ctx.take_pending_steps(), 1, "only the other client's step is left");
 }
 
@@ -234,7 +234,7 @@ fn the_window_loop_runs_one_tick_a_frame_while_a_scenario_runs_so_edges_last_one
     let (mut game, mut ctx) = game_without_scenario();
     let mut clock = Clock::new(60);
     ctx.time.pause();
-    ctx.input.start_scenario(&mut ctx.world, &mut ctx.time, scenario);
+    ctx.start_scenario(scenario);
     ctx.time.queue_steps(5);
     let mut per_frame = Vec::new();
     for _ in 0..7 {
@@ -280,7 +280,7 @@ fn a_scenario_in_a_window_slower_than_the_tick_rate_leaves_no_backlog_and_no_bur
         .at(9, InputEvent::Key(Key::Space, false));
     let (mut game, mut ctx) = game_without_scenario();
     let mut clock = Clock::new(60);
-    ctx.input.start_scenario(&mut ctx.world, &mut ctx.time, scenario);
+    ctx.start_scenario(scenario);
     let mut during = Vec::new();
     while ctx.input.scenarios.run.is_some() {
         during.push(window_frame(&mut game, &mut ctx, &mut clock, 1.0 / 30.0));
@@ -306,7 +306,7 @@ fn pausing_during_a_scenario_stops_the_game() {
         .at(50, InputEvent::Key(Key::Space, false));
     let (mut game, mut ctx) = game_without_scenario();
     let mut clock = Clock::new(60);
-    ctx.input.start_scenario(&mut ctx.world, &mut ctx.time, scenario);
+    ctx.start_scenario(scenario);
     for _ in 0..5 {
         window_frame(&mut game, &mut ctx, &mut clock, 1.0 / 30.0);
     }

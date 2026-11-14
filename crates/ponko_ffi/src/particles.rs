@@ -7,10 +7,10 @@ use ponko::d3::ParticleBlend as ParticleBlend3D;
 use ponko::d3::ParticleEmitter as ParticleEmitter3D;
 use ponko::d3::ParticleSettings as ParticleSettings3D;
 use ponko::d3::ParticleShape as ParticleShape3D;
-use ponko::d3::ParticleSpace as ParticleSpace3D;
+use ponko::particles::ParticleSpace as ParticleSpace3D;
 use ponko::{
-    d3::ParticleCurve,
-    d3::ParticleGradient,
+    particles::ParticleCurve,
+    particles::ParticleGradient,
     prelude::{Color, Ctx, Entity, Vec3},
 };
 

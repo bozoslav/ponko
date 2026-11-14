@@ -77,7 +77,7 @@ fn none_is_never_live_and_freeing_it_does_nothing() {
         ctx.free(Font::NONE);
         assert_eq!(ctx.live_counts(), before);
         // Playing nothing is silent, not a panic.
-        ctx.play_sound(Sound::NONE);
+        ctx.audio.play(Sound::NONE);
         ctx.gfx
             .draw_text_ex("hi", vec2(0.0, 0.0), TextParams::default().with_font(Font::NONE));
     });
@@ -426,7 +426,7 @@ mod three {
             .sim_system(|ctx: &mut Ctx| {
                 let models = ctx.world.query::<&Model>().iter().count();
                 assert_eq!(models, 2);
-                ctx.draw_text("still here", vec2(0.0, 0.0), 16.0, Color::WHITE);
+                ctx.gfx.draw_text("still here", vec2(0.0, 0.0), 16.0, Color::WHITE);
             })
             .run_headless(3, |ctx| {
                 let image = ctx.gfx.create_texture(2, 2, &[255; 16]);
@@ -544,7 +544,7 @@ mod three {
 
 #[cfg(feature = "physics3d")]
 mod collision {
-    use ponko::physics3d::CollisionMesh;
+    use ponko::d3::CollisionMesh;
 
     use super::*;
 

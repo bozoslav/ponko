@@ -27,7 +27,7 @@ pub const MAX_DECALS: usize = 4096;
 pub const MAX_DECALS_PER_CLUSTER: usize = 64;
 
 /// A box that paints an image onto the opaque surfaces inside it. The
-/// entity's [`Transform3D`] places the box (its scale multiplies `size`).
+/// entity's [`d3::Transform`](crate::d3::Transform) places the box (its scale multiplies `size`).
 /// The image is projected along the box's **-Z** (looking from +Z), its top
 /// along +Y, as with [`MeshData::decal`](crate::render::MeshData::decal); only
 /// surfaces turned towards +Z get it.

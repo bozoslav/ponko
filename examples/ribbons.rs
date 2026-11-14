@@ -5,6 +5,7 @@ use ponko::d3::*;
 #[allow(unused_imports)]
 #[cfg(feature = "3d")]
 use ponko::prelude::*;
+use ponko::render::{Blend, MaterialDesc, MeshData};
 
 /// Flies in a circle.
 #[derive(Component)]
@@ -29,7 +30,7 @@ fn setup(ctx: &mut Ctx) {
     // A glowing tracer behind a flying ball: a quarter second long, thin at
     // the end and fading out.
     let mut tracer = Trail::new(0.25, 0.12);
-    tracer.color = ponko::d3::ParticleGradient::new(vec![
+    tracer.color = ponko::particles::ParticleGradient::new(vec![
         (0.0, Color::rgb(1.0, 0.8, 0.3)),
         (1.0, Color::rgba(1.0, 0.3, 0.0, 0.0)),
     ]);

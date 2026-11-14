@@ -10,13 +10,13 @@ running normally.
 ```rust
 # fn ants(_: &mut Ctx) {}
 fn controls(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::Space) {
+    if ctx.input.key_pressed(Key::Space) {
         if ctx.time.is_paused() { ctx.time.resume() } else { ctx.time.pause() }
     }
-    if ctx.key_pressed(Key::Period) {
+    if ctx.input.key_pressed(Key::Period) {
         ctx.time.step();              // one tick while paused
     }
-    if ctx.key_pressed(Key::Num4) {
+    if ctx.input.key_pressed(Key::Num4) {
         ctx.time.set_speed(64.0); // fast-forward
     }
 }
@@ -53,7 +53,7 @@ holds only the physics step instead, with `ctx.physics.set_paused(true)`:
 
 ```rust
 fn pause_menu(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         let held = ctx.physics.is_paused();
         ctx.physics.set_paused(!held); // the step only
     }
@@ -86,7 +86,7 @@ this way. 3D physics (`ctx.physics3d`) has no such switch yet.
 
 ## What the clock guarantees
 
-- **Ticks are always the same length.** `ctx.dt()` in a sim system is the
+- **Ticks are always the same length.** `ctx.time.dt()` in a sim system is the
   fixed step (`1 / fixed_hz`), at every speed. Speed only changes how many
   ticks run per frame, so a run at 64× gives the same result as one at 1×.
 - **The game stays responsive.** At most 64 ticks run per frame. If the sim
@@ -122,7 +122,7 @@ Game::new("Colony", 1280, 720)
 </div>
 </div>
 
-Inside `plan_routes`, `ctx.dt()` is 10 ticks' worth of time, so rates stay
+Inside `plan_routes`, `ctx.time.dt()` is 10 ticks' worth of time, so rates stay
 right. Systems with the same interval are spread over different ticks, so
 their cost doesn't pile up on one frame.
 

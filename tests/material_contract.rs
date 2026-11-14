@@ -25,7 +25,7 @@ fn material_features(ctx: &mut Ctx) {
                     .with_shader(shader);
                 let material = ctx.gfx.create_material(desc);
                 let mesh = ctx.gfx.create_mesh(&MeshData::cube(1.0), material);
-                ctx.world.spawn((Transform3D::default(), Model::new(mesh)));
+                ctx.world.spawn((d3::Transform::default(), Model::new(mesh)));
             }
         }
     }
@@ -37,14 +37,14 @@ fn skinned_material(ctx: &mut Ctx) {
     let skeleton = Skeleton::new(vec![Joint {
         name: "root".into(),
         parent: None,
-        rest: Transform3D::default(),
+        rest: d3::Transform::default(),
     }]);
     let mut data = MeshData::cube(1.0);
     data.joints = vec![[0; 4]; data.positions.len()];
     data.weights = vec![[1.0, 0.0, 0.0, 0.0]; data.positions.len()];
     let material = ctx.gfx.default_material();
     let mesh = ctx.gfx.create_skinned_mesh(&data, material, &skeleton);
-    ctx.world.spawn((Transform3D::default(), Model::new(mesh), skeleton));
+    ctx.world.spawn((d3::Transform::default(), Model::new(mesh), skeleton));
 }
 // ANCHOR_END: material_skin
 
@@ -76,7 +76,7 @@ fn vertex(v: Vertex) -> Vertex {
     // The cube's radius plus the maximum two-unit world displacement.
     // This bound assumes unit scale; adapt it when changing the transform.
     ctx.gfx.set_mesh_gpu_bounds(mesh, Vec3::ZERO, 3.0);
-    ctx.world.spawn((Transform3D::default(), Model::new(mesh)));
+    ctx.world.spawn((d3::Transform::default(), Model::new(mesh)));
 }
 // ANCHOR_END: material_displacement
 
@@ -146,7 +146,7 @@ fn skinned_static_batches_explain_how_to_draw_a_pose() {
         let skeleton = Skeleton::new(vec![Joint {
             name: "root".into(),
             parent: None,
-            rest: Transform3D::default(),
+            rest: d3::Transform::default(),
         }]);
         let mut data = MeshData::cube(1.0);
         data.joints = vec![[0; 4]; data.positions.len()];
@@ -165,7 +165,7 @@ fn skinned_gpu_buffers_explain_how_to_draw_a_pose() {
         let skeleton = Skeleton::new(vec![Joint {
             name: "root".into(),
             parent: None,
-            rest: Transform3D::default(),
+            rest: d3::Transform::default(),
         }]);
         let mut data = MeshData::cube(1.0);
         data.joints = vec![[0; 4]; data.positions.len()];

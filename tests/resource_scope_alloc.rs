@@ -4,7 +4,7 @@
 //! in the process (profiling relies on that), so nothing else may run, or
 //! allocate on another thread, while this one measures.
 #[allow(unused_imports)]
-use ponko::alloc_count::CountingAllocator;
+use ponko::perf::CountingAllocator;
 use ponko::prelude::*;
 
 #[global_allocator]

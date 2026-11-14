@@ -12,8 +12,9 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use ponko::d2::{BlendMode, ParticleEmitter, ParticleSettings, ParticleShape, Transform};
+use ponko::d2::{ParticleEmitter, ParticleSettings, ParticleShape, Transform};
 use ponko::prelude::*;
+use ponko::render::BlendMode;
 
 use crate::{Bench, report};
 

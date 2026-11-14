@@ -183,7 +183,7 @@ wasm-bindgen-futures = "0.4.80"
 js-sys = "0.3.107"
 # Sound through WebAudio (kira plays through cpal).
 cpal = { version = "0.18.2", features = ["wasm-bindgen"], optional = true }
-web-sys = { version = "0.3.107", features = ["Window", "Document", "Element", "HtmlCanvasElement", "Location", "Response", "console", "Event", "IdbFactory", "IdbDatabase", "IdbObjectStore", "IdbOpenDbRequest", "IdbRequest", "IdbTransaction", "IdbTransactionMode"] }
+web-sys = { version = "0.3.107", features = ["Window", "Document", "Element", "HtmlCanvasElement", "Location", "Response", "console", "Event", "HtmlElement", "HtmlTextAreaElement", "CssStyleDeclaration", "CompositionEvent", "InputEvent", "KeyboardEvent", "EventTarget", "Node", "DomRect", "IdbFactory", "IdbDatabase", "IdbObjectStore", "IdbOpenDbRequest", "IdbRequest", "IdbTransaction", "IdbTransactionMode"] }
 
 # The validation bundle example drives a launched game through the MCP
 # server's tools, in-process. Path only (no version): the MCP crate's tests

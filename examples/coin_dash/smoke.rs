@@ -166,12 +166,12 @@ pub fn autoplay(ctx: &mut Ctx) {
 /// Walks straight to the nearest coin.
 fn chase(ctx: &mut Ctx) {
     let mut player = Vec2::ZERO;
-    for (t, _) in ctx.world.query::<(&Transform2D, &Player)>().iter() {
+    for (t, _) in ctx.world.query::<(&d2::Transform, &Player)>().iter() {
         player = t.position;
     }
     let nearest = ctx
         .world
-        .query::<(&Transform2D, &Coin)>()
+        .query::<(&d2::Transform, &Coin)>()
         .iter()
         .map(|(t, _)| t.position)
         .min_by(|a, b| a.distance(player).total_cmp(&b.distance(player)));

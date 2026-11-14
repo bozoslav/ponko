@@ -39,7 +39,7 @@ pub struct PonkoCtx {
 /// Lends `ctx` to C for one callback.
 pub(crate) fn with_ctx<R>(ctx: &mut Ctx, f: impl FnOnce(*mut PonkoCtx) -> R) -> R {
     let snapshot = (
-        ctx.dt(),
+        ctx.time.dt(),
         ctx.time.sim_tick(),
         ctx.time.sim_time(),
         ctx.time.elapsed(),
@@ -428,7 +428,7 @@ pub unsafe extern "C" fn ponko_ctx_key_down(ctx: *mut PonkoCtx, input: u32, out_
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
             let input = key_from_c(input).ok_or_else(|| invalid("unknown key or mouse button"))?;
-            out(out_state, c.key_down(input))
+            out(out_state, c.input.key_down(input))
         })
     })
 }
@@ -444,7 +444,7 @@ pub unsafe extern "C" fn ponko_ctx_key_pressed(ctx: *mut PonkoCtx, input: u32, o
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
             let input = key_from_c(input).ok_or_else(|| invalid("unknown key or mouse button"))?;
-            out(out_state, c.key_pressed(input))
+            out(out_state, c.input.key_pressed(input))
         })
     })
 }
@@ -460,7 +460,7 @@ pub unsafe extern "C" fn ponko_ctx_key_released(ctx: *mut PonkoCtx, input: u32, 
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
             let input = key_from_c(input).ok_or_else(|| invalid("unknown key or mouse button"))?;
-            out(out_state, c.key_released(input))
+            out(out_state, c.input.key_released(input))
         })
     })
 }
@@ -646,7 +646,7 @@ pub unsafe extern "C" fn ponko_ctx_gamepad_axis(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ponko_ctx_mouse_pos(ctx: *mut PonkoCtx, out_pos: *mut PonkoVec2) -> PonkoStatus {
     // SAFETY: forwarded caller contract.
-    boundary(|| unsafe { ctx_access(ctx, |c| out(out_pos, to_c(c.mouse_pos()))) })
+    boundary(|| unsafe { ctx_access(ctx, |c| out(out_pos, to_c(c.input.mouse_pos()))) })
 }
 /// Mouse position in world units (through the camera).
 /// ```
@@ -731,7 +731,7 @@ pub unsafe extern "C" fn ponko_ctx_load_texture(
             if out_texture.is_null() {
                 return Err(invalid("output is null"));
             }
-            out(out_texture, texture_to_c(c.load_texture(path)))
+            out(out_texture, texture_to_c(c.gfx.load_texture(path)))
         })
     })
 }
@@ -916,7 +916,7 @@ pub unsafe extern "C" fn ponko_ctx_draw(ctx: *mut PonkoCtx, texture: PonkoTextur
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            c.draw(texture_from_c(texture), to_c(pos));
+            c.gfx.draw(texture_from_c(texture), to_c(pos));
             Ok(())
         })
     })
@@ -967,7 +967,7 @@ pub unsafe extern "C" fn ponko_ctx_draw_text(
     // SAFETY: forwarded caller contract.
     boundary(|| unsafe {
         ctx_access(ctx, |c| {
-            c.draw_text(text(string)?, to_c(pos), size, to_c(color));
+            c.gfx.draw_text(text(string)?, to_c(pos), size, to_c(color));
             Ok(())
         })
     })

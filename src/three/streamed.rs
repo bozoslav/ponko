@@ -9,7 +9,7 @@ use super::{LodGroup, LodPick, Mesh, Transform3D, gltf};
 use crate::assets::{self, Origin};
 use crate::streaming::ResidencyKind;
 use crate::streaming::{AssetState, StreamedAsset, StreamedMesh};
-use crate::{ctx::Ctx, stream::Job};
+use crate::{ctx::Ctx, streaming::Job};
 use ponko_ecs::Component;
 use ponko_ecs::World;
 
@@ -44,7 +44,7 @@ pub(crate) enum LoadedFile {
 /// ctx.world.spawn((
 ///     ponko::d3::Transform::default(),
 ///     ponko::render::LodGroup::new(10.0, levels),
-///     ponko::d3::StreamedLod::new(&["models/tower_lod0.glb", "models/tower_lod1.glb"]),
+///     ponko::render::StreamedLod::new(&["models/tower_lod0.glb", "models/tower_lod1.glb"]),
 /// ));
 /// # }
 /// ```

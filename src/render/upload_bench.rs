@@ -6,8 +6,9 @@ use super::buffer_render_test::Rig;
 use super::traffic;
 use crate::d3::{
     Line as Line3D, ParticleEmitter as ParticleEmitter3D, ParticleSettings as ParticleSettings3D,
-    ParticleSpace as ParticleSpace3D, Transform as Transform3D,
+    Transform as Transform3D,
 };
+use crate::particles::ParticleSpace as ParticleSpace3D;
 use crate::prelude::*;
 use crate::render::{AntiAliasing, GpuUploads, MaterialDesc, Mesh, MeshData, Model};
 

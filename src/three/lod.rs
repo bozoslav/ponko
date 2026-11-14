@@ -264,7 +264,7 @@ pub enum LodPick {
 pub struct LodHysteresis(pub f32);
 
 /// Levels of detail: the meshes this entity draws depend on how much of the
-/// screen it covers. Goes on an entity with a [`Transform3D`] (and no
+/// screen it covers. Goes on an entity with a [`d3::Transform`](crate::d3::Transform) (and no
 /// [`Model`](crate::render::Model): the group draws instead).
 ///
 /// How tall the group looks is the fraction of the screen's height its

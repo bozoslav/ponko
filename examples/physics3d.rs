@@ -11,6 +11,8 @@
 #[cfg(feature = "3d")]
 use ponko::d3::*;
 use ponko::prelude::*;
+use ponko::render::{Material, MaterialDesc, MeshData};
+use ponko::terrain::{TerrainMaterialDesc, TextureKind};
 
 const N: usize = 65;
 const SIZE: f32 = 128.0;
@@ -112,8 +114,8 @@ fn grass(ctx: &mut Ctx) -> Material {
 /// WASD walks the way the walker faces, Shift runs, Space jumps (only
 /// from the ground). A simulation system: it runs before each step.
 fn walk(ctx: &mut Ctx) {
-    let keys = [Key::W, Key::A, Key::S, Key::D, Key::LeftShift].map(|k| ctx.key_down(k));
-    let jump = ctx.key_down(Key::Space);
+    let keys = [Key::W, Key::A, Key::S, Key::D, Key::LeftShift].map(|k| ctx.input.key_down(k));
+    let jump = ctx.input.key_down(Key::Space);
     let player = ctx.world.resource::<Player>();
     let (id, yaw) = (player.id, player.yaw);
     let Some(c) = ctx.world.get_mut::<Character>(id) else {
@@ -158,7 +160,7 @@ fn eyes(ctx: &mut Ctx) {
         } else {
             ctx.input.set_cursor_locked(true);
         }
-    } else if ctx.key_pressed(Key::Escape) {
+    } else if ctx.input.key_pressed(Key::Escape) {
         if ctx.input.cursor_locked() {
             ctx.input.set_cursor_locked(false);
         } else {

@@ -11,7 +11,7 @@ use ponko::prelude::*;
 fn main() {
     Game::new("Ponko: sprites", 800, 600).run(|ctx| {
         ctx.gfx.clear(Color::hex(0x1E2A38));
-        let crab = ctx.load_texture("crab.png");
+        let crab = ctx.gfx.load_texture("crab.png");
 
         // A generated texture: a soft white circle.
         let size = 32;
@@ -31,19 +31,19 @@ fn main() {
             let t = ctx.time.elapsed() as f32;
 
             let mut dir = Vec2::ZERO;
-            if ctx.key_down(Key::Left) || ctx.key_down(Key::A) {
+            if ctx.input.key_down(Key::Left) || ctx.input.key_down(Key::A) {
                 dir.x -= 1.0;
             }
-            if ctx.key_down(Key::Right) || ctx.key_down(Key::D) {
+            if ctx.input.key_down(Key::Right) || ctx.input.key_down(Key::D) {
                 dir.x += 1.0;
             }
-            if ctx.key_down(Key::Up) || ctx.key_down(Key::W) {
+            if ctx.input.key_down(Key::Up) || ctx.input.key_down(Key::W) {
                 dir.y -= 1.0;
             }
-            if ctx.key_down(Key::Down) || ctx.key_down(Key::S) {
+            if ctx.input.key_down(Key::Down) || ctx.input.key_down(Key::S) {
                 dir.y += 1.0;
             }
-            player += dir.normalize_or_zero() * 250.0 * ctx.dt();
+            player += dir.normalize_or_zero() * 250.0 * ctx.time.dt();
 
             // A ring of tinted, spinning dots around the player, drawn behind it (z = -1).
             for i in 0..12 {
@@ -109,9 +109,9 @@ fn main() {
 
             // A small crab following the mouse, on top of everything.
             ctx.gfx
-                .draw_ex(crab, ctx.mouse_pos(), DrawParams::default().with_z(2.0));
+                .draw_ex(crab, ctx.input.mouse_pos(), DrawParams::default().with_z(2.0));
 
-            if ctx.key_pressed(Key::Escape) {
+            if ctx.input.key_pressed(Key::Escape) {
                 ctx.quit();
             }
         }

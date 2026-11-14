@@ -6,11 +6,11 @@ use ponko::prelude::*;
 /// F3 shows the performance overlay; F4 records the next 300 frames as a
 /// trace to open in Perfetto. Slow stretches are logged for investigation.
 fn perf_keys(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::F3) {
+    if ctx.input.key_pressed(Key::F3) {
         let on = !ctx.perf.hud();
         ctx.perf.set_hud(on);
     }
-    if ctx.key_pressed(Key::F4) {
+    if ctx.input.key_pressed(Key::F4) {
         ctx.perf.record_trace("trace.json", 300);
     }
     let stats = ctx.perf.frame_stats();

@@ -59,7 +59,7 @@ fn setup(ctx: &mut Ctx) {
 pub fn movement(ctx: &mut Ctx) {
     let step = ctx.world.resource::<Intent>().0.clamp_length_max(1.0)
         * ctx.world.resource::<Settings>().speed
-        * ctx.dt();
+        * ctx.time.dt();
     let half = Vec2::splat(PLAYER_SIZE / 2.0);
     ctx.world
         .query::<(&mut ponko::d2::Transform, &Player)>()
@@ -70,7 +70,7 @@ pub fn movement(ctx: &mut Ctx) {
 
 /// Frame system: the arrow keys (or WASD) set the intent. Escape quits.
 fn read_input(ctx: &mut Ctx) {
-    let held = |ctx: &Ctx, a: Key, b: Key| ctx.key_down(a) || ctx.key_down(b);
+    let held = |ctx: &Ctx, a: Key, b: Key| ctx.input.key_down(a) || ctx.input.key_down(b);
     let mut dir = Vec2::ZERO;
     if held(ctx, Key::Left, Key::A) {
         dir.x -= 1.0;
@@ -85,7 +85,7 @@ fn read_input(ctx: &mut Ctx) {
         dir.y += 1.0;
     }
     ctx.world.resource_mut::<Intent>().0 = dir;
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }
@@ -101,7 +101,7 @@ fn draw(ctx: &mut Ctx) {
         let rect = Rect::new(corner.x, corner.y, PLAYER_SIZE, PLAYER_SIZE);
         ctx.gfx.draw_rect(rect, Color::rgb(0.95, 0.55, 0.2));
     }
-    ctx.draw_text(
+    ctx.gfx.draw_text(
         "Arrow keys or WASD to move, Escape to quit",
         vec2(16.0, 16.0),
         20.0,

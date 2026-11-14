@@ -197,8 +197,8 @@ fn a_save_slot_keeps_an_animations_frame() {
     let dir = temp_dir("animation");
     let mut crab = None;
     Game::new("t", 1, 1).data_dir(&dir).run_headless(0, |ctx| {
-        let sheet = SpriteSheet::new(ctx.load_texture("crab.png"), 16, 16);
-        let mut walk = ponko::d2::Animation::new(sheet, 0..4, 10.0);
+        let sheet = SpriteSheet::new(ctx.gfx.load_texture("crab.png"), 16, 16);
+        let mut walk = ponko::sheet::Animation::new(sheet, 0..4, 10.0);
         walk.time = 0.25; // frame 2
         crab = Some(
             ctx.world
@@ -211,7 +211,7 @@ fn a_save_slot_keeps_an_animations_frame() {
         ctx.load_world("slot1").unwrap();
     });
     let walk = world
-        .get::<ponko::d2::Animation>(crab)
+        .get::<ponko::sheet::Animation>(crab)
         .expect("the animation is in the save");
     assert_eq!((walk.time, walk.current_frame(), walk.looping), (0.25, 2, true));
     assert_eq!(walk.sheet.frame_size, vec2(16.0, 16.0));

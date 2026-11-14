@@ -1,7 +1,7 @@
 //! CPU particle pools and lifetime curves. Pools retain their storage between frames.
 use super::{Camera3D, Transform3D, linear};
-use crate::particles::{Emission, advance, sheet_frame, validate};
 use crate::particles::{ParticleCurve, ParticleGradient, ParticleSpace as ParticleSpace3D};
+use crate::particles2d::{Emission, advance, sheet_frame, validate};
 use crate::{random::Rng, texture::Texture};
 use glam::Vec3;
 use ponko_ecs::{Component, World};
@@ -196,7 +196,7 @@ impl ParticleSettings3D {
     }
 }
 
-type Particle = crate::particles::Particle<Vec3>;
+type Particle = crate::particles2d::Particle<Vec3>;
 
 /// A CPU particle pool component, paired with `Transform3D`. Simulation runs after
 /// frame systems; no meshes are required. `run_headless` skips this visual frame phase.

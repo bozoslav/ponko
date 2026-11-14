@@ -638,7 +638,7 @@ ctx.world
     });
 ```
 
-The lookup may read what the query reads (follow a leader's `Transform2D`
+The lookup may read what the query reads (follow a leader's `d2::Transform`
 while writing your own `Velocity`). It can't touch a component the query
 writes, or write one the query reads: that would be two references to one
 value, and it panics when the query is built. A lookup ignores the query's

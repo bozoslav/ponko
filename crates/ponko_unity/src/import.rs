@@ -1,6 +1,6 @@
 //! Turning Unity scenes and prefabs into Ponko scenes: every drawn mesh
 //! becomes a `.glb` with its materials, its textures become PNGs, and the
-//! scene a `ponko-world` save of `Transform3D` and `Model` entities that
+//! scene a `ponko-world` save of `d3::Transform` and `Model` entities that
 //! `Ctx::load_scene` loads.
 //!
 //! Unity is left-handed (+Z forward) and Ponko right-handed (-Z forward):
@@ -432,7 +432,7 @@ impl<'p> Importer<'p> {
         }))
     }
 
-    /// The components of a group's entity: `Transform3D` and `LodGroup`
+    /// The components of a group's entity: `d3::Transform` and `LodGroup`
     /// (from the Unity `LODGroup` of `object`, placed at `world` in
     /// Ponko's space, with the `renderers` of each level); `None` if a
     /// group has nothing to draw or can't be placed.
@@ -534,7 +534,7 @@ impl<'p> Importer<'p> {
     }
 
     /// A collider component's entity (Unity's `world` matrix): its
-    /// `Transform3D`, a fixed `RigidBody3D` and the `Collider3D`; `None`
+    /// `d3::Transform`, a fixed `RigidBody3D` and the `Collider3D`; `None`
     /// for other components, and for triggers, disabled colliders and
     /// meshes that can't be read (counted in the report).
     fn collider(&mut self, c: &crate::UnityObject, world: Mat4) -> Result<Option<Json>, Error> {

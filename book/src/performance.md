@@ -695,7 +695,7 @@ even with vsync off. To measure past 120 FPS, run fullscreen
 ## Memory
 
 Speed is half of scale; the other half is what each entity costs. The
-headless example prints it: 1M agents with `Transform2D`, `Sprite` and a
+headless example prints it: 1M agents with `d2::Transform`, `Sprite` and a
 small `Agent` component take **76 bytes per entity** allocated, spare
 capacity included.
 

@@ -28,7 +28,7 @@ use ponko_ecs::Component;
 ///     // A tracer: a thin, glowing ribbon a quarter second long.
 ///     let mut tracer = ponko::d3::Trail::new(0.25, 0.05);
 ///     tracer.blend = ponko::d3::ParticleBlend::Additive;
-///     tracer.color = ponko::d3::ParticleGradient::new(vec![(0.0, Color::rgb(1.0, 0.8, 0.3)), (1.0, Color::rgba(1.0, 0.3, 0.0, 0.0))]);
+///     tracer.color = ponko::particles::ParticleGradient::new(vec![(0.0, Color::rgb(1.0, 0.8, 0.3)), (1.0, Color::rgba(1.0, 0.3, 0.0, 0.0))]);
 ///     ctx.world.spawn((ponko::d3::Transform::default(), tracer));
 /// });
 /// ```

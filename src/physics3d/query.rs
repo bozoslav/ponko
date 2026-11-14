@@ -28,7 +28,7 @@ pub struct Hit3D {
 /// use ponko::prelude::*;
 /// # let player = Entity::from_bits(1);
 /// const TERRAIN: u32 = 1 << 2;
-/// let ground_only = ponko::d3::QueryFilter::default().groups(ponko::physics3d::CollisionGroups::new(u32::MAX, TERRAIN));
+/// let ground_only = ponko::d3::QueryFilter::default().groups(ponko::d3::CollisionGroups::new(u32::MAX, TERRAIN));
 /// let not_me = ponko::d3::QueryFilter::default().exclude(player);
 /// let triggers_too = ponko::d3::QueryFilter::default().with_sensors();
 /// assert!(triggers_too.sensors && !not_me.sensors);

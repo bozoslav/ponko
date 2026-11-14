@@ -705,14 +705,14 @@ impl Default for NavAgent3D {
 /// });
 /// ```
 pub fn step_navmesh3d(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     step_world(&mut ctx.world, dt);
 }
 
 /// What [`step_navmesh3d`] uses, as a declaration: it writes the
 /// [`NavMesh3D`] resource (obstacles, carving and the crowd live in it),
 /// reads the timestep ([`Service::Time`](crate::access::Service::Time)),
-/// reads [`NavObstacle3D`] and writes [`Transform3D`] and [`NavAgent3D`].
+/// reads [`NavObstacle3D`] and writes [`d3::Transform`](crate::d3::Transform) and [`NavAgent3D`].
 /// Nothing else: no events, commands, physics or drawing.
 ///
 /// Register the step with it to have
@@ -765,7 +765,7 @@ fn step_world(world: &mut World, dt: f32) {
 }
 
 /// One navigation tick on explicit inputs: the baked state, the world whose
-/// [`NavObstacle3D`] it reads and whose [`Transform3D`] / [`NavAgent3D`] it
+/// [`NavObstacle3D`] it reads and whose [`d3::Transform`](crate::d3::Transform) / [`NavAgent3D`] it
 /// moves, and a positive, finite timestep.
 fn step(nav: &mut NavState, world: &mut World, dt: f32) {
     nav.scratch.clear();

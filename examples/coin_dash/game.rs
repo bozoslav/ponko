@@ -30,7 +30,7 @@ pub mod settings;
 pub mod smoke;
 
 #[allow(unused_imports)]
-use ponko::d2::{Sprite, Transform as Transform2D};
+use ponko::d2::{Sprite, Transform};
 use ponko::prelude::*;
 use ponko::storage::Storage;
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ pub const SPEED: f32 = 240.0;
 pub const PLAYER_RADIUS: f32 = 14.0;
 pub const COIN_RADIUS: f32 = 10.0;
 
-/// The player. Position is the entity's [`Transform2D`].
+/// The player. Position is the entity's [`Transform`].
 #[derive(Component)]
 pub struct Player;
 /// A coin to collect.
@@ -252,7 +252,7 @@ impl Plugin for Drawing {
     fn setup(&self, ctx: &mut Ctx) {
         ctx.gfx.clear(Color::hex(0x14181f));
         let disc = disc(ctx);
-        let coin = ctx.load_texture(COIN_ASSET);
+        let coin = ctx.gfx.load_texture(COIN_ASSET);
         ctx.world.insert_resource(Art { disc, coin });
         let sounds = Sounds {
             pickup: tone(ctx, 880.0, 1320.0, 0.10),
@@ -312,12 +312,9 @@ fn disc(ctx: &mut Ctx) -> Texture {
 }
 
 /// A disc sprite with a radius in world units.
-fn ball(art: Art, at: Vec2, radius: f32, color: Color) -> (Transform2D, Sprite) {
+fn ball(art: Art, at: Vec2, radius: f32, color: Color) -> (Transform, Sprite) {
     let scale = Vec2::splat(radius / 16.0); // the disc is 16 units in radius
-    (
-        Transform2D::at(at).scaled(scale),
-        Sprite::new(art.disc).with_color(color),
-    )
+    (Transform::at(at).scaled(scale), Sprite::new(art.disc).with_color(color))
 }
 
 /// Keyboard and gamepad, bound to the same names: the default controls, see
@@ -359,7 +356,7 @@ pub fn new_round(ctx: &mut Ctx, number: u32) {
         let at = vec2(rng.range(40.0, ARENA.x - 40.0), rng.range(40.0, ARENA.y - 40.0));
         let scale = Vec2::splat(COIN_RADIUS / 16.0); // the coin picture is 16 units in radius
         ctx.world
-            .spawn((Transform2D::at(at).scaled(scale), Sprite::new(art.coin), Coin));
+            .spawn((Transform::at(at).scaled(scale), Sprite::new(art.coin), Coin));
     }
     ctx.world.insert_resource(Round {
         collected: 0,
@@ -452,9 +449,9 @@ pub fn rules(ctx: &mut Ctx) {
 /// round when it is won or the time is up.
 fn play(ctx: &mut Ctx, direction: Vec2) {
     // Move, clamped to the arena. A diagonal is not faster than a straight line.
-    let step = direction.clamp_length_max(1.0) * SPEED * ctx.dt();
+    let step = direction.clamp_length_max(1.0) * SPEED * ctx.time.dt();
     let mut player = Vec2::ZERO;
-    for (t, _) in ctx.world.query::<(&mut Transform2D, &Player)>().iter() {
+    for (t, _) in ctx.world.query::<(&mut Transform, &Player)>().iter() {
         t.position = (t.position + step).clamp(Vec2::ZERO, ARENA);
         player = t.position;
     }
@@ -462,7 +459,7 @@ fn play(ctx: &mut Ctx, direction: Vec2) {
     // Pick up the coins the player touches.
     let reach = PLAYER_RADIUS + COIN_RADIUS;
     let mut touched = Vec::new(); // empty Vecs don't allocate
-    for (e, t, _) in ctx.world.query::<(Entity, &Transform2D, &Coin)>().iter() {
+    for (e, t, _) in ctx.world.query::<(Entity, &Transform, &Coin)>().iter() {
         if t.position.distance(player) <= reach {
             touched.push(e);
         }
@@ -474,7 +471,7 @@ fn play(ctx: &mut Ctx, direction: Vec2) {
         sfx(ctx, |s| s.pickup);
     }
 
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let round = ctx.world.resource_mut::<Round>();
     round.collected += touched.len();
     round.time_left = (round.time_left - dt).max(0.0);
@@ -749,7 +746,8 @@ pub fn hud(ctx: &mut Ctx) {
             "Round {}   Coins {}/{}   Time {:.1}",
             round.number, round.collected, COINS, round.time_left
         );
-        ctx.draw_text(&status, vec2(12.0, 8.0) * scale, 20.0 * scale, Color::WHITE);
+        ctx.gfx
+            .draw_text(&status, vec2(12.0, 8.0) * scale, 20.0 * scale, Color::WHITE);
     }
     // The block of lines, centred on the arena.
     let lines = screen_lines(&ctx.world);
@@ -758,7 +756,8 @@ pub fn hud(ctx: &mut Ctx) {
     for l in lines {
         let size = l.size * scale;
         let width = ctx.gfx.measure_text(&l.text, size).x;
-        ctx.draw_text(&l.text, vec2((ARENA.x - width) / 2.0, y), size, l.color);
+        ctx.gfx
+            .draw_text(&l.text, vec2((ARENA.x - width) / 2.0, y), size, l.color);
         y += size * 1.5;
     }
 }

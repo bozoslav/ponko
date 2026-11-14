@@ -30,7 +30,7 @@ fn attachments_follow_their_entity_every_tick() {
         let t = ctx.world.spawn((Transform2D::at(vec2(100.0, 50.0)), Mover));
         bar = Some(ctx.world.spawn((
             Transform2D::default(),
-            ponko::d2::Attached::to(t).offset(vec2(0.0, -10.0)),
+            ponko::attach::Attached::to(t).offset(vec2(0.0, -10.0)),
         )));
         tank = Some(t);
     });
@@ -47,12 +47,13 @@ fn offsets_turn_and_mirror_with_their_entity_but_scale_stays_own() {
         let a = ctx.world.spawn((turned,));
         let b = ctx.world.spawn((flipped,));
         let small = Transform2D::default().scaled(Vec2::splat(0.5));
-        let on_a = ctx
-            .world
-            .spawn((small, ponko::d2::Attached::to(a).offset(vec2(4.0, 0.0)).rotated(0.25)));
+        let on_a = ctx.world.spawn((
+            small,
+            ponko::attach::Attached::to(a).offset(vec2(4.0, 0.0)).rotated(0.25),
+        ));
         let on_b = ctx.world.spawn((
             Transform2D::default(),
-            ponko::d2::Attached::to(b).offset(vec2(4.0, 0.0)),
+            ponko::attach::Attached::to(b).offset(vec2(4.0, 0.0)),
         ));
         ids = Some((on_a, on_b));
     });
@@ -77,12 +78,16 @@ fn attachments_go_when_their_entity_goes_down_the_whole_chain() {
         .sim_system(systems::follow_attachments)
         .run_headless(3, |ctx| {
             let unit = ctx.world.spawn((Transform2D::default(),));
-            let ring = ctx.world.spawn((Transform2D::default(), ponko::d2::Attached::to(unit)));
-            let label = ctx.world.spawn((Transform2D::default(), ponko::d2::Attached::to(ring)));
+            let ring = ctx
+                .world
+                .spawn((Transform2D::default(), ponko::attach::Attached::to(unit)));
+            let label = ctx
+                .world
+                .spawn((Transform2D::default(), ponko::attach::Attached::to(ring)));
             let other = ctx.world.spawn((Transform2D::default(),));
             let kept = ctx
                 .world
-                .spawn((Transform2D::default(), ponko::d2::Attached::to(other)));
+                .spawn((Transform2D::default(), ponko::attach::Attached::to(other)));
             ctx.world.insert_resource(Doomed(unit));
             ids = Some((ring, label, kept));
         });
@@ -100,7 +105,7 @@ fn many_attachments_are_placed_in_parallel() {
             let base = ctx.world.spawn((Transform2D::at(vec2(i as f32, 0.0)), Mover));
             ctx.world.spawn((
                 Transform2D::default(),
-                ponko::d2::Attached::to(base).offset(vec2(0.0, 1.0)),
+                ponko::attach::Attached::to(base).offset(vec2(0.0, 1.0)),
                 Child(i),
             ));
         }
@@ -137,7 +142,7 @@ fn turrets_ride_on_tanks() {
         .sim_system(systems::follow_attachments) // after the systems that move things
         .run_headless(10, |ctx| {
             let tank = ctx.world.spawn((Transform2D::at(vec2(0.0, 0.0)), Tank { speed: 1.0 }));
-            let on_top = ponko::d2::Attached::to(tank).offset(vec2(0.0, -4.0));
+            let on_top = ponko::attach::Attached::to(tank).offset(vec2(0.0, -4.0));
             turret = Some(ctx.world.spawn((Transform2D::default(), on_top)));
         });
     assert_eq!(position(&world, turret.unwrap()), vec2(10.0, -4.0));
@@ -151,7 +156,7 @@ fn attachments_are_reflected_for_tools_and_saves() {
         let unit = ctx.world.spawn((Transform2D::default(),));
         bar = Some(ctx.world.spawn((
             Transform2D::default(),
-            ponko::d2::Attached::to(unit).offset(vec2(0.0, -3.0)),
+            ponko::attach::Attached::to(unit).offset(vec2(0.0, -3.0)),
         )));
     });
     let json = world.get_json(bar.unwrap(), "Attached").unwrap();

@@ -41,21 +41,17 @@
 
 use crate::ctx::Ctx;
 
-pub use crate::attach::follow_attachments;
 pub use crate::ecs::draw_sprites;
 #[cfg(feature = "navmesh")]
 pub use crate::nav3d::{step_navmesh3d, step_navmesh3d_access};
 #[cfg(feature = "3d")]
-pub use crate::net::apply_net_poses;
+pub use crate::net::snapshots::apply_net_poses;
 #[cfg(feature = "physics")]
 pub use crate::physics::{step_physics, step_physics_access};
 #[cfg(feature = "physics3d")]
 pub use crate::physics3d::{
     interpolate_physics3d, interpolate_physics3d_access, step_physics3d, step_physics3d_access,
 };
-pub use crate::sheet::animate_sprites;
-pub use crate::spatial::rebuild_spatial_grid;
-pub use crate::tilemap::draw_tilemaps;
 
 /// Advances every [`Animator`](crate::anim::Animator) that isn't in manual mode
 /// by this frame's time and poses its [`Skeleton`](crate::anim::Skeleton); with
@@ -74,7 +70,7 @@ pub fn update_animators(ctx: &mut Ctx) {
 /// after the animators
 /// ([`Systems::UPDATE_PARTICLES`](crate::game::Systems::UPDATE_PARTICLES)).
 pub fn update_particles(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.update_particles2d(dt);
     #[cfg(feature = "3d")]
     ctx.update_particles();
@@ -96,4 +92,45 @@ pub fn draw_particles(ctx: &mut Ctx) {
 #[cfg(feature = "3d")]
 pub fn update_audio3d(ctx: &mut Ctx) {
     crate::audio::update_audio3d(ctx);
+}
+
+/// Built-in system added by [`Game::spatial_grid`](crate::game::Game::spatial_grid):
+/// re-indexes every [`d2::Transform`](crate::d2::Transform) entity into `ctx.spatial`. It runs first
+/// in every simulation tick, and every [`SpatialGrid::SORT_EVERY`](crate::spatial::SpatialGrid::SORT_EVERY) ticks it also
+/// sorts entities by cell so neighbor queries stay cache-friendly.
+pub fn rebuild_spatial_grid(ctx: &mut Ctx) {
+    crate::spatial::rebuild_spatial_grid(ctx);
+}
+
+/// Built-in system: advances every [`Animation`](crate::sheet::Animation) and shows its frame on the
+/// entity's [`Sprite`](crate::d2::Sprite). [`Game`](crate::game::Game) runs it every frame, before
+/// [`draw_sprites`].
+///
+/// ```no_run
+/// # use ponko::prelude::*;
+/// // Animations driven by your own clock instead:
+/// Game::new("t", 800, 600).remove(Systems::ANIMATE_SPRITES).run(|_| {});
+/// ```
+pub fn animate_sprites(ctx: &mut Ctx) {
+    crate::sheet::animate_sprites(ctx);
+}
+
+/// Built-in system: draws the visible tiles of every [`TileMap`](crate::tilemap::TileMap).
+/// [`Game`](crate::game::Game) runs it every frame, before
+/// [`draw_sprites`].
+///
+/// ```no_run
+/// # use ponko::prelude::*;
+/// Game::new("No maps here", 800, 600).remove(Systems::DRAW_TILEMAPS).run(|_| {});
+/// ```
+pub fn draw_tilemaps(ctx: &mut Ctx) {
+    crate::tilemap::draw_tilemaps(ctx);
+}
+
+/// Moves every entity with [`Attached`](crate::attach::Attached) (and, with the `3d` feature,
+/// `Attached3D`) to its place next to the entity it follows, on all cores,
+/// and despawns those whose entity is gone. Add it as a simulation system
+/// after the ones that move things.
+pub fn follow_attachments(ctx: &mut Ctx) {
+    crate::attach::follow_attachments(ctx);
 }

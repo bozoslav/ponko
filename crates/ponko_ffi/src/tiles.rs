@@ -2,9 +2,9 @@
 use std::mem::offset_of;
 
 use ponko::{
-    d2::Animation,
-    d2::TileMap,
     prelude::{Color, SpriteSheet, TextureFilter, Vec2},
+    sheet::Animation,
+    tilemap::TileMap,
 };
 
 use crate::ctx::{ctx_access, out};
@@ -161,7 +161,7 @@ pub unsafe extern "C" fn ponko_ctx_set_texture_filter(
 // ---- tilemaps -------------------------------------------------------------------
 
 /// A tilemap on an entity, as `ponko_tilemap_get` sees it. The entity's
-/// `Transform2D` position is the map's top-left corner.
+/// `d2::Transform` position is the map's top-left corner.
 /// ```
 /// assert_eq!(ponko_ffi::PONKO_TILE_EMPTY, u16::MAX);
 /// ```
@@ -211,7 +211,7 @@ unsafe fn tilemap_access<R>(
 }
 
 /// Gives `entity` an empty `width` x `height` tilemap of `sheet` frames
-/// (replacing any it had). Draw it by giving the entity a `Transform2D`.
+/// (replacing any it had). Draw it by giving the entity a `d2::Transform`.
 /// ```
 /// use ponko_ffi::*;
 /// let w = ponko_world_new();

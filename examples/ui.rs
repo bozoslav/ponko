@@ -40,14 +40,14 @@ fn scene(ctx: &mut Ctx) {
 
     // A label that sticks to the crab: world position -> window pixels.
     let above = ctx.camera.world_to_screen(orbit) + vec2(-28.0, -40.0);
-    ctx.draw_text("orbiter", above, 16.0, Color::hex(0xffbe0b));
+    ctx.gfx.draw_text("orbiter", above, 16.0, Color::hex(0xffbe0b));
 
     if ctx.world.resource::<Scene>().follow {
         ctx.camera.look_at(orbit);
     }
     if ctx.input.mouse_pressed(MouseButton::Left) && !ctx.ui.wants_pointer() {
         let at = ctx.mouse_world();
-        ctx.world.spawn((Transform2D::at(at), Sprite::new(crab)));
+        ctx.world.spawn((d2::Transform::at(at), Sprite::new(crab)));
         let plop = ctx.world.resource::<Scene>().plop;
         let speed = 0.8 + ctx.random().stream(0).f32() * 0.4;
         ctx.audio.play_ex(
@@ -65,28 +65,22 @@ fn scene(ctx: &mut Ctx) {
 // ANCHOR: hud
 fn hud(ctx: &mut Ctx) {
     let panel = Rect::new(12.0, 12.0, 230.0, 172.0);
-    ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+    ctx.immediate_ui().panel(panel);
     let mut at = panel.min + ctx.ui.immediate.style.padding;
     let (zoom, dropped) = (ctx.camera.zoom, ctx.world.resource::<Scene>().dropped);
     let lines = format!("zoom {zoom:.2}x\ncrabs dropped: {dropped}\n{:.0} FPS", ctx.time.fps());
-    at.y += ctx.ui.immediate.label(&mut ctx.gfx, at, &lines).y + 8.0;
+    at.y += ctx.immediate_ui().label(at, &lines).y + 8.0;
 
     let follow = ctx.world.resource::<Scene>().follow;
     let label = if follow { "Stop following" } else { "Follow orbiter" };
-    if ctx
-        .ui
-        .immediate
-        .button(&mut ctx.gfx, &ctx.input, Rect::new(at.x, at.y, 210.0, 30.0), label)
-    {
+    if ctx.immediate_ui().button(Rect::new(at.x, at.y, 210.0, 30.0), label) {
         ctx.world.resource_mut::<Scene>().follow = !follow;
     }
     at.y += 38.0;
-    if ctx.ui.immediate.button(
-        &mut ctx.gfx,
-        &ctx.input,
-        Rect::new(at.x, at.y, 210.0, 30.0),
-        "Reset camera",
-    ) {
+    if ctx
+        .immediate_ui()
+        .button(Rect::new(at.x, at.y, 210.0, 30.0), "Reset camera")
+    {
         ctx.camera.zoom = 1.0;
         ctx.camera.position = Vec2::ZERO;
         ctx.world.resource_mut::<Scene>().follow = false;
@@ -113,7 +107,7 @@ fn main() {
         .system(scene)
         .system(hud)
         .setup(|ctx| {
-            let crab = ctx.load_texture("crab.png");
+            let crab = ctx.gfx.load_texture("crab.png");
             let plop = plop(ctx);
             ctx.world.insert_resource(Scene {
                 crab,

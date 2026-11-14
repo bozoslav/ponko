@@ -14,10 +14,11 @@ mod game;
 
 use game::*;
 use ponko::actions::InputEvent;
-use ponko::d2::{LevelObject, LevelRoot, TileMap, Transform, Velocity};
+use ponko::d2::{Transform, Velocity};
 use ponko::input::{Gamepad, GamepadAxis, GamepadButton};
 use ponko::prelude::*;
 use ponko::scenario::InputScenario;
+use ponko::tilemap::{LevelObject, LevelRoot, TileMap};
 use std::path::PathBuf;
 
 /// A fresh data folder for one test.
@@ -121,7 +122,7 @@ fn a_level_spawns_from_its_file_with_autotiled_ground_prefabs_and_sensors() {
     // its neighbours (N 1, E 2, S 4, W 8). The start stands on open ground: the
     // cell under it has rock east, south and west but not north.
     let ground = world
-        .query::<(&TileMap, &ponko::d2::LevelLayer)>()
+        .query::<(&TileMap, &ponko::tilemap::LevelLayer)>()
         .iter()
         .find(|(_, l)| l.name == "Ground")
         .map(|(m, _)| m.clone())
@@ -435,7 +436,7 @@ fn a_lit_brazier_saves_the_run_and_a_loss_returns_there() {
     // After the load: the level once, the lit brazier still burning.
     assert_eq!(world.query::<&LevelRoot>().iter().count(), 1);
     let brazier_frames: Vec<(u32, u32)> = world
-        .query::<(&Checkpoint, &ponko::d2::Animation)>()
+        .query::<(&Checkpoint, &ponko::sheet::Animation)>()
         .iter()
         .map(|(_, a)| (a.first, a.frames))
         .collect();

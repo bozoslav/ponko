@@ -83,7 +83,9 @@ versions already used neutral or Ponko names and are unchanged.
   `Ctx` keeps a short, deliberate list of shortcuts: `dt`, `key_down`,
   `key_pressed`, `key_released`, `mouse_pos`, `mouse_world`, `window_size`,
   `quit`, `draw`, `draw_text`, `load_texture`, `load_sound`, `play_sound` and
-  `random`. Methods that need several services at once also stay on it: handles
+  `random`. (0.2.0 deprecates the shortcuts among them that only forward to one
+  service, see [Services](services.md).) Methods that need several services at
+  once also stay on it: handles
   (`free`, `is_live`), scenes and prefabs, streaming and residency, ragdolls, skeleton drawing and
   the reports across services (`live_counts`, `asset_inventory`, ...).
 - `has_material`, `has_shader`, `has_compute`, `has_effect`, `has_font` and
@@ -104,22 +106,30 @@ refreshing the inventory with `--inventory`; do not weaken the check.
 ## Dimension modules
 
 Start with `use ponko::prelude::*;`, then `use ponko::d2::*;` or
-`use ponko::d3::*;`. Both expose `Transform`, `Camera`, `RigidBody`, `Collider`,
-`Velocity`, `Shape`, `Physics`, and `Hit` (physics features required).
-`d2` also holds `Sprite`, `TileMap`, `Attached`, `SpriteSheet`, `Animation`
-and the 2D grids (`SpatialGrid`, `NavGrid`, `FlowField`); `d3` holds models,
-materials, lights, decals, text, particles, terrain, animation, audio sources
-and navigation agents. A game with both dimensions in one file imports one
-module and qualifies the other (`d2::Transform` next to bare 3D names).
-The modules are aliases for existing types: layout, component identity and saved
-names are unchanged. The context keeps the dimensions apart, `camera` and
-`scene3d.camera`, `physics` and `physics3d`, so both can coexist; their
-types are `d2::Camera`/`d3::Camera` and `d2::Physics`/`d3::Physics`.
+`use ponko::d3::*;`. Both hold the types named after their dimension, under
+the same short names: `Transform`, `Camera`, the particle emitter types and the
+physics (`RigidBody`, `Collider`, `Velocity`, `Shape`, `Physics`, `Hit`, ...,
+with the physics features). `d2` also holds `Sprite`; `d3` holds lights,
+decals, text, lines, trails, reflection probes, positional audio, navigation
+agents and world-space UI panels. Everything else lives in its topic module,
+used by both dimensions: tile maps in `tilemap`, sprite-sheet animation in
+`sheet`, attachments in `attach`, grids in `spatial` and `flow`, meshes,
+materials, models and sprite materials in `render`, skeletal animation in
+`anim`, terrain in `terrain`, particle curves in `particles`, collision events
+in `collision`.
 
-The prelude keeps `Transform2D`, `Camera2D`, `Transform3D` and `Camera3D` for
-code that uses both dimensions; in code for one dimension, prefer the module
-names (`d2::Transform`, `d3::Camera`). The other old root spellings were
-removed (see [below](#the-root-glob)):
+`d2` and `d3` are the one path of their types, so rustdoc and the guide show
+`d2::Transform` and `d3::Camera`. A game with both dimensions in one file
+imports one module and qualifies the other (`d2::Transform` next to bare 3D
+names); the prelude brings the `d2` and `d3` modules for that. The context
+keeps the dimensions apart, `camera` and `scene3d.camera`, `physics` and
+`physics3d`, so both can coexist. Saved and reflected component names
+(`"Transform2D"`, `"RigidBody3D"`, ...) don't change.
+
+The prelude's `Transform2D`, `Camera2D`, `Transform3D` and `Camera3D` are
+deprecated in 0.2.0 and go in 0.3.0: write `d2::Transform`, `d2::Camera`,
+`d3::Transform` and `d3::Camera`. The other old root spellings were removed in
+0.1.0 (see [below](#the-root-glob)):
 
 | Removed root spelling | Use |
 |---|---|
@@ -145,7 +155,7 @@ removed (see [below](#the-root-glob)):
 | `ParticleEmitter3D` | `d3::ParticleEmitter` |
 | `ParticleSettings3D` | `d3::ParticleSettings` |
 | `ParticleShape3D` | `d3::ParticleShape` |
-| `ParticleSpace3D` | `d3::ParticleSpace` |
+| `ParticleSpace3D` | `ponko::particles::ParticleSpace` |
 | `Physics3D` | `d3::Physics` |
 | `PointLight3D` | `d3::PointLight` |
 | `QueryFilter3D` | `d3::QueryFilter` |
@@ -175,11 +185,21 @@ share the same convention.
 A 3D transform supplies position, rotation and scale; a 2D position keeps the
 prefab's existing rotation and scale. Saved component names remain unchanged.
 
+## One path per item
+
+Every public item of `ponko` has one path, under one name: the name rustdoc and the
+guide show. The prelude re-exports common items as the
+same items, and `ponko::ecs_core` is the one way into the ECS crate
+(`ponko_ecs`) beyond the prelude. A `#[deprecated]` alias of a moved item is
+its own item and lasts one minor. `python3 scripts/check-naming.py --paths`
+walks rustdoc's JSON of the crate and fails on an item with a second path;
+CI runs it in the API snapshots job.
+
 ## Prelude and service imports
 
 `use ponko::prelude::*;` is the default game import. It includes the game loop,
-context, ECS, math, input, colors, textures/sounds/fonts, common transforms and
-reflection registration. Add `d2::*` or `d3::*` for one dimension, then explicit
+context, ECS, math, input, colors, textures/sounds/fonts, the `d2` and `d3`
+modules and reflection registration. Add `d2::*` or `d3::*` for one dimension, then explicit
 service imports as needed. `Pose`, `Material` and `Job` are deliberately absent
 from the prelude so games can define them freely.
 
@@ -191,7 +211,8 @@ from the prelude so games can define them freely.
 | Clips, graphs, skeletal animation, IK | `anim` |
 | Heightfields, terrain tiles, terrain streaming | `terrain` |
 | Retained UI and layout | `ui` (`UiLayout`; raw Taffy in `ui::unstable_taffy`) |
-| Physics and navigation | `physics`, `physics3d`, `nav`, `d2`, `d3` |
+| Physics | `d2`, `d3` (step systems in `systems`) |
+| Navigation | `flow` (grids), `d3` (navigation meshes), `nav` (baking) |
 | Reflection JSON | `reflect::json` |
 | Advanced ECS and native storage | `ecs_core` |
 
@@ -220,7 +241,7 @@ lists every removed name with its replacement. Moving off them:
   `render::GlobalIllumination::MAX_PROBES` and `MAX_PROBES_PER_FRAME`.
   Constants that belong to one module keep their name there
   (`net::MAX_PLAYERS`, `input::MAX_GAMEPADS`, `random::DEFAULT_SEED`,
-  `physics3d::PHYSICS3D_HZ`, `scenario::SCENARIO_VERSION`,
+  `d3::Physics::HZ`, `scenario::SCENARIO_VERSION`,
   `streaming::DEFAULT_UPLOAD_BUDGET`).
 - Crates and helpers: `serde_json` is `reflect::json` (and `Value` is
   `reflect::json::Value`; `json!` stays in the prelude), `steamworks` is
@@ -230,7 +251,7 @@ lists every removed name with its replacement. Moving off them:
   `flow::RawFlowView`, `RawGridView` is `spatial::RawGridView`.
 
 `Instant` is `perf::Instant`. `Animation` (the sprite-sheet animation) is in
-`d2`, not the prelude: games often name their own type `Animation`.
+`sheet`, not the prelude: games often name their own type `Animation`.
 
 ### Root modules and crates of the same name
 
@@ -243,8 +264,9 @@ for the crate, or use `use ponko::prelude::*;`, which holds no such modules
 apart from `d2`, `d3`, `systems` and `actions`. The clock module is private,
 so the `time` crate is not shadowed; `Instant` is `perf::Instant`.
 
-`ponko::nav` names the navigation-mesh types as `d3` does (`NavMesh`,
-`NavAgent`, `NavObstacle`), so they don't clash with the root's `Mesh`.
+`ponko::nav` holds the navigation-mesh baking types (`NavBakeSettings`,
+`NavSource`, ...); the meshes and agents are `d3::NavMesh`, `d3::NavAgent` and
+`d3::NavObstacle`.
 
 The engine's built-in systems (`step_physics3d`, `draw_sprites`,
 `animate_sprites`, `rebuild_spatial_grid`, ...) live in `ponko::systems`, and

@@ -20,8 +20,10 @@
 
 #[allow(unused_imports)]
 use ponko::d2::*;
+use ponko::flow::{FlowField, NavGrid};
 #[allow(unused_imports)]
 use ponko::prelude::*;
+use ponko::spatial::SpatialGrid;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 
@@ -230,10 +232,10 @@ fn fight() -> impl FnMut(&mut Ctx) {
     let mut far = [SpatialGrid::new(SIGHT), SpatialGrid::new(SIGHT)];
     let mut positions: Vec<(Entity, Vec2, Team)> = Vec::new();
     move |ctx: &mut Ctx| {
-        let (dt, random, look) = (ctx.dt(), ctx.random(), ctx.time.turns(4));
+        let (dt, random, look) = (ctx.time.dt(), ctx.random(), ctx.time.turns(4));
         let crowding = ctx.time.sim_tick().is_multiple_of(2);
         ctx.world
-            .query::<(Entity, &Transform2D, &Unit)>()
+            .query::<(Entity, &d2::Transform, &Unit)>()
             .par_collect_into(&mut positions, |(e, t, u)| (e, t.position, u.team));
         // The four grids are independent: build them at the same time.
         let [near_red, near_blue] = &mut near;
@@ -252,7 +254,7 @@ fn fight() -> impl FnMut(&mut Ctx) {
         let battle = ctx.world.remove_resource::<Battle>().expect("battle");
         let (near, far, b) = (&near, &far, &battle);
         ctx.world
-            .query::<(Entity, &mut Transform2D, &mut Unit)>()
+            .query::<(Entity, &mut d2::Transform, &mut Unit)>()
             .par_for_each(|(e, t, unit)| {
                 let mut rng = random.of(e);
                 let me = t.position;
@@ -343,7 +345,7 @@ fn resolve() -> impl FnMut(&mut Ctx) {
         let mut alive = [0; 2];
         let (cmds, events) = (&mut ctx.commands, &mut ctx.events);
         ctx.world
-            .query::<(Entity, &Transform2D, &Unit)>()
+            .query::<(Entity, &d2::Transform, &Unit)>()
             .for_each(|(e, t, u)| {
                 if u.hp <= 0.0 {
                     cmds.despawn(e);
@@ -385,7 +387,7 @@ fn reinforce(ctx: &mut Ctx) {
     // A full army rebuilds in about 40 seconds.
     let per_tick = cap as f32 / (40.0 * 60.0);
     let mut spawns = Vec::new();
-    ctx.world.query::<(&Transform2D, &mut Base)>().for_each(|(t, base)| {
+    ctx.world.query::<(&d2::Transform, &mut Base)>().for_each(|(t, base)| {
         let room = cap.saturating_sub(alive[base.team.index()]);
         base.budget = (base.budget + per_tick).min(room as f32);
         let n = base.budget as usize;
@@ -431,8 +433,8 @@ fn spawn_unit(cmds: &mut Commands, sprite: Option<Texture>, team: Team, at: Vec2
         hit: None,
     };
     match sprite {
-        Some(tex) => cmds.spawn((Transform2D::at(at), Sprite::new(tex).with_color(team.color()), unit)),
-        None => cmds.spawn((Transform2D::at(at), unit)),
+        Some(tex) => cmds.spawn((d2::Transform::at(at), Sprite::new(tex).with_color(team.color()), unit)),
+        None => cmds.spawn((d2::Transform::at(at), unit)),
     }
 }
 
@@ -445,7 +447,7 @@ fn setup(ctx: &mut Ctx, units: usize, seed: u64, sprite: Option<Texture>) {
     let max_hp = 400.0 * (units as f32 / 1000.0).sqrt();
     let base_entities = [Team::Red, Team::Blue].map(|team| {
         ctx.world.spawn((
-            Transform2D::at(bases[team.index()]),
+            d2::Transform::at(bases[team.index()]),
             Base {
                 team,
                 hp: max_hp,
@@ -514,7 +516,7 @@ fn battle_systems(game: Game) -> Game {
 /// lookups and searches then mostly hit the cache.
 fn keep_neighbors_close(ctx: &mut Ctx) {
     ctx.world
-        .sort_by::<Transform2D>(|t| ponko::spatial::spatial_key(t.position, 64.0));
+        .sort_by::<d2::Transform>(|t| ponko::spatial::spatial_key(t.position, 64.0));
 }
 
 // ------------------------------------------------------------------ playing
@@ -523,9 +525,9 @@ fn controls(ctx: &mut Ctx) {
     let home = ctx.world.resource::<Battle>().bases;
     let rally = if ctx.input.mouse_pressed(MouseButton::Left) && !ctx.ui.wants_pointer() {
         Some(ctx.mouse_world())
-    } else if ctx.key_pressed(Key::A) {
+    } else if ctx.input.key_pressed(Key::A) {
         Some(home[1])
-    } else if ctx.key_pressed(Key::D) {
+    } else if ctx.input.key_pressed(Key::D) {
         Some(home[0])
     } else {
         None
@@ -536,10 +538,10 @@ fn controls(ctx: &mut Ctx) {
             b.set_rally(Team::Red, at);
         }
     }
-    if ctx.key_pressed(Key::R) {
+    if ctx.input.key_pressed(Key::R) {
         start_round(ctx);
     }
-    if ctx.key_pressed(Key::Space) {
+    if ctx.input.key_pressed(Key::Space) {
         if ctx.time.is_paused() {
             ctx.time.resume()
         } else {
@@ -547,11 +549,11 @@ fn controls(ctx: &mut Ctx) {
         }
     }
     for (key, speed) in [(Key::Num1, 1.0), (Key::Num2, 2.0), (Key::Num3, 4.0)] {
-        if ctx.key_pressed(key) {
+        if ctx.input.key_pressed(key) {
             ctx.time.set_speed(speed);
         }
     }
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }
@@ -600,7 +602,7 @@ fn draw_map(ctx: &mut Ctx) {
     );
     let rally = ctx.world.resource::<Battle>().rally[0];
     let mut bases = [(Vec2::ZERO, 0.0, Team::Red); 2];
-    ctx.world.query::<(&Transform2D, &Base)>().for_each(|(t, b)| {
+    ctx.world.query::<(&d2::Transform, &Base)>().for_each(|(t, b)| {
         bases[b.team.index()] = (t.position, b.hp / b.max_hp, b.team);
     });
     for (at, health, team) in bases {
@@ -633,7 +635,7 @@ fn hud(ctx: &mut Ctx) {
         format!("{}x", ctx.time.speed())
     };
     let panel = Rect::new(12.0, 12.0, 300.0, 150.0);
-    ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+    ctx.immediate_ui().panel(panel);
     let at = panel.min + ctx.ui.immediate.style.padding;
     let text = format!(
         "red {} vs blue {}   (rounds {}-{})\nsim {sim_ms:.2} ms/tick, {:.0} FPS, {speed}\nfield {field_ms:.2} ms\nclick: rally  A: attack  D: defend\nR: restart  1-3: speed",
@@ -643,7 +645,7 @@ fn hud(ctx: &mut Ctx) {
         won[1],
         ctx.time.fps()
     );
-    ctx.ui.immediate.label(&mut ctx.gfx, at, &text);
+    ctx.immediate_ui().label(at, &text);
     if let Some(team) = winner {
         let msg = if team == Team::Red {
             "Red wins! R for another round"
@@ -652,7 +654,7 @@ fn hud(ctx: &mut Ctx) {
         };
         let center = ctx.window_size() / 2.0;
         let size = ctx.gfx.measure_text(msg, 32.0);
-        ctx.draw_text(msg, center - size / 2.0, 32.0, team.color());
+        ctx.gfx.draw_text(msg, center - size / 2.0, 32.0, team.color());
     }
 }
 

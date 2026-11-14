@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use ponko::access::SystemAccess;
 #[allow(unused_imports)]
-use ponko::alloc_count::CountingAllocator;
+use ponko::perf::CountingAllocator;
 use ponko::prelude::*;
 use ponko::system_view::SystemView;
 

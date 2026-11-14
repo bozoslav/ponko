@@ -57,9 +57,9 @@ fn spawn(ctx: &mut Ctx, n: usize, at: Vec2) {
             0.6 + r.next_f32() * 0.4,
         );
         batch.push((
-            Transform2D {
+            d2::Transform {
                 scale: Vec2::splat(b.scale),
-                ..Transform2D::at(at)
+                ..d2::Transform::at(at)
             },
             Sprite::new(crab).with_color(color),
             Vel(vel),
@@ -69,10 +69,10 @@ fn spawn(ctx: &mut Ctx, n: usize, at: Vec2) {
 }
 
 fn bounce(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let bounds = ctx.window_size();
     let gravity = 600.0;
-    ctx.world.query::<(&mut Transform2D, &mut Vel)>().for_each(|(t, v)| {
+    ctx.world.query::<(&mut d2::Transform, &mut Vel)>().for_each(|(t, v)| {
         let (p, v) = (&mut t.position, &mut v.0);
         v.y += gravity * dt;
         *p += *v * dt;
@@ -97,7 +97,7 @@ fn bounce(ctx: &mut Ctx) {
 
 fn report(ctx: &mut Ctx) {
     if ctx.input.mouse_down(MouseButton::Left) {
-        let at = ctx.mouse_pos();
+        let at = ctx.input.mouse_pos();
         spawn(ctx, 1000, at);
     }
     // "update + draw calls" = every system except this one, as measured by the
@@ -132,7 +132,7 @@ fn report(ctx: &mut Ctx) {
         b.worst_ms = 0.0;
     }
     let quit_after = b.quit_after;
-    if ctx.key_pressed(Key::Escape) || (quit_after > 0.0 && time >= quit_after) {
+    if ctx.input.key_pressed(Key::Escape) || (quit_after > 0.0 && time >= quit_after) {
         ctx.quit();
     }
 }
@@ -146,7 +146,7 @@ fn main() {
         .system(bounce)
         .system(report)
         .setup(move |ctx| {
-            let crab = ctx.load_texture("crab.png");
+            let crab = ctx.gfx.load_texture("crab.png");
             ctx.world.insert_resource(Bench {
                 crab,
                 rng: Rng(0x9E37_79B9_7F4A_7C15),

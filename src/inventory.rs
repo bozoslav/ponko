@@ -315,7 +315,7 @@ pub enum AssetOwner {
 /// use ponko::inventory::{AssetClass, AssetOwner};
 /// Game::new("t", 1, 1).run_headless(0, |ctx| {
 ///     let _made = ctx.gfx.create_texture(2, 2, &[255; 16]);
-///     let _loaded = ctx.load_texture("crab.png");
+///     let _loaded = ctx.gfx.load_texture("crab.png");
 ///     let records = ctx.gfx.asset_handles(AssetClass::Texture);
 ///     let made = records.iter().find(|r| r.owner == AssetOwner::Code).unwrap();
 ///     assert_eq!(made.bytes, 16);

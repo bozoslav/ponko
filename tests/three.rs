@@ -49,7 +49,7 @@ fn village(ctx: &mut Ctx) {
 }
 
 fn spin(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     ctx.world.query::<(&mut Transform, &Spin)>().for_each(|(t, s)| {
         t.rotation *= Quat::from_rotation_y(s.0 * dt);
     });
@@ -884,14 +884,14 @@ fn transforms_are_reflected_as_json() {
 /// built on worker threads, freed past 800 m, and coarse far ground
 /// beyond them.
 struct Ground {
-    cells: ponko::stream::CellStreamer,
+    cells: ponko::streaming::CellStreamer,
     tiles: std::collections::HashMap<(i32, i32), Tile>,
     material: Material,
     far: FarTerrain,
 }
 
 enum Tile {
-    Building(ponko::stream::Job<TerrainTileData>),
+    Building(ponko::streaming::Job<TerrainTileData>),
     Live(Entity, TerrainTile),
 }
 
@@ -907,7 +907,7 @@ impl Ground {
             .map(|i| hill(-4096.0 + (i % n) as f32 * 32.0, -4096.0 + (i / n) as f32 * 32.0))
             .collect();
         Self {
-            cells: ponko::stream::CellStreamer::new(128.0, 600.0, 800.0),
+            cells: ponko::streaming::CellStreamer::new(128.0, 600.0, 800.0),
             tiles: Default::default(),
             material,
             far: FarTerrain::new(&heights, n, vec2(-4096.0, -4096.0), 32.0, 128.0, material),
@@ -920,7 +920,7 @@ impl Ground {
         self.cells.update(ctx.scene3d.camera.position, 4);
         for &cell in self.cells.to_load() {
             let corner = self.cells.corner(cell);
-            let job = ponko::stream::Job::spawn(move || {
+            let job = ponko::streaming::Job::spawn(move || {
                 // 65 x 65 heights, 2 m apart.
                 let heights: Vec<f32> = (0..65 * 65)
                     .map(|i| hill(corner.x + (i % 65) as f32 * 2.0, corner.z + (i / 65) as f32 * 2.0))
@@ -1751,7 +1751,7 @@ fn quality_autotune_is_scene_opt_in_and_headless_stays_fixed() {
     // ANCHOR: quality-autotune
     use ponko::render::QualityAutotune;
     Game::new("Quality policy", 640, 360).run_headless(2, |ctx| {
-        assert!(ctx.scene3d.quality_autotune_status(&ctx.gfx).is_none()); // default: off
+        assert!(ctx.quality_autotune_status().is_none()); // default: off
         ctx.scene3d.set_quality_autotune(Some(QualityAutotune {
             target_gpu_ms: 1000.0 / 60.0,
             min_render_scale: 0.6,
@@ -1763,7 +1763,7 @@ fn quality_autotune_is_scene_opt_in_and_headless_stays_fixed() {
         ctx.scene3d.pin_shadow_resolution(2048);
         // Freeze before a deterministic screenshot sequence and its warm-up.
         ctx.scene3d.freeze_quality_autotune(true);
-        let status = ctx.scene3d.quality_autotune_status(&ctx.gfx).unwrap();
+        let status = ctx.quality_autotune_status().unwrap();
         assert!(status.shadow_resolution_pinned);
         assert_eq!(status.changes, 0); // headless never tunes
         ctx.scene3d.freeze_quality_autotune(false);

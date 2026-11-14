@@ -1,10 +1,7 @@
-//! Streaming big worlds: [`Job`] runs work on another thread (loading and
-//! building a tile, decoding a file), and `CellStreamer` (with the `3d` feature) says which cells
-//! of a grid to load or drop as the camera moves, nearest first.
-//!
-//! These are building blocks for a game's own content and hold no assets.
-//! Loading textures and meshes by name under memory and upload budgets is
-//! [`crate::streaming`], on [`Graphics`](crate::gfx::Graphics).
+//! Background jobs and cell grids, public in [`crate::streaming`]: [`Job`]
+//! runs work on another thread, and `CellStreamer` (with the `3d` feature)
+//! says which cells of a grid to load or drop as the camera moves, nearest
+//! first.
 
 #[cfg(feature = "3d")]
 use std::collections::HashSet;
@@ -23,7 +20,7 @@ use glam::{Vec2, Vec3};
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// let mut job = ponko::stream::Job::spawn(|| (1..=10).sum::<i32>());
+/// let mut job = ponko::streaming::Job::spawn(|| (1..=10).sum::<i32>());
 /// // Each frame, until it's done:
 /// let sum = loop {
 ///     if let Some(sum) = job.take() {
@@ -53,7 +50,7 @@ impl<T: Send + 'static> Job<T> {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let heights = ponko::stream::Job::spawn(|| vec![0.0f32; 129 * 129]);
+    /// let heights = ponko::streaming::Job::spawn(|| vec![0.0f32; 129 * 129]);
     /// assert_eq!(heights.wait().len(), 129 * 129);
     /// ```
     pub fn spawn(work: impl FnOnce() -> T + Send + 'static) -> Self {
@@ -103,7 +100,7 @@ impl<T> Job<T> {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut job = ponko::stream::Job::spawn(|| 7);
+    /// let mut job = ponko::streaming::Job::spawn(|| 7);
     /// while !job.is_done() {}
     /// assert!(job.is_done());
     /// ```
@@ -117,7 +114,7 @@ impl<T> Job<T> {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut job = ponko::stream::Job::spawn(|| "ready");
+    /// let mut job = ponko::streaming::Job::spawn(|| "ready");
     /// while !job.is_done() {}
     /// assert_eq!(job.take(), Some("ready"));
     /// assert_eq!(job.take(), None);
@@ -140,7 +137,7 @@ impl<T> Job<T> {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// assert_eq!(ponko::stream::Job::spawn(|| 2 + 2).wait(), 4);
+    /// assert_eq!(ponko::streaming::Job::spawn(|| 2 + 2).wait(), 4);
     /// ```
     ///
     /// # Panics
@@ -180,7 +177,7 @@ impl<T> Job<T> {
 ///
 /// ```
 /// # use ponko::prelude::*;
-/// let mut cells = ponko::stream::CellStreamer::new(256.0, 600.0, 800.0);
+/// let mut cells = ponko::streaming::CellStreamer::new(256.0, 600.0, 800.0);
 /// cells.update(Vec3::ZERO, 100);
 /// assert!(cells.to_load().contains(&(0, 0)));
 /// assert_eq!(cells.to_load()[0], (-1, -1), "nearest first: all four touch the camera");
@@ -209,7 +206,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let cells = ponko::stream::CellStreamer::new(128.0, 500.0, 700.0);
+    /// let cells = ponko::streaming::CellStreamer::new(128.0, 500.0, 700.0);
     /// assert!(cells.loaded().next().is_none());
     /// ```
     ///
@@ -245,7 +242,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(10.0, 25.0, 40.0);
+    /// let mut cells = ponko::streaming::CellStreamer::new(10.0, 25.0, 40.0);
     /// cells.update(Vec3::ZERO, 2);
     /// assert_eq!(cells.to_load().len(), 2, "two this frame");
     /// cells.update(Vec3::ZERO, 100);
@@ -295,7 +292,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(1.0, 0.4, 0.4);
+    /// let mut cells = ponko::streaming::CellStreamer::new(1.0, 0.4, 0.4);
     /// cells.update(vec3(0.5, 0.0, 0.5), 10);
     /// assert_eq!(cells.to_load(), &[(0, 0)]);
     /// ```
@@ -308,7 +305,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(1.0, 0.4, 0.4);
+    /// let mut cells = ponko::streaming::CellStreamer::new(1.0, 0.4, 0.4);
     /// cells.update(vec3(0.5, 0.0, 0.5), 10);
     /// cells.update(vec3(10.5, 0.0, 0.5), 10);
     /// assert_eq!(cells.to_drop(), &[(0, 0)]);
@@ -322,7 +319,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(1.0, 0.4, 0.4);
+    /// let mut cells = ponko::streaming::CellStreamer::new(1.0, 0.4, 0.4);
     /// cells.update(vec3(0.5, 0.0, 0.5), 10);
     /// assert_eq!(cells.loaded().count(), 1);
     /// ```
@@ -334,7 +331,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(1.0, 0.4, 0.4);
+    /// let mut cells = ponko::streaming::CellStreamer::new(1.0, 0.4, 0.4);
     /// cells.update(vec3(0.5, 0.0, 0.5), 10);
     /// assert!(cells.is_loaded((0, 0)) && !cells.is_loaded((5, 5)));
     /// ```
@@ -347,7 +344,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let cells = ponko::stream::CellStreamer::new(1.0, 0.4, 0.4);
+    /// let cells = ponko::streaming::CellStreamer::new(1.0, 0.4, 0.4);
     /// assert_eq!(cells.loaded_count(), 0);
     /// ```
     #[must_use]
@@ -360,7 +357,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let cells = ponko::stream::CellStreamer::new(256.0, 0.0, 0.0);
+    /// let cells = ponko::streaming::CellStreamer::new(256.0, 0.0, 0.0);
     /// assert_eq!(cells.corner((2, -1)), vec3(512.0, 0.0, -256.0));
     /// ```
     #[must_use]
@@ -373,7 +370,7 @@ impl CellStreamer {
     ///
     /// ```
     /// # use ponko::prelude::*;
-    /// let mut cells = ponko::stream::CellStreamer::new(1.0, 2.0, 2.0);
+    /// let mut cells = ponko::streaming::CellStreamer::new(1.0, 2.0, 2.0);
     /// cells.update(Vec3::ZERO, 100);
     /// cells.clear();
     /// assert_eq!(cells.loaded().count(), 0);

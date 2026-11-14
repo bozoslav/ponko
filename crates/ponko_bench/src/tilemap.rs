@@ -6,9 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use ponko::d2::{TileMap, Transform as Transform2D};
+use ponko::d2::Transform as Transform2D;
 use ponko::game::{Phase, Systems};
 use ponko::prelude::{Ctx, Game, SpriteSheet, vec2};
+use ponko::tilemap::TileMap;
 
 use crate::{Bench, report};
 

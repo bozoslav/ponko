@@ -5,8 +5,8 @@ use ponko_ecs::{Commands, World};
 
 use crate::assets;
 use crate::audio::Audio;
-use crate::camera::Camera2D;
 use crate::camera::Rect;
+use crate::camera2d::Camera2D;
 use crate::color::Color;
 use crate::ecs::{Sprite, Transform2D};
 use crate::events::Events;
@@ -61,7 +61,7 @@ pub(crate) fn screen_projection(size: Vec2) -> Mat4 {
 /// These common calls are also on `Ctx`, each one a deliberate shortcut:
 /// [`dt`](Self::dt), [`key_down`](Self::key_down),
 /// [`key_pressed`](Self::key_pressed), [`key_released`](Self::key_released),
-/// [`mouse_pos`](Self::mouse_pos), [`mouse_world`](Self::mouse_world),
+/// [`ctx.input.mouse_pos()`](crate::input::Input::mouse_pos), [`mouse_world`](Self::mouse_world),
 /// [`window_size`](Self::window_size), [`quit`](Self::quit),
 /// [`draw`](Self::draw), [`draw_text`](Self::draw_text),
 /// [`load_texture`](Self::load_texture), [`load_sound`](Self::load_sound),
@@ -114,7 +114,7 @@ pub struct Ctx {
     /// struct Vel(Vec2);
     ///
     /// fn movement(ctx: &mut Ctx) {
-    ///     let dt = ctx.dt();
+    ///     let dt = ctx.time.dt();
     ///     ctx.world.query::<(&mut ponko::d2::Transform, &Vel)>().for_each(|(t, v)| {
     ///         t.position += v.0 * dt;
     ///     });
@@ -159,7 +159,7 @@ pub struct Ctx {
     /// }
     /// ```
     pub commands: Commands,
-    /// Neighbor queries over every entity's [`Transform2D`] position; filled
+    /// Neighbor queries over every entity's [`d2::Transform`](crate::d2::Transform) position; filled
     /// at the start of each simulation tick once enabled with
     /// [`Game::spatial_grid`](crate::game::Game::spatial_grid) (empty otherwise).
     pub spatial: SpatialGrid,
@@ -239,7 +239,7 @@ pub struct Ctx {
     window_size: Vec2,
     quit_requested: bool,
     /// Which part of the world the window shows. Move it, zoom it, or make
-    /// it follow something; see [`Camera2D`].
+    /// it follow something; see [`d2::Camera`](crate::d2::Camera).
     ///
     /// ```
     /// # use ponko::prelude::*;
@@ -350,7 +350,7 @@ impl Ctx {
         let mut world = World::new();
         crate::reflect::WorldReflect::reflect::<crate::d2::Transform>(&mut world);
         crate::reflect::describe_transform2d(&mut world);
-        crate::reflect::WorldReflect::reflect::<crate::d2::Attached>(&mut world);
+        crate::reflect::WorldReflect::reflect::<crate::attach::Attached>(&mut world);
         crate::reflect::WorldReflect::reflect::<crate::scene::PrefabParts>(&mut world);
         #[cfg(feature = "3d")]
         crate::reflect::WorldReflect::reflect::<crate::d3::Transform>(&mut world);
@@ -753,8 +753,8 @@ impl Ctx {
         self.draw_styled_sprites();
     }
 
-    /// The sprites with a [`BlendMode`](crate::d2::BlendMode) or a
-    /// [`SpriteMaterial`](crate::d2::SpriteMaterial); most frames have
+    /// The sprites with a [`BlendMode`](crate::render::BlendMode) or a
+    /// [`SpriteMaterial`](crate::render::SpriteMaterial); most frames have
     /// none, so it stays out of line.
     #[inline(never)]
     fn draw_styled_sprites(&mut self) {
@@ -978,12 +978,9 @@ impl Ctx {
     /// [`ctx.gfx.draw`](crate::gfx::Graphics::draw), which has the details;
     /// [`draw_ex`](crate::gfx::Graphics::draw_ex) scales, rotates and tints.
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx, crab: Texture) {
-    /// ctx.draw(crab, vec2(400.0, 300.0));
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.gfx.draw`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.gfx.draw`")]
     pub fn draw(&mut self, texture: Texture, pos: Vec2) {
         self.gfx.draw(texture, pos);
     }
@@ -992,13 +989,9 @@ impl Ctx {
     /// top of the world, ignoring the camera). `size` is the line height in
     /// pixels. A shortcut for [`ctx.gfx.draw_text`](crate::gfx::Graphics::draw_text).
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn hud(ctx: &mut Ctx) {
-    /// let fps = ctx.time.fps();
-    /// ctx.draw_text(&format!("{fps:.0} FPS"), vec2(10.0, 10.0), 18.0, Color::WHITE);
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.gfx.draw_text`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.gfx.draw_text`")]
     pub fn draw_text(&mut self, text: &str, pos: Vec2, size: f32, color: Color) {
         self.gfx.draw_text(text, pos, size, color);
     }
@@ -1009,16 +1002,9 @@ impl Ctx {
     /// [`ctx.gfx.load_texture`](crate::gfx::Graphics::load_texture), which has
     /// the details.
     ///
-    /// # Panics
-    /// With a clear message if the file is missing or isn't a valid image.
-    ///
-    /// ```no_run
-    /// # use ponko::prelude::*;
-    /// Game::new("Crabs", 800, 600).run(|ctx| {
-    ///     let crab = ctx.load_texture("crab.png");
-    ///     move |ctx: &mut Ctx| ctx.draw(crab, vec2(400.0, 300.0))
-    /// });
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.gfx.load_texture`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.gfx.load_texture`")]
     pub fn load_texture(&mut self, path: &str) -> Texture {
         self.gfx.load_texture(path)
     }
@@ -1027,17 +1013,9 @@ impl Ctx {
     /// or the `assets/` folder. A shortcut for
     /// [`ctx.audio.load`](crate::audio::Audio::load), which has the details.
     ///
-    /// # Panics
-    /// With a clear message if the file is missing or, with the `audio`
-    /// feature, can't be decoded.
-    ///
-    /// ```no_run
-    /// # use ponko::prelude::*;
-    /// # fn setup(ctx: &mut Ctx) {
-    /// let hit = ctx.load_sound("hit.ogg");
-    /// ctx.play_sound(hit);
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.audio.load`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.audio.load`")]
     pub fn load_sound(&mut self, path: &str) -> crate::audio::Sound {
         self.audio.load(path)
     }
@@ -1047,12 +1025,9 @@ impl Ctx {
     /// (volume, pitch, looping, buses, positions) are on
     /// [`ctx.audio`](Self::audio).
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn f(ctx: &mut Ctx, hit: Sound) {
-    /// ctx.play_sound(hit);
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.audio.play`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.audio.play`")]
     pub fn play_sound(&mut self, sound: crate::audio::Sound) -> crate::audio::Playing {
         self.audio.play(sound)
     }
@@ -1106,25 +1081,9 @@ impl Ctx {
     /// frame-rate independent movement. A shortcut for
     /// [`ctx.time.dt()`](crate::time::Time::dt).
     ///
-    /// Clamped to at most 0.25 s so a hiccup never teleports objects.
-    ///
-    /// Inside a simulation system (added with
-    /// [`Game::sim_system`](crate::game::Game::sim_system)) this is the fixed step
-    /// instead, so simulation code just uses `dt()` too. In a system added
-    /// with an interval ([`IntoSystem::every`](crate::game::IntoSystem::every)) it
-    /// is that many fixed steps.
-    ///
-    /// The meaning follows the running system. To say which clock you mean,
-    /// use the explicit pair: [`ctx.time.frame_dt()`](crate::time::Time::frame_dt)
-    /// is always the frame's delta, and
-    /// [`ctx.time.sim_dt()`](crate::time::Time::sim_dt) is always the simulation's.
-    ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
-    /// pos.x += 200.0 * ctx.dt(); // 200 pixels per second
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.time.dt()`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.time.dt()`")]
     pub fn dt(&self) -> f32 {
         self.time.dt()
     }
@@ -1133,36 +1092,27 @@ impl Ctx {
 
     /// `true` while `key` is held down.
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx, pos: &mut Vec2) {
-    /// if ctx.key_down(Key::Right) { pos.x += 200.0 * ctx.dt(); }
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.input.key_down`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.input.key_down`")]
     pub fn key_down(&self, key: Key) -> bool {
         self.input.key_down(key)
     }
 
     /// `true` only on the frame `key` went down. Good for jumps, menus, toggles.
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx, paused: &mut bool) {
-    /// if ctx.key_pressed(Key::P) { *paused = !*paused; }
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.input.key_pressed`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.input.key_pressed`")]
     pub fn key_pressed(&self, key: Key) -> bool {
         self.input.key_pressed(key)
     }
 
     /// `true` only on the frame `key` was let go.
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx, charging: &mut bool) {
-    /// if ctx.key_released(Key::Space) { *charging = false; }
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.input.key_released`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.input.key_released`")]
     pub fn key_released(&self, key: Key) -> bool {
         self.input.key_released(key)
     }
@@ -1172,17 +1122,14 @@ impl Ctx {
     /// Mouse position in window pixels. `(0, 0)` is the top-left corner,
     /// `y` grows downward.
     ///
-    /// ```
-    /// # use ponko::prelude::*;
-    /// # fn update(ctx: &mut Ctx) {
-    /// let target = ctx.mouse_pos();
-    /// # }
-    /// ```
+    /// Deprecated: [`Ctx`] holds the services, and each call has one
+    /// spelling, on its service: `ctx.input.mouse_pos()`.
+    #[deprecated(since = "0.2.0", note = "use `ctx.input.mouse_pos()`")]
     pub fn mouse_pos(&self) -> Vec2 {
         self.input.mouse_pos()
     }
 
-    /// The world point under the mouse: [`mouse_pos`](Self::mouse_pos)
+    /// The world point under the mouse: [`ctx.input.mouse_pos()`](crate::input::Input::mouse_pos)
     /// through the [`camera`](Self::camera).
     ///
     /// ```
@@ -1194,14 +1141,14 @@ impl Ctx {
     /// # }
     /// ```
     pub fn mouse_world(&self) -> Vec2 {
-        self.camera.screen_to_world(self.mouse_pos())
+        self.camera.screen_to_world(self.input.mouse_pos())
     }
 
     // ---------------------------------------------------------------- gamepads
 
     // ---------------------------------------------------------------- window
 
-    /// Window size in pixels (logical pixels, so it matches [`mouse_pos`](Self::mouse_pos)
+    /// Window size in pixels (logical pixels, so it matches [`ctx.input.mouse_pos()`](crate::input::Input::mouse_pos)
     /// on high-DPI screens).
     ///
     /// ```
@@ -1219,7 +1166,7 @@ impl Ctx {
     /// ```
     /// # use ponko::prelude::*;
     /// # fn update(ctx: &mut Ctx) {
-    /// if ctx.key_pressed(Key::Escape) { ctx.quit(); }
+    /// if ctx.input.key_pressed(Key::Escape) { ctx.quit(); }
     /// # }
     /// ```
     pub fn quit(&mut self) {
@@ -1345,11 +1292,11 @@ mod tests {
         let file = dir.join("crab.png");
         std::fs::write(&file, png(2)).unwrap();
         let name = file.to_str().unwrap().to_string();
-        let from_folder = ctx.load_texture(&name);
+        let from_folder = ctx.gfx.load_texture(&name);
         assert_eq!(ctx.assets.watcher.watched(), 1, "default-source files are watched");
         ctx.assets
             .add_source(crate::assets::MemorySource::new("mem").with(name.clone(), png(3)));
-        let from_source = ctx.load_texture(&name);
+        let from_source = ctx.gfx.load_texture(&name);
         assert_ne!(from_source, from_folder, "same name, other source: another asset");
         assert_eq!(from_source.width(), 3);
         assert_eq!(ctx.assets.watcher.watched(), 1, "source assets are not watched");
@@ -1359,7 +1306,11 @@ mod tests {
             name: name.clone()
         }));
         assert!(keys.iter().any(|o| matches!(o, assets::Origin::File(_))));
-        assert_eq!(ctx.load_texture(&name), from_source, "the source's copy stays cached");
+        assert_eq!(
+            ctx.gfx.load_texture(&name),
+            from_source,
+            "the source's copy stays cached"
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1394,14 +1345,14 @@ mod tests {
         let file = dir.join("tone.wav");
         std::fs::write(&file, wav()).unwrap();
         let name = file.to_str().unwrap().to_string();
-        let from_folder = ctx.load_sound(&name);
+        let from_folder = ctx.audio.load(&name);
         assert_eq!(ctx.assets.watcher.watched(), 1, "default-source sounds are watched");
         ctx.assets
             .add_source(crate::assets::MemorySource::new("mem").with(name.clone(), wav()));
-        let from_source = ctx.load_sound(&name);
+        let from_source = ctx.audio.load(&name);
         assert_ne!(from_source, from_folder, "same name, other source: another sound");
         assert_eq!(ctx.assets.watcher.watched(), 1, "source sounds are not watched");
-        assert_eq!(ctx.load_sound(&name), from_source, "the source's copy stays cached");
+        assert_eq!(ctx.audio.load(&name), from_source, "the source's copy stays cached");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1414,7 +1365,7 @@ mod tests {
             .add_source(crate::assets::MemorySource::new("mem").with("theme.wav", wav()));
         let stream = ctx.audio.load_stream("theme.wav");
         assert_eq!(ctx.assets.watcher.watched(), 0, "streams are not watched");
-        let sound = ctx.load_sound("theme.wav");
+        let sound = ctx.audio.load("theme.wav");
         assert_ne!(stream, sound);
         let origin = assets::Origin::Source {
             source: "mem".into(),
@@ -1425,7 +1376,7 @@ mod tests {
         // Freeing the stream forgets it: loading again makes a new one.
         ctx.free(stream);
         assert_ne!(ctx.audio.load_stream("theme.wav"), stream);
-        assert_eq!(ctx.load_sound("theme.wav"), sound);
+        assert_eq!(ctx.audio.load("theme.wav"), sound);
     }
 
     #[cfg(feature = "3d")]
@@ -1461,7 +1412,7 @@ mod tests {
         ctx.begin_frame(timing(0.5));
         ctx.begin_frame(timing(0.25));
         assert_eq!(ctx.time.frame(), 2);
-        assert_eq!(ctx.dt(), 0.25);
+        assert_eq!(ctx.time.dt(), 0.25);
         assert!((ctx.time.elapsed() - 0.75).abs() < 1e-9);
         assert_eq!(ctx.time.fixed_steps(), 1);
         assert_eq!(ctx.time.fixed_alpha(), 0.25);
@@ -1489,7 +1440,7 @@ mod tests {
     fn draw_without_gpu_queues_sprites() {
         let mut ctx = Ctx::new(1.0 / 60.0, Vec2::new(800.0, 600.0));
         let tex = Texture::new(0, 16, 8);
-        ctx.draw(tex, Vec2::new(10.0, 20.0));
+        ctx.gfx.draw(tex, Vec2::new(10.0, 20.0));
         ctx.gfx.draw_ex(
             tex,
             Vec2::ZERO,

@@ -544,7 +544,7 @@ fn quality_autotune_uses_live_gpu_samples_and_resets_scaled_history() {
             break;
         }
     }
-    let status = f.ctx.scene3d.quality_autotune_status(&f.ctx.gfx).unwrap();
+    let status = f.ctx.quality_autotune_status().unwrap();
     if f.timer.is_none() {
         assert_eq!(status.changes, 0);
         assert_eq!(status.reason, QualityAutotuneReason::GpuUnavailable);

@@ -22,6 +22,7 @@
 #[allow(unused_imports)]
 use ponko::d2::*;
 use ponko::prelude::*;
+use ponko::spatial::SpatialGrid;
 #[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 
@@ -125,17 +126,17 @@ fn env_number(name: &str, default: f64) -> f64 {
 fn steer(bounds: Vec2) -> impl FnMut(&mut Ctx) {
     let mut food_grid = SpatialGrid::new(SIGHT);
     move |ctx: &mut Ctx| {
-        let (dt, random) = (ctx.dt(), ctx.random());
+        let (dt, random) = (ctx.time.dt(), ctx.random());
         food_grid.rebuild_from(
             ctx.world
-                .query::<(Entity, &Transform2D, &Food)>()
+                .query::<(Entity, &d2::Transform, &Food)>()
                 .iter()
                 .map(|(e, t, _)| (e, t.position)),
         );
         let field = ctx.world.remove_resource::<Field>().expect("field");
         let (grid, f) = (&food_grid, &field);
         ctx.world
-            .query::<(Entity, &mut Transform2D, &mut Ant)>()
+            .query::<(Entity, &mut d2::Transform, &mut Ant)>()
             .par_for_each(|(e, t, ant)| {
                 let mut rng = random.of(e);
                 let p = t.position;
@@ -189,7 +190,7 @@ fn steer(bounds: Vec2) -> impl FnMut(&mut Ctx) {
 /// way", carrying ants lay "food is this way"; fresher trails are stronger.
 fn lay_trails(ctx: &mut Ctx) {
     let mut field = ctx.world.remove_resource::<Field>().expect("field");
-    ctx.world.query::<(&Transform2D, &Ant)>().for_each(|(t, ant)| {
+    ctx.world.query::<(&d2::Transform, &Ant)>().for_each(|(t, ant)| {
         if let Some(i) = field.index(t.position) {
             let strength = (1.0 - ant.since / 30.0).max(0.0);
             let layer = if ant.carrying {
@@ -205,7 +206,7 @@ fn lay_trails(ctx: &mut Ctx) {
 
 /// Every 4th tick: trails fade.
 fn evaporate(ctx: &mut Ctx) {
-    let keep = 0.985f32.powf(ctx.dt() * 60.0);
+    let keep = 0.985f32.powf(ctx.time.dt() * 60.0);
     let field = ctx.world.resource_mut::<Field>();
     for v in field.to_food.iter_mut().chain(field.to_home.iter_mut()) {
         *v *= keep;
@@ -220,13 +221,13 @@ fn forage(ctx: &mut Ctx) {
     let mut food_grid = SpatialGrid::new(8.0);
     food_grid.rebuild_from(
         ctx.world
-            .query::<(Entity, &Transform2D, &Food)>()
+            .query::<(Entity, &d2::Transform, &Food)>()
             .iter()
             .map(|(e, t, _)| (e, t.position)),
     );
     let grid = &food_grid;
     ctx.world
-        .query::<(Entity, &Transform2D, &mut Ant)>()
+        .query::<(Entity, &d2::Transform, &mut Ant)>()
         .par_for_each(|(e, t, ant)| {
             ant.event = Event::None;
             if ant.energy <= 0.0 {
@@ -293,7 +294,7 @@ fn grow(bounds: Vec2) -> impl FnMut(&mut Ctx) {
             .for_each(|a| *counts.entry(a.home).or_insert(0u32) += 1);
         let mut nests = Vec::new();
         ctx.world
-            .query::<(Entity, &Transform2D, &mut Nest)>()
+            .query::<(Entity, &d2::Transform, &mut Nest)>()
             .for_each(|(e, t, n)| {
                 n.ants = counts.get(&e).copied().unwrap_or(0);
                 let born = n.stored.min(n.max_ants.saturating_sub(n.ants));
@@ -329,7 +330,7 @@ fn spawn_ant(cmds: &mut Commands, sprite: Option<Texture>, home: Entity, at: Vec
         energy: LIFESPAN,
         event: Event::None,
     };
-    let t = Transform2D::at(at).rotated(heading);
+    let t = d2::Transform::at(at).rotated(heading);
     match sprite {
         Some(tex) => cmds.spawn((t, ant, Sprite::new(tex).with_color(Color::hex(0xD4553A)))),
         None => cmds.spawn((t, ant)),
@@ -344,7 +345,7 @@ fn spawn_food(cmds: &mut Commands, rng: &mut Rng, bounds: Vec2, nests: &[Vec2]) 
             break p;
         }
     };
-    cmds.spawn((Transform2D::at(p), Food { amount: 400 }));
+    cmds.spawn((d2::Transform::at(p), Food { amount: 400 }));
 }
 
 /// The simulation, shared by the windowed and headless runs.
@@ -377,7 +378,7 @@ fn setup(ctx: &mut Ctx, bounds: Vec2, ants: usize, sprite: Option<Texture>) {
                 max_ants: per_nest as u32 * 2,
                 ants: per_nest as u32,
             };
-            let home = ctx.world.spawn((Transform2D::at(at), nest));
+            let home = ctx.world.spawn((d2::Transform::at(at), nest));
             homes.push(at);
             for _ in 0..per_nest {
                 spawn_ant(&mut ctx.commands, sprite, home, at, rng.angle());
@@ -396,22 +397,22 @@ fn delivered(world: &mut World) -> u64 {
 // ------------------------------------------------------------------ drawing
 
 fn controls(ctx: &mut Ctx) {
-    if ctx.key_pressed(Key::Space) {
+    if ctx.input.key_pressed(Key::Space) {
         if ctx.time.is_paused() {
             ctx.time.resume()
         } else {
             ctx.time.pause()
         }
     }
-    if ctx.key_pressed(Key::Period) {
+    if ctx.input.key_pressed(Key::Period) {
         ctx.time.step();
     }
     for (key, speed) in [(Key::Num1, 1.0), (Key::Num2, 4.0), (Key::Num3, 16.0), (Key::Num4, 64.0)] {
-        if ctx.key_pressed(key) {
+        if ctx.input.key_pressed(key) {
             ctx.time.set_speed(speed);
         }
     }
-    if ctx.key_pressed(Key::Escape) {
+    if ctx.input.key_pressed(Key::Escape) {
         ctx.quit();
     }
 }
@@ -422,7 +423,7 @@ fn hud(ctx: &mut Ctx) {
     let nests = ctx.world.query::<&Nest>().count();
     let food = delivered(&mut ctx.world);
     let panel = Rect::new(12.0, 12.0, 260.0, 156.0);
-    ctx.ui.immediate.panel(&mut ctx.gfx, panel);
+    ctx.immediate_ui().panel(panel);
     let mut at = panel.min + ctx.ui.immediate.style.padding;
     let speed = if ctx.time.is_paused() {
         "paused".to_string()
@@ -433,13 +434,9 @@ fn hud(ctx: &mut Ctx) {
         "{ants} ants in {nests} colonies\n{food} food delivered\nspeed {speed}, {:.0} FPS",
         ctx.time.fps()
     );
-    at.y += ctx.ui.immediate.label(&mut ctx.gfx, at, &stats).y + 8.0;
+    at.y += ctx.immediate_ui().label(at, &stats).y + 8.0;
     let pause = if ctx.time.is_paused() { "Run" } else { "Pause" };
-    if ctx
-        .ui
-        .immediate
-        .button(&mut ctx.gfx, &ctx.input, Rect::new(at.x, at.y, 72.0, 30.0), pause)
-    {
+    if ctx.immediate_ui().button(Rect::new(at.x, at.y, 72.0, 30.0), pause) {
         if ctx.time.is_paused() {
             ctx.time.resume()
         } else {
@@ -448,11 +445,7 @@ fn hud(ctx: &mut Ctx) {
     }
     for (i, speed) in [1.0f32, 4.0, 16.0].into_iter().enumerate() {
         let r = Rect::new(at.x + 80.0 + i as f32 * 54.0, at.y, 48.0, 30.0);
-        if ctx
-            .ui
-            .immediate
-            .button(&mut ctx.gfx, &ctx.input, r, &format!("{speed}x"))
-        {
+        if ctx.immediate_ui().button(r, &format!("{speed}x")) {
             ctx.time.set_speed(speed);
             ctx.time.resume();
         }
@@ -489,10 +482,10 @@ fn draw_world(bounds: Vec2) -> impl FnMut(&mut Ctx) {
         );
 
         dots.clear();
-        ctx.world.query::<(&Transform2D, &Food)>().for_each(|(t, f)| {
+        ctx.world.query::<(&d2::Transform, &Food)>().for_each(|(t, f)| {
             dots.push((t.position, 2.0 + (f.amount as f32).sqrt() / 2.0, Color::hex(0x7BD389)));
         });
-        ctx.world.query::<(&Transform2D, &Nest)>().for_each(|(t, _)| {
+        ctx.world.query::<(&d2::Transform, &Nest)>().for_each(|(t, _)| {
             dots.push((t.position, NEST_RADIUS, Color::hex(0x8E5A3C)));
         });
         for &(p, radius, color) in &dots {

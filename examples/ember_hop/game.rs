@@ -34,15 +34,17 @@
 #[path = "smoke.rs"]
 pub mod smoke;
 
+use ponko::collision::CollisionStarted;
 use ponko::d2::{
-    Animation, AutoTile, BlendMode, Collider, CollisionStarted, LevelLayer, LevelObject, LevelOptions, LevelRoot,
-    ParticleEmitter, ParticleSettings, ParticleShape, QueryFilter, RigidBody, SpriteSheet, TileMap, Transform,
-    Velocity,
+    Collider, ParticleEmitter, ParticleSettings, ParticleShape, QueryFilter, RigidBody, Transform, Velocity,
 };
 use ponko::input::{Gamepad, GamepadAxis, GamepadButton};
 use ponko::particles::{ParticleCurve, ParticleGradient};
 use ponko::prelude::*;
+use ponko::render::BlendMode;
+use ponko::sheet::{Animation, SpriteSheet};
 use ponko::storage::Storage;
+use ponko::tilemap::{AutoTile, LevelLayer, LevelObject, LevelOptions, LevelRoot, TileMap};
 use serde::{Deserialize, Serialize};
 
 // ---- tuning ---------------------------------------------------------------------
@@ -502,7 +504,7 @@ pub fn hold_physics(ctx: &mut Ctx) {
 
 fn load_art(ctx: &mut Ctx) -> Art {
     let sheet = |ctx: &mut Ctx, path: &str, w, h| {
-        let texture = ctx.load_texture(path);
+        let texture = ctx.gfx.load_texture(path);
         ctx.gfx.set_texture_filter(texture, TextureFilter::Nearest);
         SpriteSheet::new(texture, w, h)
     };
@@ -512,16 +514,16 @@ fn load_art(ctx: &mut Ctx) -> Art {
         drip: sheet(ctx, "ember_hop/sprites/drip.png", 16, 16),
         brazier: sheet(ctx, "ember_hop/sprites/brazier.png", 16, 16),
         lantern: sheet(ctx, "ember_hop/sprites/lantern.png", 16, 16),
-        ember: ctx.load_texture("ember_hop/sprites/ember.png"),
-        glow: ctx.load_texture("ember_hop/sprites/glow.png"),
+        ember: ctx.gfx.load_texture("ember_hop/sprites/ember.png"),
+        glow: ctx.gfx.load_texture("ember_hop/sprites/glow.png"),
     };
-    let post = ctx.load_texture("ember_hop/sprites/post.png");
+    let post = ctx.gfx.load_texture("ember_hop/sprites/post.png");
     ctx.gfx.set_texture_filter(post, TextureFilter::Nearest);
     art
 }
 
 fn load_sounds(ctx: &mut Ctx) -> Sounds {
-    let mut sound = |name: &str| ctx.load_sound(&format!("ember_hop/sounds/{name}.wav"));
+    let mut sound = |name: &str| ctx.audio.load(&format!("ember_hop/sounds/{name}.wav"));
     Sounds {
         jump: sound("jump"),
         spark: sound("spark"),
@@ -790,7 +792,7 @@ fn finish_run(ctx: &mut Ctx) {
 // ANCHOR: rules
 /// Sim system, after the physics step: the whole game.
 pub fn rules(ctx: &mut Ctx) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let intent = std::mem::take(ctx.world.resource_mut::<Intent>());
     // The latched presses are used up; what is held stays.
     {
@@ -874,7 +876,7 @@ pub fn rules(ctx: &mut Ctx) {
 
 /// One tick of play: the hero, the drips, then what touched what.
 fn play(ctx: &mut Ctx, intent: &Intent, hits: &[CollisionStarted]) {
-    let dt = ctx.dt();
+    let dt = ctx.time.dt();
     let Some((hero, mut at)) = ctx
         .world
         .query::<(Entity, &Transform, &Player)>()
@@ -1414,8 +1416,8 @@ fn hud(ctx: &mut Ctx) {
             "{}   Sparks {}/{}   {:.0} s",
             level, run.level_sparks, run.level_total, run.time
         );
-        ctx.draw_text(&status, vec2(14.0, 10.0), 22.0, Color::hex(0xe8dcc8));
-        ctx.draw_text(
+        ctx.gfx.draw_text(&status, vec2(14.0, 10.0), 22.0, Color::hex(0xe8dcc8));
+        ctx.gfx.draw_text(
             "Move: arrows / A D / stick   Jump: Space / A   Flare: X / Shift / X button   Pause: Esc",
             vec2(14.0, WINDOW.y - 26.0),
             14.0,
@@ -1425,7 +1427,7 @@ fn hud(ctx: &mut Ctx) {
     let notice = ctx.world.resource::<Notice>().clone();
     if notice.seconds > 0.0 {
         let width = ctx.gfx.measure_text(&notice.text, 18.0).x;
-        ctx.draw_text(
+        ctx.gfx.draw_text(
             &notice.text,
             vec2((WINDOW.x - width) / 2.0, 44.0),
             18.0,
@@ -1437,7 +1439,8 @@ fn hud(ctx: &mut Ctx) {
     let mut y = (WINDOW.y - height) / 2.0 - 40.0;
     for l in lines {
         let width = ctx.gfx.measure_text(&l.text, l.size).x;
-        ctx.draw_text(&l.text, vec2((WINDOW.x - width) / 2.0, y), l.size, l.color);
+        ctx.gfx
+            .draw_text(&l.text, vec2((WINDOW.x - width) / 2.0, y), l.size, l.color);
         y += l.size * 1.4;
     }
 }
