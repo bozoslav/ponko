@@ -55,6 +55,20 @@ files = [
     { from = "examples/coin_dash/PACKAGE-README.txt", to = "README.txt" },
 ]
 
+# The 3D reference game, a third-person game (book/src/shard-grove.md):
+# `ponko package --example shard_grove --features navmesh,physics3d`.
+[package.metadata.ponko.examples.shard_grove]
+name = "Shard Grove"
+id = "dev.ponko.shard-grove"
+assets = ["assets/shard_grove"]
+files = [
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "NOTICE",
+    "examples/shard_grove/CONTENT-NOTICES.txt",
+    { from = "examples/shard_grove/PACKAGE-README.txt", to = "README.txt" },
+]
+
 # The tutorials' games (book/src/tutorial-2d.md, tutorial-3d.md), packaged
 # with `ponko package --example tutorial_2d --features physics` (or
 # `tutorial_3d --features physics3d`), or for the web with `--web`.
@@ -360,6 +374,10 @@ required-features = ["physics3d"]
 [[example]]
 name = "ember_hop"
 required-features = ["physics"]
+
+[[example]]
+name = "shard_grove"
+required-features = ["navmesh", "physics3d"]
 
 [[example]]
 name = "physics3d"

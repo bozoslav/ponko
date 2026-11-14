@@ -1,0 +1,34 @@
+Shard Grove: content notices
+============================
+
+Shard Grove is the 3D reference game for the Ponko engine, built only from
+content made for it. Nothing in it is taken from another work.
+
+Everything below was made for this game and is Copyright (c) 2026 Leon Mamić
+and Ponko contributors, licensed under the MIT license or the Apache License
+2.0, at your option (see LICENSE-MIT and LICENSE-APACHE in this package).
+
+Models (glTF 2.0, binary)
+-------------------------
+shard_grove/grove.glb        the walled grove: ground, walls, broken walls,
+                             pillars, a rock, the platform and its ramp, the
+                             gate's arch
+shard_grove/warden.glb       the warden: a skinned character of 8 joints with
+                             the clips idle, walk, pulse and hurt
+shard_grove/crawler.glb      the crawler: a skinned character of 6 joints with
+                             the clips idle, crawl and stunned
+
+Sounds (WAV, mono, 22,050 Hz)
+-----------------------------
+shard_grove/sounds/shard.wav      a shard picked up
+shard_grove/sounds/pulse.wav      the pulse
+shard_grove/sounds/hurt.wav       a crawler's touch
+shard_grove/sounds/shrine.wav     a shrine saving the game
+shard_grove/sounds/gate.wav       the gate opening
+shard_grove/sounds/select.wav     a menu choice
+shard_grove/sounds/crawler.wav    a crawler's hum (a one-second loop)
+shard_grove/sounds/wind.wav       the wind in the grove (a loop)
+
+Fonts
+-----
+The menus use the engine's built-in font (see NOTICE).
