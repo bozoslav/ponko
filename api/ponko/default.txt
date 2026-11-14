@@ -1417,6 +1417,30 @@ impl serde_core::ser::Serialize for ponko::input::GamepadStick
 pub fn ponko::input::GamepadStick::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<'de> serde_core::de::Deserialize<'de> for ponko::input::GamepadStick
 pub fn ponko::input::GamepadStick::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub enum ponko::input::ImeEvent
+pub ponko::input::ImeEvent::Commit(alloc::string::String)
+pub ponko::input::ImeEvent::Disabled
+pub ponko::input::ImeEvent::Enabled
+pub ponko::input::ImeEvent::Preedit
+pub ponko::input::ImeEvent::Preedit::cursor: core::option::Option<(usize, usize)>
+pub ponko::input::ImeEvent::Preedit::text: alloc::string::String
+impl ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::cancel() -> Self
+pub fn ponko::input::ImeEvent::preedit(impl core::convert::Into<alloc::string::String>, core::option::Option<(usize, usize)>) -> Self
+impl core::clone::Clone for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::clone(&self) -> Self
+impl core::cmp::Eq for ponko::input::ImeEvent
+impl core::cmp::PartialEq for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::eq(&self, &Self) -> bool
+impl core::fmt::Debug for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::StructuralPartialEq for ponko::input::ImeEvent
+impl serde_core::ser::Serialize for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for ponko::input::ImeEvent
+pub fn ponko::input::ImeEvent::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 #[non_exhaustive] pub enum ponko::input::Key
 pub ponko::input::Key::A
 pub ponko::input::Key::Apostrophe
@@ -1595,6 +1619,16 @@ pub fn ponko::input::Input::set_action(&mut self, impl core::convert::Into<alloc
 pub fn ponko::input::Input::set_actions(&mut self, ponko::actions::ActionMap)
 pub fn ponko::input::Input::set_cursor_locked(&mut self, bool)
 pub fn ponko::input::Input::try_action_id(&self, &str) -> core::result::Result<ponko::actions::ActionId, ponko::actions::UnknownAction>
+impl ponko::input::Input
+pub fn ponko::input::Input::cancel_composition(&mut self)
+pub fn ponko::input::Input::composing(&self) -> bool
+pub fn ponko::input::Input::feed_ime(&mut self, ponko::input::ImeEvent)
+pub fn ponko::input::Input::ime_allowed(&self) -> bool
+pub fn ponko::input::Input::ime_cursor_area(&self) -> core::option::Option<ponko::camera::Rect>
+pub fn ponko::input::Input::preedit(&self) -> &str
+pub fn ponko::input::Input::preedit_cursor(&self) -> core::option::Option<(usize, usize)>
+pub fn ponko::input::Input::set_ime_allowed(&mut self, bool)
+pub fn ponko::input::Input::set_ime_cursor_area(&mut self, ponko::camera::Rect)
 impl ponko::input::Input
 pub fn ponko::input::Input::cancel_scenario(&mut self, &mut ponko_ecs::world::World, &mut ponko::prelude::Time) -> bool
 pub fn ponko::input::Input::injection_allowed(&self) -> bool
@@ -4087,6 +4121,13 @@ pub fn ponko::prelude::Ui::text_input(&mut self, ponko::prelude::UiId) -> ponko:
 pub fn ponko::prelude::Ui::theme(&self) -> &ponko::ui::UiTheme
 pub fn ponko::prelude::Ui::title(&mut self, ponko::prelude::UiId, impl core::convert::AsRef<str>) -> ponko::ui::UiBuilder<'_>
 pub fn ponko::prelude::Ui::toggle(&mut self, ponko::prelude::UiId, impl core::convert::AsRef<str>) -> ponko::ui::UiBuilder<'_>
+impl ponko::prelude::Ui
+pub fn ponko::prelude::Ui::composition_interrupted(&self) -> bool
+pub fn ponko::prelude::Ui::ime_allowed(&self, ponko::prelude::UiId) -> bool
+pub fn ponko::prelude::Ui::ime_area(&self) -> core::option::Option<ponko::camera::Rect>
+pub fn ponko::prelude::Ui::preedit(&self, ponko::prelude::UiId) -> core::option::Option<&str>
+pub fn ponko::prelude::Ui::set_ime_allowed(&mut self, ponko::prelude::UiId, bool)
+pub fn ponko::prelude::Ui::wants_ime(&self) -> bool
 impl core::default::Default for ponko::prelude::Ui
 pub fn ponko::prelude::Ui::default() -> Self
 impl core::marker::Send for ponko::prelude::Ui
@@ -4914,6 +4955,7 @@ pub fn ponko::scenario::InputScenario::expect(self, u64, ponko::scenario::Scenar
 pub fn ponko::scenario::InputScenario::from_json(&str) -> core::result::Result<Self, ponko::scenario::ScenarioError>
 pub fn ponko::scenario::InputScenario::from_value(&serde_json::value::Value) -> core::result::Result<Self, ponko::scenario::ScenarioError>
 pub fn ponko::scenario::InputScenario::id(&self) -> core::option::Option<&str>
+pub fn ponko::scenario::InputScenario::ime(self, u64, ponko::input::ImeEvent) -> Self
 pub fn ponko::scenario::InputScenario::named(self, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn ponko::scenario::InputScenario::new() -> Self
 pub fn ponko::scenario::InputScenario::release_when_done(self) -> Self
@@ -5955,6 +5997,13 @@ pub fn ponko::prelude::Ui::text_input(&mut self, ponko::prelude::UiId) -> ponko:
 pub fn ponko::prelude::Ui::theme(&self) -> &ponko::ui::UiTheme
 pub fn ponko::prelude::Ui::title(&mut self, ponko::prelude::UiId, impl core::convert::AsRef<str>) -> ponko::ui::UiBuilder<'_>
 pub fn ponko::prelude::Ui::toggle(&mut self, ponko::prelude::UiId, impl core::convert::AsRef<str>) -> ponko::ui::UiBuilder<'_>
+impl ponko::prelude::Ui
+pub fn ponko::prelude::Ui::composition_interrupted(&self) -> bool
+pub fn ponko::prelude::Ui::ime_allowed(&self, ponko::prelude::UiId) -> bool
+pub fn ponko::prelude::Ui::ime_area(&self) -> core::option::Option<ponko::camera::Rect>
+pub fn ponko::prelude::Ui::preedit(&self, ponko::prelude::UiId) -> core::option::Option<&str>
+pub fn ponko::prelude::Ui::set_ime_allowed(&mut self, ponko::prelude::UiId, bool)
+pub fn ponko::prelude::Ui::wants_ime(&self) -> bool
 impl core::default::Default for ponko::prelude::Ui
 pub fn ponko::prelude::Ui::default() -> Self
 impl core::marker::Send for ponko::prelude::Ui
@@ -6037,6 +6086,7 @@ pub fn ponko::ui::UiBuilder<'_>::enabled(self, bool) -> Self
 pub fn ponko::ui::UiBuilder<'_>::focused(self) -> Self
 pub fn ponko::ui::UiBuilder<'_>::font(self, ponko::text::Font) -> Self
 pub fn ponko::ui::UiBuilder<'_>::id(self) -> ponko::prelude::UiId
+pub fn ponko::ui::UiBuilder<'_>::ime_allowed(self, bool) -> Self
 pub fn ponko::ui::UiBuilder<'_>::layout(self, ponko::ui::UiLayout) -> Self
 pub fn ponko::ui::UiBuilder<'_>::live_region(self, ponko::ui::UiLive) -> Self
 pub fn ponko::ui::UiBuilder<'_>::name(self, impl core::convert::AsRef<str>) -> Self
@@ -6088,6 +6138,7 @@ pub fn ponko::ui::UiImmediateFrame<'_>::fmt(&self, &mut core::fmt::Formatter<'_>
 pub struct ponko::ui::UiInput
 pub ponko::ui::UiInput::backspace: bool
 pub ponko::ui::UiInput::cancel: bool
+pub ponko::ui::UiInput::composing: bool
 pub ponko::ui::UiInput::confirm: bool
 pub ponko::ui::UiInput::delete: bool
 pub ponko::ui::UiInput::direction: glam::f32::vec2::Vec2
@@ -6096,6 +6147,8 @@ pub ponko::ui::UiInput::held: bool
 pub ponko::ui::UiInput::home: bool
 pub ponko::ui::UiInput::next: bool
 pub ponko::ui::UiInput::pointer: glam::f32::vec2::Vec2
+pub ponko::ui::UiInput::preedit: alloc::string::String
+pub ponko::ui::UiInput::preedit_cursor: core::option::Option<(usize, usize)>
 pub ponko::ui::UiInput::pressed: bool
 pub ponko::ui::UiInput::previous: bool
 pub ponko::ui::UiInput::released: bool

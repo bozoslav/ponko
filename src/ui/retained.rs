@@ -20,7 +20,7 @@ use taffy::prelude::*;
 /// assert!(ui.rect(id).is_some());
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UiId(usize);
+pub struct UiId(pub(super) usize);
 
 impl UiId {
     /// The id as an integer, for hosts that store ids outside the UI (the C
@@ -421,6 +421,27 @@ pub struct UiInput {
     /// let _ = ponko::ui::UiInput::default().text;
     /// ```
     pub text: String,
+    /// The IME composition so far ([`Input::preedit`](crate::input::Input::preedit)),
+    /// shown underlined at the caret of the focused text input that takes
+    /// IME. Empty: none.
+    /// ```
+    /// let _ = ponko::ui::UiInput::default().preedit;
+    /// ```
+    pub preedit: String,
+    /// The caret inside `preedit`, a byte range
+    /// ([`Input::preedit_cursor`](crate::input::Input::preedit_cursor)).
+    /// ```
+    /// let _ = ponko::ui::UiInput::default().preedit_cursor;
+    /// ```
+    pub preedit_cursor: Option<(usize, usize)>,
+    /// A composition went on this frame
+    /// ([`Input::composing`](crate::input::Input::composing)): the focused
+    /// text input leaves Enter, Escape, Backspace, Delete, Home, End, the
+    /// arrows and select-all to the IME, and takes only committed `text`.
+    /// ```
+    /// let _ = ponko::ui::UiInput::default().composing;
+    /// ```
+    pub composing: bool,
 }
 
 pub(super) struct Node {
@@ -450,6 +471,12 @@ pub(super) struct Node {
     pub title: bool,
     /// Its screen opens with it focused ([`Ui::set_initial_focus`]).
     pub initial_focus: bool,
+    /// A text input takes IME composition ([`Ui::set_ime_allowed`]).
+    pub ime: bool,
+    /// The IME composition it shows at its caret; empty: none.
+    pub preedit: String,
+    /// The caret inside `preedit`, a byte range.
+    pub preedit_cursor: Option<(usize, usize)>,
 }
 pub(super) struct Screen {
     pub root: UiId,
@@ -497,15 +524,17 @@ pub struct Ui {
     pub(super) huds: Vec<UiId>,
     pub(super) visible: Vec<UiId>,
     events: std::collections::VecDeque<UiEvent>,
+    /// IME composition ([`Ui::preedit`], [`Ui::ime_area`]).
+    pub(super) ime: super::retained_ime::UiImeState,
     pub(super) focus: Option<UiId>,
     pub(super) hovered: Option<UiId>,
     pub(super) pressed: Option<UiId>,
     drag: Option<Drag>,
-    scale: f32,
+    pub(super) scale: f32,
     viewport: Vec2,
     pointer: Vec2,
-    measure: crate::text::Text,
-    external_fonts: bool,
+    pub(super) measure: crate::text::Text,
+    pub(super) external_fonts: bool,
     consumed: bool,
     /// Requests from assistive technology, applied by the next [`Ui::frame`].
     pub(super) access_actions: Vec<super::UiAccessAction>,
@@ -538,6 +567,7 @@ impl Default for Ui {
             huds: Vec::new(),
             visible: Vec::new(),
             events: std::collections::VecDeque::new(),
+            ime: Default::default(),
             focus: None,
             hovered: None,
             pressed: None,
@@ -605,6 +635,9 @@ impl Ui {
             name: String::new(),
             title: false,
             initial_focus: false,
+            ime: true,
+            preedit: String::new(),
+            preedit_cursor: None,
         }));
         id
     }
@@ -1389,13 +1422,17 @@ impl Ui {
         self.pointer = input.pointer;
         self.layout(viewport);
         let access_moved_focus = self.apply_access_actions();
-        if input.cancel {
+        // Mid-composition, Enter, Escape and the arrows belong to the IME.
+        let ime_keys = self.ime_owns_keys(input);
+        if input.cancel && !ime_keys {
             if let Some(root) = self.pop_screen() {
                 self.events.push_back(UiEvent::ScreenPopped(root));
             }
             self.layout(viewport);
+            self.apply_composition(input);
             return;
         }
+        let direction = if ime_keys { Vec2::ZERO } else { input.direction };
         self.hovered = self.hit_test(input.pointer);
         if input.next || input.previous {
             self.tab(input.previous);
@@ -1497,28 +1534,30 @@ impl Ui {
         let editing = self
             .focus
             .is_some_and(|id| self.node(id).unwrap().widget == UiWidget::TextInput);
-        if editing && input.direction.y == 0.0 {
-            self.edit(input);
+        if editing && direction.y == 0.0 {
+            self.edit(input, ime_keys);
         } else if let Some(id) = self
             .focus
             .filter(|&id| self.node(id).unwrap().widget == UiWidget::Slider)
-            && input.direction.x != 0.0
+            && direction.x != 0.0
         {
-            let value = self.value(id).unwrap() + input.direction.x * super::access::SLIDER_STEP;
+            let value = self.value(id).unwrap() + direction.x * super::access::SLIDER_STEP;
             self.change_value(id, value.clamp(0.0, 1.0));
-        } else if input.direction != Vec2::ZERO {
-            self.navigate(input.direction);
+        } else if direction != Vec2::ZERO {
+            self.navigate(direction);
         }
         if input.confirm
+            && !ime_keys
             && let Some(id) = self.focus
         {
             self.activate(id);
         }
         self.layout(viewport);
-        if input.next || input.previous || input.direction != Vec2::ZERO || access_moved_focus {
+        if input.next || input.previous || direction != Vec2::ZERO || access_moved_focus {
             self.reveal_focus();
             self.layout(viewport);
         }
+        self.apply_composition(input);
     }
     fn reveal_focus(&mut self) {
         let Some(id) = self.focus else { return };
@@ -1618,27 +1657,31 @@ impl Ui {
         let target = x + (caret_x - available + 3.0).max(0.0);
         self.measure.hit(&n.text, font, n.paint.font_size, target)
     }
-    fn edit(&mut self, input: &UiInput) {
+    /// Applies this frame's editing to the focused text input. With
+    /// `ime_keys`, a composition owns the keys: only committed text goes in.
+    fn edit(&mut self, input: &UiInput, ime_keys: bool) {
         let id = self.focus.unwrap();
         let n = self.node_mut(id).unwrap();
         let mut changed = false;
-        if input.select_all {
+        let keys = !ime_keys;
+        let (backspace, delete) = (keys && input.backspace, keys && input.delete);
+        if keys && input.select_all {
             n.anchor = 0;
             n.caret = n.text.len();
         }
-        if input.home {
+        if keys && input.home {
             n.caret = 0;
             if !input.shift {
                 n.anchor = n.caret;
             }
         }
-        if input.end {
+        if keys && input.end {
             n.caret = n.text.len();
             if !input.shift {
                 n.anchor = n.caret;
             }
         }
-        if input.direction.x != 0.0 {
+        if keys && input.direction.x != 0.0 {
             n.caret = if input.direction.x < 0.0 {
                 n.text[..n.caret].char_indices().next_back().map_or(0, |(i, _)| i)
             } else {
@@ -1651,19 +1694,19 @@ impl Ui {
                 n.anchor = n.caret;
             }
         }
-        if input.backspace || input.delete || input.text.chars().any(|c| !c.is_control()) {
+        if backspace || delete || input.text.chars().any(|c| !c.is_control()) {
             let lo = n.caret.min(n.anchor);
             let hi = n.caret.max(n.anchor);
             if lo != hi {
                 n.text.replace_range(lo..hi, "");
                 n.caret = lo;
                 changed = true;
-            } else if input.backspace && n.caret > 0 {
+            } else if backspace && n.caret > 0 {
                 let prev = n.text[..n.caret].char_indices().next_back().unwrap().0;
                 n.text.replace_range(prev..n.caret, "");
                 n.caret = prev;
                 changed = true;
-            } else if input.delete && n.caret < n.text.len() {
+            } else if delete && n.caret < n.text.len() {
                 let end = n.caret + n.text[n.caret..].chars().next().unwrap().len_utf8();
                 n.text.replace_range(n.caret..end, "");
                 changed = true;

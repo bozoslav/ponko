@@ -2,6 +2,8 @@
 //! canvas on the page, panics show in the browser console, and asset files
 //! are fetched over HTTP before setup runs.
 
+pub(crate) mod ime;
+
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use winit::platform::web::WindowAttributesExtWebSys;

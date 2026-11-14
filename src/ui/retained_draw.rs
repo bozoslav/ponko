@@ -34,10 +34,40 @@ impl Ctx {
                 input.text.push_str(&click.text);
             }
         }
+        // The IME composition goes to the screen's UI only: world panels
+        // don't place the candidate window.
+        let mut preedit = std::mem::take(&mut self.ui_state.retained_preedit);
+        preedit.clear();
+        preedit.push_str(self.input.preedit());
+        input.preedit = preedit;
+        input.preedit_cursor = self.input.preedit_cursor();
+        input.composing = self.input.composing();
         self.ui.frame_with_text(self.window_size(), &input, &mut self.gfx.text);
         self.ui_state.retained_input_text = input.text;
+        self.ui_state.retained_preedit = input.preedit;
+        self.follow_ui_ime();
         #[cfg(feature = "3d")]
         self.update_ui_panels();
+    }
+
+    /// After the UI's frame: IME is allowed while its focus is on a text
+    /// input that takes it, with the candidate window at the caret; a
+    /// composition the focus left is dropped. When no text input wants IME,
+    /// the game's own setting stands, except that turning it off once
+    /// follows the UI's text input losing the focus.
+    fn follow_ui_ime(&mut self) {
+        if self.ui.composition_interrupted() {
+            self.input.cancel_composition();
+        }
+        if self.ui.wants_ime() {
+            self.input.set_ime_allowed(true);
+            if let Some(area) = self.ui.ime_area() {
+                self.input.set_ime_cursor_area(area);
+            }
+            self.ui_state.ime_owned = true;
+        } else if std::mem::take(&mut self.ui_state.ime_owned) {
+            self.input.set_ime_allowed(false);
+        }
     }
 
     /// This frame's input for `ui`, as the window's mouse, keyboard and
@@ -80,6 +110,7 @@ impl Ctx {
             home: pressed(Key::Home),
             end: pressed(Key::End),
             text,
+            ..Default::default()
         }
     }
 
@@ -245,35 +276,67 @@ impl Ctx {
             }
             let font_size = n.paint.font_size * scale;
             let mut origin = text_rect.min;
-            if n.widget == crate::ui::UiWidget::TextInput && ui.focus == Some(id) {
-                let caret = self.gfx.caret_x(&n.text, n.paint.font, font_size, n.caret);
+            // A text input shows an IME composition at its caret.
+            let is_input = n.widget == crate::ui::UiWidget::TextInput;
+            let mut shown = std::mem::take(&mut self.ui_state.shown_scratch);
+            let at = is_input.then(|| n.shown_text(&mut shown));
+            let text: &str = if is_input { &shown } else { &n.text };
+            if let Some(at) = at.filter(|_| ui.focus == Some(id)) {
+                let caret = self
+                    .gfx
+                    .caret_x(text, n.paint.font, font_size, at.caret.unwrap_or(at.preedit.end));
                 origin.x -= (caret - text_rect.size().x + 3.0 * scale).max(0.0);
-                // The selection, one span or several where it crosses a
-                // change of direction.
+                // The selection, or the preedit's underline: one span or
+                // several where it crosses a change of direction.
                 let mut spans = std::mem::take(&mut self.gfx.selection_scratch);
-                self.gfx.selection_spans(
-                    &n.text,
-                    n.paint.font,
-                    font_size,
-                    n.anchor.min(n.caret),
-                    n.anchor.max(n.caret),
-                    &mut spans,
-                );
-                for &[a, b] in &spans {
-                    if a != b {
-                        self.gfx.ui_fill(
-                            Rect::new(origin.x + a, origin.y, b - a, font_size),
-                            n.paint.hover,
-                            z + 0.6,
-                        );
+                if at.preedit.is_empty() {
+                    self.gfx.selection_spans(
+                        text,
+                        n.paint.font,
+                        font_size,
+                        n.anchor.min(n.caret),
+                        n.anchor.max(n.caret),
+                        &mut spans,
+                    );
+                    for &[a, b] in &spans {
+                        if a != b {
+                            self.gfx.ui_fill(
+                                Rect::new(origin.x + a, origin.y, b - a, font_size),
+                                n.paint.hover,
+                                z + 0.6,
+                            );
+                        }
+                    }
+                } else {
+                    let thin = scale.max(1.0);
+                    let mut underline = |gfx: &mut crate::gfx::Graphics, lo: usize, hi: usize, thick: f32| {
+                        gfx.selection_spans(text, n.paint.font, font_size, lo, hi, &mut spans);
+                        for &[a, b] in &spans {
+                            if a != b {
+                                gfx.ui_fill(
+                                    Rect::new(origin.x + a, origin.y + font_size - thick, b - a, thick),
+                                    n.paint.color,
+                                    z + 0.75,
+                                );
+                            }
+                        }
+                    };
+                    underline(&mut self.gfx, at.preedit.start, at.preedit.end, thin);
+                    // The part the IME is converting, underlined thicker.
+                    if let Some((a, b)) = n.preedit_cursor.filter(|(a, b)| a != b) {
+                        let start = at.preedit.start;
+                        underline(&mut self.gfx, start + a, start + b, 2.0 * thin);
                     }
                 }
                 self.gfx.selection_scratch = spans;
-                self.gfx.ui_fill(
-                    Rect::new(origin.x + caret, origin.y, scale, font_size),
-                    n.paint.color,
-                    z + 0.8,
-                );
+                if let Some(caret_at) = at.caret {
+                    let caret = self.gfx.caret_x(text, n.paint.font, font_size, caret_at);
+                    self.gfx.ui_fill(
+                        Rect::new(origin.x + caret, origin.y, scale, font_size),
+                        n.paint.color,
+                        z + 0.8,
+                    );
+                }
             }
             let params = TextParams {
                 font: n.paint.font,
@@ -284,15 +347,16 @@ impl Ctx {
             // A text field keeps its text at its left edge, where its caret
             // and selection are measured from; labels and buttons align
             // right-to-left paragraphs from the right.
-            let directional = n.widget != crate::ui::UiWidget::TextInput;
+            let directional = !is_input;
             self.retained_text(
-                &n.text,
+                text,
                 origin,
                 text_rect.size().x,
                 params,
                 (n.paint.wrap, directional),
                 n.paint.align,
             );
+            self.ui_state.shown_scratch = shown;
             if n.widget == crate::ui::UiWidget::Scroll && n.max_scroll.y > 0.0 {
                 let h = n.rect.size().y;
                 let thumb = (h * h / (h + n.max_scroll.y * scale)).max(20.0 * scale).min(h);

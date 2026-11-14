@@ -17,6 +17,7 @@ use crate::ctx::Ctx;
 use crate::input::Gamepad;
 use crate::input::GamepadAxis;
 use crate::input::GamepadButton;
+use crate::input::ImeEvent;
 use crate::input::{Key, MouseButton};
 use crate::reflect::WorldReflect;
 use crate::time::Time;
@@ -273,6 +274,8 @@ pub struct InputScenario {
     checks: Vec<(u64, usize, ScenarioCheck)>,
     /// Steps on the retained UI, sorted like `inputs`.
     ui: Vec<(u64, usize, UiStep)>,
+    /// IME composition steps, sorted like `inputs`.
+    ime: Vec<(u64, usize, ImeEvent)>,
     /// How many steps were added; the next step's number.
     steps: usize,
     duration: Option<u64>,
@@ -366,6 +369,30 @@ impl InputScenario {
         self
     }
 
+    /// Feeds the IME event `event` on tick `tick`, through
+    /// [`Input::feed_ime`](crate::input::Input::feed_ime), after that tick's
+    /// raw input steps, so compositions can be replayed: a preedit shows in
+    /// the focused text input and a commit is typed into it. Like UI steps,
+    /// the retained UI sees it in the frame of tick `tick` (with
+    /// [`headless_frames`](crate::game::Game::headless_frames)).
+    /// ```
+    /// use ponko::input::ImeEvent;
+    /// use ponko::scenario::{InputScenario, ScenarioCheck};
+    /// // Pinyin "zhongwen", converted and committed.
+    /// let scenario = InputScenario::new()
+    ///     .click(0, "chat")
+    ///     .ime(1, ImeEvent::preedit("zhong", Some((5, 5))))
+    ///     .ime(2, ImeEvent::preedit("zhongwen", Some((8, 8))))
+    ///     .ime(3, ImeEvent::Commit("中文".into()))
+    ///     .expect(3, ScenarioCheck::ui("chat").text("中文"));
+    /// ```
+    pub fn ime(mut self, tick: u64, event: ImeEvent) -> Self {
+        let index = self.ime.partition_point(|&(t, ..)| t <= tick);
+        self.ime.insert(index, (tick, self.steps, event));
+        self.steps += 1;
+        self
+    }
+
     fn push_ui(&mut self, tick: u64, step: UiStep) {
         let index = self.ui.partition_point(|&(t, ..)| t <= tick);
         self.ui.insert(index, (tick, self.steps, step));
@@ -430,9 +457,11 @@ impl InputScenario {
             let last_input = self.inputs.last().map(|s| s.0);
             let last_check = self.checks.last().map(|s| s.0);
             let last_ui = self.ui.last().map(|s| s.0);
+            let last_ime = self.ime.last().map(|s| s.0);
             last_input
                 .max(last_check)
                 .max(last_ui)
+                .max(last_ime)
                 .map_or(0, |t| t.saturating_add(1))
         })
     }
@@ -459,6 +488,9 @@ impl InputScenario {
     /// `axis`, `value`), `focus_lost` and `gamepad_disconnected` (`pad`).
     /// UI steps are `ui_click` (`node`) and `ui_type` (`node`, `text`), see
     /// [`click`](Self::click) and [`type_text`](Self::type_text).
+    /// IME steps ([`ime`](Self::ime)) are `ime_enabled`, `ime_preedit`
+    /// (`text`, optional `cursor` as `[start, end]` bytes), `ime_commit`
+    /// (`text`) and `ime_disabled`.
     /// Check steps are `expect_action` (`action` and any of `pressed`, `down`,
     /// `released`), `expect_resource` (`resource`, `pointer`, `equals`),
     /// `expect_count` (`component`, `equals`) and `expect_ui` (`node` and any
@@ -521,6 +553,7 @@ impl InputScenario {
             match step.into_step() {
                 Step::Input(event) => scenario = scenario.at(tick, event),
                 Step::Ui(step) => scenario.push_ui(tick, step),
+                Step::Ime(event) => scenario = scenario.ime(tick, event),
                 Step::Check(check) => {
                     if check.ui_is_empty() {
                         return Err(ScenarioError(format!(
@@ -571,6 +604,11 @@ impl InputScenario {
             self.ui
                 .iter()
                 .map(|(tick, n, step)| (*n, StepWire::from_ui(*tick, step))),
+        );
+        steps.extend(
+            self.ime
+                .iter()
+                .map(|(tick, n, event)| (*n, StepWire::from_ime(*tick, event))),
         );
         steps.sort_by_key(|s| s.0);
         let file = FileWire {
@@ -724,6 +762,7 @@ pub(crate) struct ScenarioRun {
     next_input: usize,
     next_check: usize,
     next_ui: usize,
+    next_ime: usize,
     /// A UI step that could not be done; reported when its tick ends.
     ui_failure: Option<(u64, usize, String, String)>,
     /// The control connection that owns it, if it's bound to one.
@@ -823,6 +862,7 @@ impl crate::input::Input {
             next_input: 0,
             next_check: 0,
             next_ui: 0,
+            next_ime: 0,
             ui_failure: None,
             owner: origin.owner,
             tool: origin.tool,
@@ -969,6 +1009,14 @@ impl Ctx {
             }
             self.input.feed(event);
             run.next_input += 1;
+            fed += 1;
+        }
+        while let Some((tick, _, event)) = run.scenario.ime.get(run.next_ime) {
+            if *tick > rel {
+                break;
+            }
+            self.input.feed_ime(event.clone());
+            run.next_ime += 1;
             fed += 1;
         }
         // One UI step a frame: the UI takes one click per frame.
@@ -1317,6 +1365,7 @@ fn evaluate_ui(
 enum Step {
     Input(InputEvent),
     Ui(UiStep),
+    Ime(ImeEvent),
     Check(ScenarioCheck),
 }
 
@@ -1396,6 +1445,22 @@ enum StepWire {
         node: String,
         text: String,
     },
+    ImeEnabled {
+        tick: u64,
+    },
+    ImePreedit {
+        tick: u64,
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<[usize; 2]>,
+    },
+    ImeCommit {
+        tick: u64,
+        text: String,
+    },
+    ImeDisabled {
+        tick: u64,
+    },
     ExpectUi {
         tick: u64,
         node: String,
@@ -1424,6 +1489,10 @@ impl StepWire {
             | Self::ExpectCount { tick, .. }
             | Self::UiClick { tick, .. }
             | Self::UiType { tick, .. }
+            | Self::ImeEnabled { tick }
+            | Self::ImePreedit { tick, .. }
+            | Self::ImeCommit { tick, .. }
+            | Self::ImeDisabled { tick }
             | Self::ExpectUi { tick, .. } => *tick,
         }
     }
@@ -1461,6 +1530,13 @@ impl StepWire {
             Self::ExpectCount { component, equals, .. } => Step::Check(ScenarioCheck::Count { component, equals }),
             Self::UiClick { node, .. } => Step::Ui(UiStep::Click(node)),
             Self::UiType { node, text, .. } => Step::Ui(UiStep::Type(node, text)),
+            Self::ImeEnabled { .. } => Step::Ime(ImeEvent::Enabled),
+            Self::ImePreedit { text, cursor, .. } => Step::Ime(ImeEvent::Preedit {
+                text,
+                cursor: cursor.map(|[a, b]| (a, b)),
+            }),
+            Self::ImeCommit { text, .. } => Step::Ime(ImeEvent::Commit(text)),
+            Self::ImeDisabled { .. } => Step::Ime(ImeEvent::Disabled),
             Self::ExpectUi {
                 node,
                 exists,
@@ -1540,6 +1616,19 @@ impl StepWire {
         match step.clone() {
             UiStep::Click(node) => Self::UiClick { tick, node },
             UiStep::Type(node, text) => Self::UiType { tick, node, text },
+        }
+    }
+
+    fn from_ime(tick: u64, event: &ImeEvent) -> Self {
+        match event.clone() {
+            ImeEvent::Enabled => Self::ImeEnabled { tick },
+            ImeEvent::Preedit { text, cursor } => Self::ImePreedit {
+                tick,
+                text,
+                cursor: cursor.map(|(a, b)| [a, b]),
+            },
+            ImeEvent::Commit(text) => Self::ImeCommit { tick, text },
+            ImeEvent::Disabled => Self::ImeDisabled { tick },
         }
     }
 }

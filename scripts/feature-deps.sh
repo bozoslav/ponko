@@ -32,13 +32,14 @@ STEAM="steamworks"
 # default one (`image-jpeg`), so builds without defaults must not carry it.
 JPEG="zune-jpeg"
 OTHER_IMAGES="image-webp gif tiff qoi exr"
-# The screen-reader adapter is opt-in (`accessibility`). The `accesskit` data
-# types alone also come with the inspector's egui, so builds that may have
-# the inspector forbid only the adapter (ACCESS); builds without a window or
-# an inspector forbid the data types too (ACCESS_ALL).
+# The screen-reader adapter is opt-in (`accessibility`): AccessKit's macOS,
+# Windows (UI Automation) and Linux (AT-SPI over zbus) adapters. The
+# `accesskit` data types alone also come with the inspector's egui, so builds
+# that may have the inspector forbid only the adapters (ACCESS); builds
+# without a window or an inspector forbid the data types too (ACCESS_ALL).
 # Compressed textures are opt-in (`compressed-textures`, `basis-universal`).
 TEXTURES="ktx2 ruzstd texture2ddecoder basis-universal"
-ACCESS="accesskit_macos accesskit_consumer"
+ACCESS="accesskit_macos accesskit_windows accesskit_unix accesskit_consumer accesskit_atspi_common atspi zbus"
 ACCESS_ALL="$ACCESS accesskit"
 # Text shaping is opt-in (`text-shaping`); the inspector's egui brings the
 # shaper itself (harfrust) but not the bidirectional, line-break and script
@@ -57,6 +58,9 @@ CONTRACTS=(
   "2D with image formats|-p ponko --no-default-features --features window,image-jpeg,image-webp|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $SHAPING_ALL $TEXTURES"
   "default|-p ponko|$MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $OTHER_IMAGES $SHAPING $TEXTURES"
   # A localized 2D game: the shaper and its Unicode tables, nothing else.
+  # The adapters bring only themselves and their system bindings (zbus on
+  # Linux), no other subsystem.
+  "2D with accessibility|-p ponko --no-default-features --features accessibility|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $JPEG $OTHER_IMAGES $SHAPING_ALL $TEXTURES"
   "2D with text shaping|-p ponko --no-default-features --features window,text-shaping|$AUDIO $INSPECTOR $GAMEPAD $MODELS $PHYSICS $NAVMESH $TOOLS $STEAM $ACCESS $JPEG $OTHER_IMAGES fontdb $TEXTURES"
   # The C library always turns on the engine's `3d` and `navmesh` features:
   # its 3D and navigation functions are exported unconditionally (the C

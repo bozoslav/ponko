@@ -112,6 +112,12 @@ impl Default for UiStyle {
 pub(crate) struct UiState {
     pub(crate) retained_spare: Option<Ui>,
     pub(crate) retained_input_text: String,
+    /// Reused for the IME preedit handed to the retained UI.
+    pub(crate) retained_preedit: String,
+    /// Reused for a text input's text with its preedit spliced in.
+    pub(crate) shown_scratch: String,
+    /// The retained UI allowed IME for its focused text input.
+    pub(crate) ime_owned: bool,
     /// A click (and typed text) an input scenario asked for, applied by the
     /// retained UI's next frame.
     pub(crate) scripted: Option<retained_draw::ScriptedClick>,
@@ -131,6 +137,7 @@ mod immediate;
 pub(crate) mod panel3d;
 mod retained;
 mod retained_draw;
+mod retained_ime;
 pub use access::{
     UiAccessAction, UiAccessChanges, UiAccessNode, UiAccessTracker, UiAccessTree, UiAccessValue, UiLive, UiRole,
 };

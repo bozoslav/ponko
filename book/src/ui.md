@@ -359,9 +359,96 @@ Tab/Shift-Tab traverses enabled controls. Arrows/d-pad use spatial navigation;
 Enter, Space or gamepad South activates the focused control. Text inputs reserve
 left/right, Home/End, Backspace/Delete, Shift-selection and Ctrl/Cmd-A for editing;
 Enter submits. Clicking/dragging selects text. Text is UTF-8 with scalar-boundary
-editing; grapheme-cluster editing, clipboard and IME composition are not provided.
+editing; grapheme-cluster editing and the clipboard are not provided. IME
+composition is, see [below](#typing-with-an-input-method-ime).
 Native committed Unicode is available to both UI and games as `ctx.input.typed_text()`.
 Custom hosts/tests can supply it through `ctx.input.insert_text()`.
+
+### Typing with an input method (IME)
+
+Players typing Chinese, Japanese, Korean and many other scripts compose each
+word with an input method editor: they type the sound (`nihon`, `zhongwen`,
+`ㅎ` `ㅏ` `ㄴ`), the IME shows it as a *preedit* and offers candidates in a
+window near the caret, and picking one *commits* it. Text inputs handle this
+on their own:
+
+- While a text input has the focus, the engine allows IME for the window and
+  puts the candidate window at the input's caret. It turns IME off again when
+  the focus leaves text inputs, so keys in the rest of the game stay keys.
+- The preedit is drawn at the caret, underlined, with the IME's own caret in
+  it; the part the IME is converting is underlined thicker. It is not part of
+  the input's text: `ui.text(id)` is only what was committed, and
+  `ui.preedit(id)` is what is being composed.
+- The commit is typed like any text (`UiEvent::Changed`). A cancelled
+  composition leaves the field as it was.
+- While a composition goes on, Enter, Escape, Backspace, Delete, Home, End,
+  the arrows and select-all belong to the IME: Enter picks a candidate rather
+  than submitting, Escape cancels the composition rather than closing the
+  screen.
+- If the focus moves (a click, Tab, or `set_focus` from a system) in the
+  middle of a composition, the composition is dropped, not committed into the
+  next field, and the window system is told to forget it.
+- A field for digits, a key binding or a password can refuse IME:
+  `ui.text_input(root).ime_allowed(false)` (or `ui.set_ime_allowed(id, false)`).
+
+A game with text widgets of its own does the same with `ctx.input`:
+`set_ime_allowed(true)` while its widget has the focus,
+`set_ime_cursor_area(rect)` at its caret, `preedit()` and `preedit_cursor()` to
+draw the composition, `typed_text()` for what is committed, `composing()` to
+leave Enter and the arrows alone mid-composition, and `cancel_composition()`
+when the widget loses the focus.
+
+<div class="lang-pair">
+<div>
+
+```rust
+# use ponko::prelude::*;
+struct Chat {
+    open: bool,
+    text: String,
+}
+
+fn chat_box(ctx: &mut Ctx, chat: &mut Chat) {
+    ctx.input.set_ime_allowed(chat.open);
+    if !chat.open {
+        return;
+    }
+    let caret_x = 20.0 + ctx.gfx.measure_text(&chat.text, 18.0).x;
+    ctx.input.set_ime_cursor_area(Rect::new(caret_x, 400.0, 1.0, 18.0));
+    chat.text.push_str(ctx.input.typed_text()); // committed text, IME or not
+    let shown = format!("{}{}", chat.text, ctx.input.preedit()); // the composition, after the text
+    ctx.gfx.draw_text(&shown, vec2(20.0, 400.0), 18.0, Color::WHITE);
+}
+```
+
+</div>
+<div>
+
+```cpp
+{{#include ../../examples/cpp/guide.cpp:ime_own_widget}}
+```
+
+</div>
+</div>
+
+Tests replay compositions with input scenarios, through the same path as the
+window's events: `InputScenario::ime(tick, ImeEvent::preedit("にほん",
+Some((9, 9))))`, then `ImeEvent::Commit("日本".into())`; `ImeEvent::cancel()`
+cancels. In the JSON format the steps are `ime_preedit` (`text`, optional
+`cursor`), `ime_commit`, `ime_enabled` and `ime_disabled`.
+`tests/ime.rs` replays Japanese, pinyin and Hangul compositions, cancels, and
+focus moving mid-composition. `Ui::frame` takes the composition in
+`UiInput::preedit`, `preedit_cursor` and `composing`, and a custom host reads
+`ui.wants_ime()`, `ui.ime_area()` and `ui.composition_interrupted()` to drive
+its own window.
+
+On the desktop the window system's IME (Windows, macOS, X11 and Wayland)
+reaches the engine through winit. In a browser, where the canvas can't take
+composition events, the engine focuses a hidden text box at the caret while
+IME is allowed and reads the browser's composition events from it. World-space
+panels show no preedit and don't place the candidate window. The scripted
+tests check everything after the window system's events; each OS's own IME,
+and each browser's, is checked by hand.
 
 `ctx.ui.wants_pointer()` includes immediate and retained UI, including captured
 drags. `ctx.ui.wants_keyboard()` reports retained keyboard/gamepad ownership
@@ -496,32 +583,42 @@ ponko = { version = "0.1", features = ["accessibility"] }
 Until assistive technology asks for the window's content the adapter does
 nothing: no snapshot is taken and nothing is allocated. After that it sends
 the whole tree once and then only the nodes that changed. A host that owns
-its own view instead of the engine's window makes a `UiAccessAdapter` itself
-(`UiAccessAdapter::for_ns_view`) and calls `update` once a frame after
-`Ui::frame`.
+its own window instead of the engine's makes a `UiAccessAdapter` itself
+(`UiAccessAdapter::for_ns_view` on macOS, `for_hwnd` on Windows,
+`for_atspi` on Linux) and calls `update` once a frame after `Ui::frame`.
 
 What is supported:
 
 | System | Adapter |
 |---|---|
-| macOS | Yes: `NSAccessibility` through AccessKit (VoiceOver and other `NSAccessibility` clients). |
-| Windows | None. The feature builds and does nothing. |
-| Linux | None. The feature builds and does nothing. |
-| Web | None: the canvas has no accessible content. The feature is not for `wasm32`. |
+| macOS | Yes: `NSAccessibility` on the window's view, through AccessKit (VoiceOver and other `NSAccessibility` clients). |
+| Windows | Yes: UI Automation on the window, through AccessKit (Narrator, NVDA, JAWS and other UI Automation clients). |
+| Linux | Yes: AT-SPI over D-Bus, through AccessKit (Orca and other AT-SPI clients), on X11 and Wayland. The BSDs use the same adapter. |
+| Web | None: the canvas has no accessible content, and AccessKit has no adapter for one. The feature builds and does nothing. |
 
-`UiAccessAdapter::SUPPORTED` says at compile time whether the build has one.
-The limits on macOS:
+All three desktop adapters get the same tree, focus and requests: roles,
+names, descriptions, values, checked and disabled states, modal dialogs and
+live regions; press, focus, set value, increment and decrement.
+`UiAccessAdapter::SUPPORTED` says at compile time whether the build has an
+adapter. The limits:
 
 - The window is named after the game's title, once: the engine has no call
   that renames its window while the game runs.
-- While a screen reader is reading the window, the engine leaves the event
-  loop idle for 4 ms between two vsync-paced frames, so that it can answer:
-  the system delivers a screen reader's questions through the event loop,
-  and a frame that waits for the display would answer one per frame
-  (measured: a read of the whole window took 1.7 to 1.9 s, and VoiceOver
-  called the game "not responding"; with the pause, 15 ms). A game whose
-  frame needs more than the rest of the refresh interval loses a refresh
-  while it is being read. The pause stays on once a screen reader has asked.
+- On macOS and Windows a screen reader's questions arrive through the event
+  loop. While one is reading the window, the engine leaves the event loop
+  idle for 4 ms between two vsync-paced frames, so that it can answer: a
+  frame that waits for the display would answer one question per frame
+  (measured on macOS: a read of the whole window took 1.7 to 1.9 s, and
+  VoiceOver called the game "not responding"; with the pause, 15 ms). A
+  game whose frame needs more than the rest of the refresh interval loses
+  a refresh while it is being read. The pause stays on once a screen reader
+  has asked. On Linux AT-SPI is answered on AccessKit's own thread from its
+  copy of the tree, so there is no pause.
+- On Linux the adapter starts only while the desktop's accessibility is on
+  (a screen reader such as Orca turns it on). If the screen reader quits
+  and starts again, the whole tree is sent again. Under Wayland a program
+  can't know where its window is, so the positions a screen reader gets are
+  relative to the window, not the screen.
 - Only `ctx.ui` is exposed. UI on surfaces in the world (`d3::UiPanel`), the
   immediate-mode calls (`draw_text`, `ui_label`) and the inspector are not.
 - A text input's text is read and can be replaced, but its caret and
@@ -531,31 +628,57 @@ The limits on macOS:
   screen reader's own scroll requests are not handled.
 - C and C++ games get the adapter the same way (it belongs to the engine's
   window) when `ponko_ffi` is built with its `accessibility` feature; there
-  is no C call to make an adapter for a view of your own.
+  is no C call to make an adapter for a window of your own.
 
 `examples/ui_menu.rs` is the sample menu for trying it: a title, a status
 line that is a live region, a described Play button, a named slider and text
 input, a toggle, and a Quit button that opens a modal dialog.
 
-How it is checked (the first two in `tests/ui_access_macos.rs`):
+How it is checked:
 
-- **Without a window** (every run, and CI's macOS leg): the adapter is
-  attached to a view that has no window and asked what VoiceOver asks
-  (children, role, title, value, help, enabled, focused, modal; press,
-  increment, decrement, set value, set focus), through this menu from Play
-  to the Quit dialog.
-- **In the engine's own window** (by hand, `PONKO_ACCESS_WINDOW=1 cargo test
-  --features accessibility --test ui_access_macos engine_window`): the game
-  runs with `Game::run`, which attaches the adapter to the window's content
-  view; a system of the game asks that view the same questions and operates
-  the menu through it. It opens a window for about a second, so CI doesn't
-  run it.
-
+- **The adapter's logic** (every run, every system): the tree, the changes
+  and the requests as AccessKit data (`ui::access_kit` unit tests), and the
+  adapter against a stand-in platform that keeps AccessKit's rules (nothing
+  until a screen reader asks, the whole tree first and after a restart,
+  requests from other threads), in `ui::access_native`.
+- **macOS without a window** (`tests/ui_access_macos.rs`, every run, and
+  CI's macOS leg): the adapter is attached to a view that has no window and
+  asked what VoiceOver asks (children, role, title, value, help, enabled,
+  focused, modal; press, increment, decrement, set value, set focus),
+  through this menu from Play to the Quit dialog.
+- **Windows through UI Automation** (`tests/ui_access_platforms.rs`, every
+  run on Windows, and CI's Windows leg): the menu runs with the adapter on a
+  window that is never shown, and a UI Automation client in the same
+  process reads names, control types, descriptions, values and toggle
+  states, then invokes Play, sets the slider and the name, moves focus,
+  toggles Music and opens and closes the Quit dialog, checking each result
+  through UI Automation.
+- **Linux through AT-SPI** (the same file, with `PONKO_ACCESS_ATSPI=1`
+  under `dbus-run-session` with `at-spi2-core` installed; CI's Linux leg
+  runs it): the adapter registers with a private accessibility bus, and a
+  client finds the window through the AT-SPI registry as Orca does, reads
+  roles, names, descriptions, values and states, operates the menu through
+  the Action, Value and Component interfaces, and turns accessibility off
+  and on again to check that the tree comes back whole.
+- **In the engine's own window on macOS** (by hand, `PONKO_ACCESS_WINDOW=1
+  cargo test --features accessibility --test ui_access_macos
+  engine_window`): the game runs with `Game::run`, which attaches the
+  adapter to the window's content view; a system of the game asks that view
+  the same questions and operates the menu through it. It opens a window
+  for about a second, so CI doesn't run it.
 - **From another process and with VoiceOver** (by hand, on a machine where
   the terminal has the Accessibility permission and VoiceOver may be
   scripted): the menu was read and operated through the system accessibility
   API from outside the game, and VoiceOver was run over it with its speech
   recorded.
+
+What the automatic checks can't show is what a screen reader makes of the
+tree: what NVDA, Narrator or Orca say, how their cursors move, whether they
+announce the live region, and whether the engine's own window (made by
+winit) is found and focused as expected. Those need the program with a
+screen reader on each system, by hand; until such records exist for Windows
+and Linux, the claim there is "the system's accessibility API reads and
+operates the menu", not "tested with NVDA and Orca".
 
 What each of these read and heard is in
 [Screen reader records](ui-accessibility.md).
@@ -662,6 +785,16 @@ are `uint32_t` holding the constants of the matching `PonkoUi*` enum, and an
 unknown value is an error. `PonkoUiPaint` is `UiPaint`; fonts come from
 `ponko_ctx_load_font`. Text is read back into a buffer you size with
 `ponko_ctx_ui_text` (call once with capacity 0 for the length).
+
+IME composition has the same calls in C: `ponko_ctx_ui_set_ime_allowed`,
+`ponko_ctx_ui_ime_allowed`, `ponko_ctx_ui_wants_ime`, `ponko_ctx_ui_preedit`,
+`ponko_ctx_ui_ime_area` and `ponko_ctx_ui_composition_interrupted` on a tree;
+`ponko_ctx_set_ime_allowed`, `ponko_ctx_set_ime_cursor_area`,
+`ponko_ctx_preedit`, `ponko_ctx_preedit_cursor`, `ponko_ctx_composing`,
+`ponko_ctx_typed_text`, `ponko_ctx_cancel_composition` and
+`ponko_ctx_feed_ime` (a `PonkoImeEvent`) on the context;
+`ponko_ctx_ui_frame_ime` runs a frame with a `PonkoUiComposition`, and
+`ponko_input_scenario_ime` adds a scenario step.
 
 `ponko_ctx_ui_frame` runs a frame by hand with a `PonkoUiInput`, like
 `Ui::frame`, which is how the C and C++ tests click buttons without a window.

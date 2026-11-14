@@ -3446,6 +3446,10 @@ struct event {
 using input = PonkoUiInput;
 /// Input with nothing happening: no pointer, no keys.
 inline input default_input() { return ponko_ui_input_default(); }
+/// An IME composition for `tree::frame` (Rust's `UiInput::preedit`,
+/// `preedit_cursor` and `composing`): a preedit string, its caret, and
+/// whether a composition went on this frame.
+using composition = PonkoUiComposition;
 
 /// Whether a node's changes are announced while something else has focus.
 enum class live : std::uint32_t { off = 0, polite = 1, assertive = 2 };
@@ -3681,6 +3685,25 @@ public:
     void frame(vec2 viewport, const input& in = default_input()) { detail::check(ponko_ctx_ui_frame(raw_, target_, viewport, &in)); }
     /// Typed text for the engine's next UI frame (the context's, not a panel's).
     void insert_text(const char* text) { detail::check(ponko_ctx_ui_insert_text(raw_, text)); }
+    /// Lays out and handles one frame of `in` with an IME composition `c`: the focused text input
+    /// that takes IME shows `c.preedit` at its caret.
+    void frame(vec2 viewport, const input& in, const composition& c) { detail::check(ponko_ctx_ui_frame_ime(raw_, target_, viewport, &in, &c)); }
+
+    // IME composition (Rust `set_ime_allowed`, `preedit`, `ime_area`, ...).
+    /// Lets the text input `node` take IME composition (the default), or not (digits, a key binding, a password).
+    void set_ime_allowed(id node, bool allowed) { detail::check(ponko_ctx_ui_set_ime_allowed(raw_, target_, node, allowed)); }
+    /// Whether the text input `node` takes IME composition.
+    bool ime_allowed(id node) const { bool b = false; detail::check(ponko_ctx_ui_ime_allowed(raw_, target_, node, &b)); return b; }
+    /// Whether the focus is on a text input that takes IME: a custom host allows IME for its window then.
+    bool wants_ime() const { bool b = false; detail::check(ponko_ctx_ui_wants_ime(raw_, target_, &b)); return b; }
+    /// The IME preedit `node` shows at its caret; empty when it shows none.
+    std::string preedit(id node) const {
+        return detail::read_text([&](char* b, std::size_t c, std::size_t* l) { return ponko_ctx_ui_preedit(raw_, target_, node, b, c, l); });
+    }
+    /// The focused IME text input's caret in window points, as of the last frame: where the candidate window goes.
+    std::optional<ponko::rect> ime_area() const { bool has = false; ponko::rect r{}; detail::check(ponko_ctx_ui_ime_area(raw_, target_, &has, &r)); return has ? std::optional<ponko::rect>(r) : std::nullopt; }
+    /// Whether the last frame took the focus off a text input mid-composition (then cancel the composition).
+    bool composition_interrupted() const { bool b = false; detail::check(ponko_ctx_ui_composition_interrupted(raw_, target_, &b)); return b; }
 };
 
 /// A snapshot of one UI's accessibility semantics (roles, names, values,
@@ -4387,6 +4410,23 @@ public:
     scenario_check& text(std::string expected) { text_ = std::move(expected); return *this; }
 };
 
+/// One IME composition step (Rust's `ImeEvent`), for `ctx::feed_ime` and
+/// `input_scenario::ime`: make it with `ime_preedit`, `ime_commit`,
+/// `ime_enabled` or `ime_disabled`. Its text is read only during the call.
+using ime_event = PonkoImeEvent;
+/// The composition so far is `text`, its caret at bytes `start..end` of it; an empty `text` cancels it.
+inline ime_event ime_preedit(const char* text, std::size_t start, std::size_t end) {
+    ime_event e{}; e.kind = PONKO_IME_PREEDIT; e.text = text; e.has_cursor = true; e.cursor_start = start; e.cursor_end = end; return e;
+}
+/// The composition so far is `text`, with no caret shown; `ime_preedit("")` cancels it.
+inline ime_event ime_preedit(const char* text) { ime_event e{}; e.kind = PONKO_IME_PREEDIT; e.text = text; return e; }
+/// The composition ended with `text`, which is typed.
+inline ime_event ime_commit(const char* text) { ime_event e{}; e.kind = PONKO_IME_COMMIT; e.text = text; return e; }
+/// The window system turned IME on.
+inline ime_event ime_enabled() { ime_event e{}; e.kind = PONKO_IME_ENABLED; return e; }
+/// The window system turned IME off; a composition is dropped.
+inline ime_event ime_disabled() { ime_event e{}; e.kind = PONKO_IME_DISABLED; return e; }
+
 /// Raw input and checks scheduled by simulation tick, for reproducible
 /// headless tests (Rust's `InputScenario`). Run it with
 /// `game::run_headless_scenario`, `game::input_scenario` or
@@ -4448,6 +4488,8 @@ public:
     input_scenario& type_text(std::uint64_t tick, const char* node, const char* typed) {
         return step(ponko_input_scenario_type_text(raw_, tick, node, typed));
     }
+    /// Feeds the IME step `e` on tick `tick`, after its input steps: replays a composition into the focused text input.
+    input_scenario& ime(std::uint64_t tick, const ime_event& e) { return step(ponko_input_scenario_ime(raw_, tick, &e)); }
     /// Names the scenario in its report.
     input_scenario& named(const char* id) { return step(ponko_input_scenario_named(raw_, id)); }
     /// Lasts `ticks` ticks (default: through the last step's tick).
@@ -4780,6 +4822,37 @@ public:
     void set_cursor_locked(bool locked) { detail::check(ponko_ctx_set_cursor_locked(raw_, locked)); }
     /// Whether the game asked for the cursor to be locked.
     bool cursor_locked() const { bool b = false; detail::check(ponko_ctx_cursor_locked(raw_, &b)); return b; }
+
+    // IME composition (Rust `input.feed_ime`, `preedit`, `set_ime_allowed`, ...). The retained UI's text
+    // inputs do all of this themselves; these are for a game's own text widgets, custom hosts and tests.
+    /// The text typed this frame: committed Unicode from the keyboard and from IME commits.
+    std::string typed_text() const {
+        return detail::read_text([&](char* b, std::size_t c, std::size_t* l) { return ponko_ctx_typed_text(raw_, b, c, l); });
+    }
+    /// Records an IME step as the window system would; a commit's text is typed.
+    void feed_ime(const ime_event& e) { detail::check(ponko_ctx_feed_ime(raw_, &e)); }
+    /// The text being composed, not yet committed; empty when nothing is.
+    std::string preedit() const {
+        return detail::read_text([&](char* b, std::size_t c, std::size_t* l) { return ponko_ctx_preedit(raw_, b, c, l); });
+    }
+    /// The caret in the preedit as a byte range (start == end: a plain caret), if the IME shows one.
+    std::optional<std::pair<std::size_t, std::size_t>> preedit_cursor() const {
+        bool has = false; std::size_t a = 0, b = 0;
+        detail::check(ponko_ctx_preedit_cursor(raw_, &has, &a, &b));
+        return has ? std::optional<std::pair<std::size_t, std::size_t>>({a, b}) : std::nullopt;
+    }
+    /// Whether a composition went on this frame: Enter, Escape, Backspace and the arrows belong to the IME then.
+    bool composing() const { bool b = false; detail::check(ponko_ctx_composing(raw_, &b)); return b; }
+    /// Lets the window system compose text with an IME (while your text widget has the focus), after this frame.
+    void set_ime_allowed(bool allowed) { detail::check(ponko_ctx_set_ime_allowed(raw_, allowed)); }
+    /// Whether IME is allowed.
+    bool ime_allowed() const { bool b = false; detail::check(ponko_ctx_ime_allowed(raw_, &b)); return b; }
+    /// Where your text widget's caret is, in window points, so the candidate window opens next to it.
+    void set_ime_cursor_area(ponko::rect area) { detail::check(ponko_ctx_set_ime_cursor_area(raw_, area)); }
+    /// The caret area set last, if any.
+    std::optional<ponko::rect> ime_cursor_area() const { bool has = false; ponko::rect r{}; detail::check(ponko_ctx_ime_cursor_area(raw_, &has, &r)); return has ? std::optional<ponko::rect>(r) : std::nullopt; }
+    /// Drops the composition in progress (your text widget lost the focus mid-composition).
+    void cancel_composition() { detail::check(ponko_ctx_cancel_composition(raw_)); }
     /// The connected gamepads: `for (ponko::gamepad pad : ctx.gamepads())`.
     gamepad_list gamepads() const {
         gamepad_list list;

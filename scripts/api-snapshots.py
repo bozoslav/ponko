@@ -37,7 +37,8 @@ docs.rs target: x86_64 Linux. The listing differs by platform in two ways
 (types such as `glam::Quat` live in `glam::f32::sse2` on x86_64 and in
 `glam::f32::neon` on Apple silicon; a few items exist only on one OS), so on
 macOS the script builds for `x86_64-apple-darwin` (same CPU, no Linux system
-libraries needed) and removes the macOS-only items, MACOS_ONLY_ITEMS. On any
+libraries needed), removes the macOS-only items, MACOS_ONLY_ITEMS, and puts
+the Linux-only ones, LINUX_ONLY_ITEMS, in their place. On any
 other host it stops and says to use the files CI uploads. The result is the
 same text as on the Linux runner; CI has the last word. A new public item
 behind `cfg(target_os = ...)` shows up as a diff in CI: add it to
@@ -74,6 +75,13 @@ EXTRA_SETS = {'ponko': {'3d': ['--features', '3d']}}
 # the macOS run drops their lines (a line starts with the item, so a prefix of
 # its path is enough).
 MACOS_ONLY_ITEMS = ['pub unsafe fn ponko::ui::UiAccessAdapter::for_ns_view(']
+# Public items that exist only on Linux, which the macOS run can't list: each
+# macOS-only item above (by its prefix) is replaced by these lines, where the
+# Linux listing has them (the items of one impl are sorted by name, and these
+# sort next to the macOS item they replace).
+LINUX_ONLY_ITEMS = {
+    'pub unsafe fn ponko::ui::UiAccessAdapter::for_ns_view(': ['pub fn ponko::ui::UiAccessAdapter::for_atspi(&str) -> Self'],
+}
 # How many lines of one file's diff the job summary shows.
 SUMMARY_DIFF_LINES = 300
 
@@ -124,11 +132,18 @@ def host_plan(system, machine):
                     'failed CI run (API snapshots job) and copy them into api/.')
 
 
-def drop_lines(text, prefixes):
-    """`text` without the lines that start with one of the prefixes."""
+def drop_lines(text, prefixes, replacements=None):
+    """`text` without the lines that start with one of the prefixes; a dropped
+    line whose prefix is a key of `replacements` gives way to its lines."""
     if not prefixes:
         return text
-    keep = [l for l in text.splitlines(keepends=True) if not l.startswith(tuple(prefixes))]
+    keep = []
+    for line in text.splitlines(keepends=True):
+        prefix = next((p for p in prefixes if line.startswith(p)), None)
+        if prefix is None:
+            keep.append(line)
+        else:
+            keep.extend(f'{l}\n' for l in (replacements or {}).get(prefix, []))
     return ''.join(keep)
 
 
@@ -257,7 +272,7 @@ def generate(package, set_name, flags):
         sys.exit(f'`{" ".join(cmd)}` failed ({done.returncode}); see the output above.')
     if not done.stdout.strip():
         sys.exit(f'`{" ".join(cmd)}` listed nothing: a crate with a library has some public API.')
-    text = drop_lines(done.stdout, drop)
+    text = drop_lines(done.stdout, drop, LINUX_ONLY_ITEMS)
     return text if text.endswith('\n') else text + '\n'
 
 
@@ -370,6 +385,7 @@ def selftest():
     text = 'pub fn a\n' + MACOS_ONLY_ITEMS[0] + '*mut u8) -> Self\npub fn b\n'
     assert drop_lines(text, MACOS_ONLY_ITEMS) == 'pub fn a\npub fn b\n'
     assert drop_lines(text, []) == text
+    assert drop_lines(text, MACOS_ONLY_ITEMS, {MACOS_ONLY_ITEMS[0]: ['pub fn l']}) == 'pub fn a\npub fn l\npub fn b\n'
     print('selftest ok')
 
 
