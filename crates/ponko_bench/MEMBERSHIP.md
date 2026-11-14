@@ -261,6 +261,82 @@ by; the larger ones tie. A first version that queued empty archetypes,
 oldest first, cost about 3 ns there (19 ns) and was replaced by a sweep
 over bits. `edge-lookup` doesn't use the engine's edge type and ties.
 
+## Despawning after reclaiming (#448)
+
+The benchmark tracking on the pull request that brought reclaiming counted
+`ecs/despawn/10k` at 1,609,416 instructions per operation before and
+1,721,823 after (+7.0 %, cachegrind on GitHub's Ubuntu runner). Where the
+extra instructions went:
+
+- **Not setup or teardown.** `fresh(...)` builds the same world in the
+  measured and the unmeasured run, and leaks it with `mem::forget` in both,
+  so neither the spawning nor dropping the world (with its `Slots` and
+  `BufferPool`) is in the difference. The workload measures only the
+  despawns and stays as it is; its description (`bench_track list`) now
+  says that spawning and dropping the world aren't measured.
+- **Per-entity work in `World::despawn`.** It checked
+  `archetypes[a].is_empty()` after every removal. On x86-64 that kept the
+  archetype pointer and index live across the column loop: three more
+  spills and reloads, and two more jumps where the moved entity's row is
+  written, on every despawn. On arm64 the same code compiles without them,
+  which is why the arm64 counts below never moved.
+
+The fix decides "the archetype just emptied" from what `swap_remove_drop`
+returns: no entity moved into the freed row, and that row was 0. That
+branch is marked cold (`std::hint::cold_path`) and calls a cold function
+for `Slots::emptied` and the reclaiming check, so the path where an entity
+moves in compiles to the same instructions as before reclaiming. What
+remains is the test of the row on the branch where nothing moved (2
+instructions; the workload despawns in spawn order, so that is half of its
+despawns). Reclaiming needs it: it is how the world learns an archetype
+emptied. `despawning_the_last_entity_in_any_row_order_empties_the_archetype`
+(`crates/ponko_ecs/tests/queries.rs`) empties archetypes through every row
+order and fails if an emptied archetype is missed (it then counts 129
+archetype slots instead of fewer than 128).
+
+**Instruction counts, cachegrind.** valgrind doesn't run on macOS, so these
+come from an x86-64 Debian 12 virtual machine (qemu, `-cpu max`, glibc 2.36,
+valgrind 3.19, rustc 1.100.0), on a copy of the `ecs/despawn/10k` workload
+built against `ponko_ecs` alone (the same `moving_world`, `fresh` and loop).
+Counts are deterministic: repeated runs gave the same numbers.
+
+| revision | per operation | change |
+|---|---:|---:|
+| before reclaiming (`81d54c08`) | 1,625,178 | |
+| with reclaiming (`a14ba7da`) | 1,698,678 | +4.5 % |
+| emptiness from `swap_remove_drop`'s result | 1,643,678 | +1.1 % |
+| and the no-move branch cold (this change) | 1,638,685 | +0.8 % |
+
+By function, per operation, before → with reclaiming → this change:
+`World::despawn` 645,091 → 715,123 → 655,095 (the 2 instructions on the
+no-move branch, 10,004); `memcpy` 179,899 → 182,543 (about +2,600, most
+likely the entity free list's reallocations, which depend on how the heap
+is laid out now that outgrown buffers wait in the pool); `malloc` about
++550. `swap_remove_drop`, `Entities` and the workload's own loop are equal.
+The VM shows a smaller rise than the runner (+4.5 % against +7.0 %): a
+different compiler and glibc; the next tracking run on the runner gives
+the number that counts.
+
+**Wall clock**, release, Apple M4 Max, `ponko_bench despawn`, the three
+builds interleaved, 5 rounds each, with the machine busy (load averages 25
+to 45 from other builds). Median of the 5 medians, ms (lowest single run in
+parentheses):
+
+| benchmark | before reclaiming (`81d54c08`) | with reclaiming (`f3844aa3`) | this change |
+|---|---:|---:|---:|
+| `despawn/ponko` (100k, one by one) | 8.92 (8.44) | 8.68 (7.96) | 8.60 (7.86) |
+| `ecs/spawn-despawn-100k/ponko` | 0.221 (0.208) | 0.212 (0.204) | 0.215 (0.203) |
+| `ecs/spawn-despawn-1m/ponko` | 2.18 (2.14) | 2.13 (2.05) | 2.17 (2.13) |
+| `commands/spawn-despawn` | 2.68 (2.40) | 2.65 (2.33) | 2.60 (2.32) |
+| `changes/ponko-despawn-tracked` | 13.7 (13.0) | 14.1 (12.9) | 13.6 (12.4) |
+
+All three are within the runs' noise (one build's medians moved by up to
+20 % between rounds): the extra instructions were never visible in time
+on this machine, and the change claims no speed-up. arm64 instruction
+counts of `bench_track run ecs/despawn/10k` (from `proc_pid_rusage`, which
+includes some kernel work, so ±5 % under this load): 1.54 M before, 1.52 M
+with reclaiming, 1.51 M with this change.
+
 ## Not measured
 
 - Only Apple M4 Max under heavy load; other platforms untested, and a quiet

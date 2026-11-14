@@ -393,3 +393,40 @@ fn queries_skip_emptied_archetypes_and_find_refilled_ones() {
         }
     }
 }
+
+#[test]
+fn despawning_the_last_entity_in_any_row_order_empties_the_archetype() {
+    // `World::despawn` notes an emptied archetype from where the removed
+    // row was (issue #448), not from the archetype's length: whichever row
+    // goes last, the archetype must count as empty, so scans skip it and
+    // the world reclaims it once more than it keeps are empty.
+    let mut w = World::new();
+    let survivor = w.spawn((Pos(0.0, 0.0),));
+    for mask in 0..128u32 {
+        let three: Vec<Entity> = (0..3)
+            .map(|i| {
+                let e = w.spawn((Pos(i as f32, 0.0),));
+                set_bits(&mut w, e, mask);
+                e
+            })
+            .collect();
+        let order = match mask % 3 {
+            0 => [0, 1, 2], // the first row each time: the last row moves in
+            1 => [2, 1, 0], // the last row each time: nothing moves
+            _ => [1, 2, 0], // a middle row, then the last, then the only one
+        };
+        for i in order {
+            assert!(w.despawn(three[i]));
+        }
+        assert_eq!(w.query::<&Pos>().count(), 1, "mask {mask:#b}");
+    }
+    assert_eq!(w.query::<Entity>().iter().collect::<Vec<_>>(), [survivor]);
+    // 128 bit sets and their steps were built, but empty archetypes were
+    // reclaimed and their slots reused.
+    let slots = w.raw_ref().archetypes().len();
+    assert!(slots < 128, "{slots} archetype slots");
+    // An emptied archetype refills and is found again.
+    let back = w.spawn((Pos(5.0, 0.0),));
+    set_bits(&mut w, back, 0b11);
+    assert_eq!(w.query::<&Pos>().filter::<With<Bit<1>>>().count(), 1);
+}
