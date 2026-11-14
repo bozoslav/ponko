@@ -22,7 +22,7 @@ struct Frame {
     ground: vec4<f32>,
     shadow: vec4<f32>,     // cascades (0: no shadows), texel size in uv, normal offset in texels, fade distance
     cascade_texel: vec4<f32>, // each cascade's texel size, in world units
-    time: vec4<f32>,       // x: seconds since the game started, y: seconds since the last frame
+    time: vec4<f32>,       // x: seconds since the game started, y: seconds since the last frame; zw: the last drawn frame's xy
     inv_view_proj: mat4x4<f32>, // clip space back to the world
     screen: vec4<f32>,     // width and height in pixels, then their inverses
     atmosphere: vec4<f32>, // x: a physical sky (1) or not (0), y: haze, z: cos of the sun's radius, w: stars
@@ -115,6 +115,29 @@ struct Surface {
 // Whether this draw is into a shadow map (seen from the sun), not for a camera.
 fn drawing_shadows() -> bool {
     return frame.camera.w == 0.0;
+}
+
+// The motion pass (temporal antialiasing, temporal AO) runs `vertex` a
+// second time, as of the last drawn frame, to see where each corner was:
+// these are set only then. The engine has the game's shader read
+// `frame.time` and `items[i]` through `motion_frame_time` and `motion_item`,
+// which give the last frame's values while they are.
+var<private> motion_past_time: bool;
+var<private> motion_past_items: bool;
+
+// Whether `vertex` is running as of the last frame, for the motion pass:
+// a shader that moves vertices by inputs of its own (a wind strength in
+// `material.custom`) can pick the last frame's here.
+fn drawing_last_frame() -> bool {
+    return motion_past_time;
+}
+
+// `frame.time` as of the frame `vertex` is running for.
+fn motion_frame_time() -> vec4<f32> {
+    if motion_past_time {
+        return frame.time.zwzw;
+    }
+    return frame.time;
 }
 
 // The unit direction from `p` towards whoever is looking: the camera, or

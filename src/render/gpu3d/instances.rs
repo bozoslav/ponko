@@ -1619,12 +1619,16 @@ impl Renderer3D {
                 continue;
             };
             let shader = &self.shaders.sets[m.shader as usize];
+            // Batches have no buffer of the game's: only time moves them.
+            if kind == Kind::VelocityStill && !super::record::still_moves(shader, false) {
+                continue;
+            }
             let variant = ShaderVariant::new(
                 Sides::of(m.double_sided),
                 Instancing::of(false, mesh.gpu_buffer.is_some() || batch.compute),
             );
             state.lookups += 1;
-            let Some(pipeline) = shader.variant(variant).role(role) else {
+            let Some(pipeline) = shader.variant(variant).for_kind(kind, role) else {
                 continue;
             };
             if state.pipeline != Some(pipeline as *const _) {

@@ -127,6 +127,10 @@ pub(super) enum Kind {
     Transparent,
     /// Motion vectors of the models that moved (temporal antialiasing).
     Velocity,
+    /// Motion vectors of the models a shader's `vertex` moves while their
+    /// matrix holds still, from the frame's own instances (drawn first;
+    /// `Velocity` draws the ones that also moved over them).
+    VelocityStill,
     /// Global illumination's probe views: lit, solid surfaces writing
     /// their own depth (cut-outs went through `PrepassCoverage`).
     Capture,
@@ -140,10 +144,18 @@ impl Kind {
             Kind::PrepassCoverage => Pass::PrepassCoverage,
             Kind::Opaque => Pass::Opaque,
             Kind::Transparent => Pass::Transparent,
-            Kind::Velocity => Pass::Velocity,
+            Kind::Velocity | Kind::VelocityStill => Pass::Velocity,
             Kind::Capture => Pass::Capture,
         }
     }
+}
+
+/// Whether a still model drawn with `shader` moves on its own, for the
+/// motion pass: its `vertex` reads the time, or a GPU buffer that keeps its
+/// last frame (`kept`).
+pub(super) fn still_moves(shader: &super::shaders::ShaderPipelines, kept: bool) -> bool {
+    let past = shader.past();
+    past.time || (past.items && kept)
 }
 
 impl Renderer3D {
@@ -521,6 +533,9 @@ impl Renderer3D {
                     });
                     pass.set_bind_group(0, &self.frame_bind_group, &[]);
                     pass.set_bind_group(2, &self.no_scene, &[]);
+                    if self.screen.still_motion {
+                        self.draw_solid(&mut pass, Kind::VelocityStill);
+                    }
                     self.draw_models(&mut pass, &self.lists.moved_runs, Kind::Velocity, self.moved.buffer());
                 }
                 if self.screen.ao_enabled {
@@ -1059,12 +1074,15 @@ impl Renderer3D {
                     continue;
                 };
                 let shader = &self.shaders.sets[m.shader as usize];
+                if kind == Kind::VelocityStill && !still_moves(shader, storage.is_some_and(|(b, _)| b.keeps_past())) {
+                    continue;
+                }
                 // Crossfading instances dither in every pass (their
                 // pipelines are built the first time they're drawn, unless
                 // `warm_pipelines` built them while loading).
                 let variant = ShaderVariant::new(Sides::of(m.double_sided), Instancing::of(fading, storage.is_some()));
                 lookups += 1;
-                let Some(pipeline) = shader.variant(variant).role(role) else {
+                let Some(pipeline) = shader.variant(variant).for_kind(kind, role) else {
                     continue;
                 };
                 if bound != Some(pipeline as *const _) {

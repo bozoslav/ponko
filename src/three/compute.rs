@@ -421,6 +421,33 @@ impl Graphics {
             r.write_gpu_buffer(b.slot(), offset, data);
         }
     }
+    /// Makes `b` keep a copy of the elements the last frame drew, so the
+    /// motion pass (temporal antialiasing, temporal AO) sees how each
+    /// element moved: a material's `vertex` reading `items[i]` reads that
+    /// copy when it runs as of the last frame, and particles moved by a
+    /// compute pass reproject with their own motion instead of smearing.
+    /// Opt-in because it doubles the buffer's memory and, while motion
+    /// vectors are on, copies the buffer once a frame on the GPU (nothing
+    /// while they are off). The copy starts as the buffer is, so turning it
+    /// on adds no motion; `keep: false` gives the memory back. Elements
+    /// written from the CPU ([`write_gpu_buffer`](Self::write_gpu_buffer))
+    /// count as moved from where the last frame drew them. Panics for an
+    /// invalid handle.
+    /// ```
+    /// # use ponko::prelude::*;
+    /// Game::new("b", 1, 1).run_headless(0, |ctx| {
+    ///     let sparks = ctx.gfx.create_gpu_buffer(256, &[]);
+    ///     ctx.gfx.set_gpu_buffer_motion(sparks, true);
+    /// });
+    /// ```
+    pub fn set_gpu_buffer_motion(&mut self, b: GpuBuffer, keep: bool) {
+        self.gpu_buffer_len(b).expect("invalid GPU buffer");
+        if let Some(r) = self.renderer.as_mut()
+            && !self.headless
+        {
+            r.set_gpu_buffer_motion(b.slot(), keep);
+        }
+    }
     /// Draws a mesh as `count` GPU instances, using `items[v.instance_index]`
     /// in its custom vertex shader. Every instance is drawn at its entity's
     /// transform and tint, like a normal model: the shader receives the

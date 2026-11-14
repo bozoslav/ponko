@@ -949,6 +949,11 @@ impl Renderer {
         self.three().write_gpu_buffer(&queue, id, offset, data);
     }
     #[cfg(feature = "3d")]
+    pub fn set_gpu_buffer_motion(&mut self, id: u32, keep: bool) {
+        let (device, queue) = (self.device.clone(), self.queue.clone());
+        self.three().set_gpu_buffer_motion(&device, &queue, id, keep);
+    }
+    #[cfg(feature = "3d")]
     pub fn set_instance_batch(&mut self, id: u32, batch: Option<&crate::three::instances::Batch>) {
         let (device, queue) = (self.device.clone(), self.queue.clone());
         self.three().set_instance_batch(&device, &queue, id, batch);

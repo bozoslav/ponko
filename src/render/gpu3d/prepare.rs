@@ -656,6 +656,13 @@ impl Renderer3D {
                 .sync_capped(at, bytes, (page, INSTANCE_BRIDGE), MAX_WRITES, &mut upload);
             at += bytes.len();
         }
+        // Shaders whose `vertex` moves models on its own (wind, waves, a
+        // buffer that keeps its last frame): their models are drawn into the
+        // motion image whenever the last frame is a past of this one.
+        self.screen.still_motion = self.screen.velocity_on
+            && frame.motion.tracking()
+            && !super::vertex_motion::disabled()
+            && self.shaders.sets.iter().any(|s| s.past().any());
         if self.screen.velocity_on && !frame.motion.runs.is_empty() {
             let moved = &frame.motion.instances;
             // Bound when drawn: a new buffer needs no rebinding.
@@ -793,7 +800,12 @@ impl Renderer3D {
                 lighting.shadow_distance,
             ],
             cascade_texel: frame.cascade_texel,
-            time: [time.0, time.1, 0.0, 0.0],
+            // zw: the last drawn frame's, which the motion pass runs
+            // `vertex` as of (this frame's on the first).
+            time: {
+                let past = self.history.time.unwrap_or(time);
+                [time.0, time.1, past.0, past.1]
+            },
             inv_view_proj: view_proj.inverse().to_cols_array_2d(),
             screen: [
                 size.0 as f32,
@@ -997,7 +1009,7 @@ impl Renderer3D {
         view: &FrameView,
         previous_view_proj: Mat4,
     ) {
-        let &Scene3D { camera, post, .. } = scene;
+        let &Scene3D { camera, post, time, .. } = scene;
         let FrameView {
             size,
             unjittered,
@@ -1041,6 +1053,7 @@ impl Renderer3D {
         // Cuts are measured from the last frame that left an image behind.
         if drawn {
             self.history.camera = Some(unjittered);
+            self.history.time = Some(time);
         }
     }
 }

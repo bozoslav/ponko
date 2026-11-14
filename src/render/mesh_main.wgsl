@@ -339,13 +339,13 @@ fn transparent_color(in: VertexOut, front: bool) -> vec4<f32> {
 // ---- Motion vectors (temporal antialiasing) ----
 // Models that moved since last frame are drawn again, over the depth the
 // opaque pass left, to say where each pixel was: the same vertices through
-// last frame's model matrix (the `vertex` function still sees this frame's
-// time, so animation inside it is not part of the motion). A skinned or
-// morphing model whose pose changed brings its last pose's positions in
-// `previous_position`; every other mesh brings its own positions again.
-// A buffer-driven mesh (see `Vertex.instance_index`) gets the entity's
-// rigid motion: both matrices see the same buffer element, so what the
-// buffer does per element is not part of the motion either.
+// last frame's model matrix, with `vertex` run as of the last frame (its
+// `frame.time` and `items` are last frame's, see `motion_past_time`). A
+// skinned or morphing model whose pose changed brings its last pose's
+// positions in `previous_position`; every other mesh brings its own
+// positions again. A buffer-driven mesh (see `Vertex.instance_index`) reads
+// the last frame's elements only when its buffer keeps them; otherwise both
+// runs see the same element and it moves with its entity.
 struct VelocityIn {
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
@@ -394,7 +394,33 @@ fn vs_velocity(in: VelocityIn) -> VelocityOut {
     b.m3 = in.p3;
     b.position = in.previous_position;
     let now = world_vertex(a);
-    let before = world_vertex(b);
+    let before = world_vertex_before(b);
+    var out: VelocityOut;
+    out.clip = frame.view_proj * vec4<f32>(now.position, 1.0);
+    out.rigid = frame.previous_view_proj * vec4<f32>(now.position, 1.0);
+    out.before = frame.previous_view_proj * vec4<f32>(before.position, 1.0);
+    return out;
+}
+
+// `world_vertex` as of the last frame: `vertex` reads its time and buffer.
+fn world_vertex_before(in: VertexIn) -> Vertex {
+    motion_past_time = true;
+    motion_past_items = true;
+    let v = world_vertex(in);
+    motion_past_time = false;
+    motion_past_items = false;
+    return v;
+}
+
+// Models whose matrix and pose held still, drawn with a shader whose
+// `vertex` reads the last frame (wind, waves, a buffer that keeps its last
+// frame): from the frame's own instances, `vertex` run as of this frame
+// and the last. Models that also moved are drawn by `vs_velocity` after,
+// over these.
+@vertex
+fn vs_velocity_still(in: VertexIn) -> VelocityOut {
+    let now = world_vertex(in);
+    let before = world_vertex_before(in);
     var out: VelocityOut;
     out.clip = frame.view_proj * vec4<f32>(now.position, 1.0);
     out.rigid = frame.previous_view_proj * vec4<f32>(now.position, 1.0);

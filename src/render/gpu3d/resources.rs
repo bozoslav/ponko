@@ -40,13 +40,16 @@ pub(super) struct Resources {
     pub(super) storage_write: Option<(wgpu::BindGroupLayout, wgpu::PipelineLayout)>,
     pub(super) storage_buffers: Vec<Option<StorageBuffer>>,
     pub(super) storage_dummy: Option<wgpu::BindGroup>,
+    /// Copies a buffer's elements over its copy of the last frame's: made
+    /// when a buffer first keeps one.
+    pub(super) past_copy: Option<wgpu::ComputePipeline>,
 }
 
 impl Resources {
     /// Makes GPU buffer `id`: a freed one's slot, or the next new one.
     pub(super) fn create_gpu_buffer(&mut self, device: &wgpu::Device, id: u32, len: u32, data: &[glam::Vec4]) {
         let mut slot = None;
-        if let Some(read_layout) = &self.storage_read {
+        if self.storage_read.is_some() {
             assert!(
                 u64::from(len) * 16 <= device.limits().max_storage_buffer_binding_size,
                 "GPU buffer exceeds device limit"
@@ -55,50 +58,7 @@ impl Resources {
                 len.div_ceil(64) <= device.limits().max_compute_workgroups_per_dimension,
                 "GPU buffer exceeds dispatch limit"
             );
-            let zeros;
-            let data = if data.is_empty() {
-                zeros = vec![glam::Vec4::ZERO; len as usize];
-                &zeros
-            } else {
-                data
-            };
-            let buffer = device
-                .uploading(Upload::Meshes)
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("GPU items"),
-                    contents: bytemuck::cast_slice(&data.iter().map(|v| v.to_array()).collect::<Vec<_>>()),
-                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                });
-            let indices = device.new_buffer(&wgpu::BufferDescriptor {
-                label: Some("non-batch visibility"),
-                size: 4,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            });
-            let group = |layout, read| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: None,
-                    layout,
-                    entries: &(0..if read { 2 } else { 1 })
-                        .map(|binding| wgpu::BindGroupEntry {
-                            binding,
-                            resource: if binding == 0 {
-                                buffer.as_entire_binding()
-                            } else {
-                                indices.as_entire_binding()
-                            },
-                        })
-                        .collect::<Vec<_>>(),
-                })
-            };
-            let read = group(read_layout, true);
-            let write = group(&self.storage_write.as_ref().unwrap().0, false);
-            slot = Some(StorageBuffer {
-                buffer,
-                read,
-                write,
-                len,
-            });
+            slot = Some(self.storage(device, len, false, data));
         }
         match self.storage_buffers.get_mut(id as usize) {
             Some(old) => *old = slot,
@@ -108,6 +68,143 @@ impl Resources {
                 self.storage_buffers.push(slot);
             }
         }
+    }
+
+    /// A GPU buffer of `len` elements holding `data` (zeros when empty),
+    /// with room after them for a copy of the last frame's (`past`), and
+    /// what binds it.
+    fn storage(&self, device: &wgpu::Device, len: u32, past: bool, data: &[glam::Vec4]) -> StorageBuffer {
+        let (read_layout, (write_layout, _)) = (
+            self.storage_read.as_ref().unwrap(),
+            self.storage_write.as_ref().unwrap(),
+        );
+        let usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC;
+        let size = u64::from(len) * 16 * if past { 2 } else { 1 };
+        let buffer = if data.is_empty() {
+            device.new_buffer(&wgpu::BufferDescriptor {
+                label: Some("GPU items"),
+                size,
+                usage,
+                mapped_at_creation: false,
+            })
+        } else {
+            device
+                .uploading(Upload::Meshes)
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("GPU items"),
+                    contents: bytemuck::cast_slice(&data.iter().map(|v| v.to_array()).collect::<Vec<_>>()),
+                    usage,
+                })
+        };
+        // A material shader reads the last frame's elements this far on
+        // (`motion_item`, see `vertex_motion.rs`); 0 without them.
+        let indices = device
+            .uploading(Upload::Meshes)
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("non-batch visibility"),
+                contents: bytemuck::bytes_of(&if past { len } else { 0 }),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+        let live = wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+            buffer: &buffer,
+            offset: 0,
+            size: std::num::NonZeroU64::new(u64::from(len) * 16),
+        });
+        let read = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: read_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: indices.as_entire_binding(),
+                },
+            ],
+        });
+        // Compute passes see the live elements only.
+        let write = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: write_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: live,
+            }],
+        });
+        let past = past.then(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("GPU items with the last frame"),
+                layout: write_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                }],
+            })
+        });
+        StorageBuffer {
+            buffer,
+            read,
+            write,
+            past,
+            len,
+        }
+    }
+
+    /// Makes GPU buffer `id` keep a copy of the elements the last frame drew
+    /// (`keep`), or stop. Its elements stay as they are; the copy starts as
+    /// them, so the next frame has no motion from it.
+    pub(super) fn set_gpu_buffer_motion(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, id: u32, keep: bool) {
+        let Some(Some(old)) = self.storage_buffers.get(id as usize) else {
+            return;
+        };
+        if old.keeps_past() == keep {
+            return;
+        }
+        if keep && self.past_copy.is_none() {
+            self.past_copy = Some(past_copy_pipeline(device, &self.storage_write.as_ref().unwrap().0));
+        }
+        let new = self.storage(device, old.len, keep, &[]);
+        let bytes = u64::from(old.len) * 16;
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("GPU buffer motion"),
+        });
+        encoder.copy_buffer_to_buffer(&old.buffer, 0, &new.buffer, 0, bytes);
+        if keep {
+            encoder.copy_buffer_to_buffer(&old.buffer, 0, &new.buffer, bytes, bytes);
+        }
+        queue.submit([encoder.finish()]);
+        self.storage_buffers[id as usize] = Some(new);
+    }
+
+    /// Copies the elements of every buffer that keeps its last frame over
+    /// that copy: what this frame drew, for the next frame's motion pass.
+    /// Recorded after the frame's draws and before the scene compute passes.
+    pub(super) fn record_buffer_pasts(&self, encoder: &mut wgpu::CommandEncoder) {
+        let Some(pipeline) = &self.past_copy else {
+            return;
+        };
+        if !self.storage_buffers.iter().flatten().any(StorageBuffer::keeps_past) {
+            return;
+        }
+        super::passes::mark("buffer motion copy");
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("GPU buffer motion copy"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(pipeline);
+        for b in self.storage_buffers.iter().flatten() {
+            if let Some(group) = &b.past {
+                pass.set_bind_group(0, group, &[]);
+                pass.dispatch_workgroups(b.len.div_ceil(64), 1, 1);
+            }
+        }
+    }
+
+    /// Whether a buffer keeps its last frame: `record_buffer_pasts` has work.
+    pub(super) fn keeps_buffer_pasts(&self) -> bool {
+        self.past_copy.is_some() && self.storage_buffers.iter().flatten().any(StorageBuffer::keeps_past)
     }
 
     /// Frees GPU buffer `id`; passes and meshes using it do nothing from now on.
@@ -535,10 +632,51 @@ pub(super) struct GpuMesh {
 }
 
 pub(super) struct StorageBuffer {
+    /// The `len` live elements, then (when it keeps them) the last frame's.
     pub(super) buffer: wgpu::Buffer,
     pub(super) read: wgpu::BindGroup,
+    /// The live elements, for compute passes.
     pub(super) write: wgpu::BindGroup,
+    /// The whole buffer, for the copy of the last frame's elements; `None`
+    /// when it keeps none (see `Graphics::set_gpu_buffer_motion`).
+    pub(super) past: Option<wgpu::BindGroup>,
     pub(super) len: u32,
+}
+
+impl StorageBuffer {
+    /// Whether it keeps the last frame's elements for the motion pass.
+    pub(super) fn keeps_past(&self) -> bool {
+        self.past.is_some()
+    }
+}
+
+/// Copies a buffer's live elements (its first half) over its second.
+const PAST_COPY: &str = "@group(0) @binding(0) var<storage, read_write> items: array<vec4<f32>>;
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let n = arrayLength(&items) / 2u;
+    if id.x < n {
+        items[n + id.x] = items[id.x];
+    }
+}";
+
+fn past_copy_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::ComputePipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("GPU buffer motion copy"),
+        source: wgpu::ShaderSource::Wgsl(PAST_COPY.into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("GPU buffer motion copy"),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("GPU buffer motion copy"),
+        layout: Some(&layout),
+        module: &module,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    })
 }
 
 pub(super) struct GpuMaterial {

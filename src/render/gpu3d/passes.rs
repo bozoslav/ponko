@@ -69,6 +69,9 @@ pub(crate) enum Resource {
     /// The textures scene compute passes run on: materials read last
     /// frame's, effects this frame's.
     SceneComputeTargets,
+    /// The copy of the elements the last frame drew, in GPU buffers that
+    /// keep one: the motion pass reads where each element was.
+    BufferPasts,
     /// The sky in every direction.
     SkyTexture,
     /// The filtered sky and probe maps that image-based lighting reads.
@@ -207,7 +210,7 @@ pub(crate) struct Desc {
 
 impl Resource {
     /// Every resource, in declaration order.
-    pub(crate) const ALL: [Resource; 44] = {
+    pub(crate) const ALL: [Resource; 45] = {
         use Resource::*;
         [
             VisibleDraws,
@@ -217,6 +220,7 @@ impl Resource {
             ComputeTargets,
             SceneStorageBuffers,
             SceneComputeTargets,
+            BufferPasts,
             SkyTexture,
             Environment,
             SunShadowMap,
@@ -278,6 +282,7 @@ impl Resource {
             Resource::ComputeTargets => desc("compute targets", Persistent, F::Any, One),
             Resource::SceneStorageBuffers => desc("scene storage buffers", Persistent, F::Buffer, One),
             Resource::SceneComputeTargets => desc("scene compute targets", Persistent, F::Any, One),
+            Resource::BufferPasts => desc("GPU buffers' last frame", Persistent, F::Buffer, One),
             Resource::SkyTexture => desc("sky texture", Persistent, F::Hdr, One),
             Resource::Environment => desc("environment maps", Persistent, F::Hdr, One),
             Resource::SunShadowMap => desc("sun shadow map", Persistent, F::Depth, One),
@@ -417,6 +422,9 @@ features! {
     /// Scene-reading transparent surfaces read a copy of the scene depth:
     /// the GL backend can't sample a depth attachment, even a read-only one.
     DEPTH_COPY = 37, "scene depth copy";
+    /// GPU buffers keep the elements this frame drew, for the next
+    /// frame's motion vectors.
+    BUFFER_PAST = 38, "buffer motion copy";
 }
 
 impl Features {
@@ -786,6 +794,7 @@ macro_rules! models {
             u(ComputeTargets, A::Sample).on(F::TEXTURE_COMPUTE),
             u(SceneStorageBuffers, A::ReadPrevious).on(F::SCENE_BUFFER_COMPUTE),
             u(SceneComputeTargets, A::SamplePrevious).on(F::SCENE_TEXTURE_COMPUTE),
+            u(BufferPasts, A::ReadPrevious).on(F::BUFFER_PAST),
             $($rest),*
         ]
     };
@@ -1106,6 +1115,16 @@ pub(crate) const FRAME_PASSES: [Pass; 8] = [
                     u(SceneDepth, A::SampleMs),
                     u(TaaHistory, A::Color),
                     u(Hdr, A::Color),
+                ],
+            ),
+            // Buffers that keep their last frame copy what this frame drew
+            // (with motion vectors on), before the scene compute passes.
+            step(
+                "buffer motion copy",
+                on(F::BUFFER_PAST),
+                &[
+                    u(StorageBuffers, A::Read).on(F::BUFFER_COMPUTE),
+                    u(BufferPasts, A::Write),
                 ],
             ),
             // The game's scene compute passes read the settled frame and

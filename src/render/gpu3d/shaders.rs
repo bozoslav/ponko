@@ -27,6 +27,8 @@ use crate::render::taa;
 use crate::three::motion::MovedInstance;
 use crate::three::{Instance3D, ShaderDiagnostic, ShaderKind};
 
+pub(super) use super::vertex_motion::VertexPast;
+
 /// Every material shader's pipelines, and what they are built with.
 pub(super) struct Shaders {
     /// Pipeline layouts of the material shaders: lit passes, and the
@@ -78,6 +80,7 @@ impl Shaders {
             ),
             samples,
             &cache.counters,
+            Default::default(),
         );
         builtin.in_use = true;
         // wgpu objects aren't `Send` on wasm (one thread): the `Arc` only shares them.
@@ -223,8 +226,16 @@ impl Shaders {
         if !storage {
             crate::render::shader_diagnostics::require_material_storage(name, &variant, user)?;
         }
-        let source = compose_shader_storage(user, decals, gi, storage);
+        // Checked as the game wrote it, so messages quote its own code;
+        // drawn with its reads of the last frame (see `vertex_motion.rs`).
+        let drawn = super::vertex_motion::with_past(user);
+        let source = compose_storage(user, decals, gi, storage);
         crate::render::diagnose(name, ShaderKind::Material, &variant, &source)?;
+        let source = match drawn {
+            std::borrow::Cow::Borrowed(_) => source,
+            std::borrow::Cow::Owned(ref code) => compose_storage(code, decals, gi, storage),
+        };
+        let past = super::vertex_motion::vertex_past(&drawn, &source);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut pipelines = build_pipelines(
             device,
@@ -235,6 +246,7 @@ impl Shaders {
             self.samples,
             // Its own until the GPU accepts it (see `material_pipelines`).
             &Arc::default(),
+            past,
         );
         pipelines.reads_scene = reads_scene(user);
         if self.warm_variants {
@@ -501,7 +513,12 @@ impl ShaderPipelines {
     /// Render pipelines in each of its sets: one per [`PipelineRole`] some
     /// pass draws with at its sample count.
     pub(super) fn pipelines_per_set(&self) -> usize {
-        PipelineRole::per_set(self.builder.samples > 1)
+        PipelineRole::per_set(self.builder.samples > 1) + usize::from(self.builder.past.any())
+    }
+
+    /// What its `vertex` reads of the last frame.
+    pub(super) fn past(&self) -> VertexPast {
+        self.builder.past
     }
 }
 
@@ -532,9 +549,24 @@ pub(super) struct Pipelines {
     pub(super) opaque_solid: wgpu::RenderPipeline,
     /// Motion vectors of moved models, over the opaque pass's depth.
     pub(super) velocity: wgpu::RenderPipeline,
+    /// Motion vectors of the models a shader's `vertex` moves while their
+    /// matrix holds still: only for shaders whose `vertex` reads the last
+    /// frame ([`SideBuilder::past`]), `None` for every other.
+    pub(super) velocity_still: Option<wgpu::RenderPipeline>,
 }
 
 impl Pipelines {
+    /// The pipeline a `kind` draw takes for `role`: the still motion draw
+    /// takes [`Pipelines::velocity_still`] (`None` without one), every other
+    /// the role's.
+    pub(super) fn for_kind(&self, kind: super::record::Kind, role: PipelineRole) -> Option<&wgpu::RenderPipeline> {
+        if kind == super::record::Kind::VelocityStill {
+            self.velocity_still.as_ref()
+        } else {
+            self.role(role)
+        }
+    }
+
     /// The pipeline of `role`; `None` for the coverage roles without
     /// multisampling.
     pub(super) fn role(&self, role: PipelineRole) -> Option<&wgpu::RenderPipeline> {
@@ -618,18 +650,19 @@ pub(super) fn reads_scene(user: &str) -> bool {
 /// pass-through `vertex` and `surface` functions when it has none) and the
 /// engine's entry points.
 pub(crate) fn compose_shader(user: &str) -> String {
-    compose_material(user, true, true)
+    compose_material(&super::vertex_motion::with_past(user), true, true)
 }
 
 /// [`compose_shader`] for a device with (`decals`) or without a texture
 /// slot for projected decals (and none for global illumination either).
 #[cfg(test)]
 pub(crate) fn compose_shader_with(user: &str, decals: bool) -> String {
-    compose_material(user, decals, decals)
+    compose_material(&super::vertex_motion::with_past(user), decals, decals)
 }
 
 /// [`compose_shader`] for a device with or without the texture slots for
-/// projected decals and global illumination.
+/// projected decals and global illumination, with the game's code `user` as
+/// it is (see [`super::vertex_motion::with_past`] for the code it draws with).
 pub(super) fn compose_material(user: &str, decals: bool, gi: bool) -> String {
     let decal_code = if decals { DECALS } else { NO_DECALS };
     let gi_code = if gi { GI } else { NO_GI };
@@ -638,6 +671,7 @@ pub(super) fn compose_material(user: &str, decals: bool, gi: bool) -> String {
     );
     source.push_str(MESH_PRELUDE);
     source.push_str("@group(3) @binding(0) var<storage, read> items: array<vec4<f32>>;\n@group(3) @binding(1) var<storage, read> static_indices: array<u32>;\n");
+    source.push_str(super::vertex_motion::ITEM_HELPER);
     source.push_str(decal_code);
     source.push_str(gi_code);
     source.push_str("\n// ---- the game's shader ----\n");
@@ -653,7 +687,15 @@ pub(super) fn compose_material(user: &str, decals: bool, gi: bool) -> String {
     source
 }
 
+/// The material shader a device with or without instance storage draws
+/// with: the game's code `user` reading the last frame where the motion
+/// pass asks it to (see `vertex_motion.rs`).
 pub(super) fn compose_shader_storage(user: &str, decals: bool, gi: bool, storage: bool) -> String {
+    compose_storage(&super::vertex_motion::with_past(user), decals, gi, storage)
+}
+
+/// [`compose_shader_storage`] with the game's code as it is.
+fn compose_storage(user: &str, decals: bool, gi: bool, storage: bool) -> String {
     let source = compose_material(user, decals, gi);
     if storage {
         source
@@ -812,6 +854,7 @@ pub(super) fn build_pipelines(
     source: &str,
     samples: u32,
     counters: &Arc<pipeline_cache::Counters>,
+    past: VertexPast,
 ) -> ShaderPipelines {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(name),
@@ -823,6 +866,7 @@ pub(super) fn build_pipelines(
         layout: layout.clone(),
         shadow_layout: shadow_layout.clone(),
         samples,
+        past,
     };
     ShaderPipelines {
         sides: Sides::ALL.map(|sides| builder.timed_build(ShaderVariant::new(sides, Instancing::Plain), counters)),
@@ -844,6 +888,9 @@ pub(super) struct SideBuilder {
     pub(super) layout: wgpu::PipelineLayout,
     pub(super) shadow_layout: wgpu::PipelineLayout,
     pub(super) samples: u32,
+    /// What its `vertex` reads of the last frame: with anything, each set
+    /// also has a still motion pipeline ([`Pipelines::velocity_still`]).
+    pub(super) past: VertexPast,
 }
 
 impl SideBuilder {
@@ -1086,6 +1133,21 @@ impl SideBuilder {
             shadow: shadow(PipelineRole::Shadow),
             shadow_cutout: shadow(PipelineRole::ShadowCutout),
             velocity,
+            // Models that hold still but whose `vertex` moves them: drawn
+            // from the frame's own instances, `vertex` run as of this frame
+            // and the last (see `vertex_motion.rs`).
+            velocity_still: self.past.any().then(|| {
+                pipeline(
+                    "3d still motion vectors",
+                    layout,
+                    "vs_velocity_still",
+                    fs(PipelineRole::Velocity),
+                    cull,
+                    depth(false, wgpu::CompareFunction::Equal, Default::default()),
+                    msaa,
+                    &velocity_target,
+                )
+            }),
         }
     }
 }

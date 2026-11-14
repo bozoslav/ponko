@@ -109,6 +109,7 @@ mod shadows;
 pub(in crate::render) mod sky_render_test;
 mod targets;
 mod variants;
+mod vertex_motion;
 use super::capabilities::GpuLimits;
 use crate::render::traffic::{self, Counted, MAX_WRITES, MIRRORED, Mirror, NewBuffer, Synced, Upload};
 pub(crate) use draw_order::StateChanges;
@@ -920,6 +921,7 @@ impl Renderer3D {
                 storage_write,
                 storage_buffers: Vec::new(),
                 storage_dummy,
+                past_copy: None,
             },
             shaders,
             scene_layout,
@@ -1181,6 +1183,12 @@ impl Renderer3D {
 
     pub fn write_gpu_buffer(&self, queue: &wgpu::Queue, id: u32, offset: u32, data: &[glam::Vec4]) {
         self.resources.write_gpu_buffer(queue, id, offset, data);
+    }
+
+    /// Makes GPU buffer `id` keep the elements the last frame drew, for
+    /// the motion pass, or stop (see `Graphics::set_gpu_buffer_motion`).
+    pub fn set_gpu_buffer_motion(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, id: u32, keep: bool) {
+        self.resources.set_gpu_buffer_motion(device, queue, id, keep);
     }
 
     pub fn set_mesh_gpu_buffer(&mut self, mesh: u32, b: u32, count: u32) {
@@ -1619,11 +1627,39 @@ impl Renderer3D {
             } else {
                 0
             }
+            + if self.screen.still_motion {
+                self.still_motion_parts()
+            } else {
+                0
+            }
             + if self.atmosphere { 2 } else { 0 }
             + shadow_views(self.lists.cascades, self.lists.light_views)
                 .map(|v| self.lists.shadow_runs[v].len())
                 .sum::<usize>()
             + self.post.draw_calls(self.targets.as_ref().map(|t| &t.post))
+    }
+
+    /// The camera's mesh parts the motion pass draws although they hold
+    /// still: their shader's `vertex` moves them (see `vertex_motion.rs`).
+    fn still_motion_parts(&self) -> usize {
+        let mut parts = 0;
+        for &(run_mesh, _, _) in &self.lists.runs {
+            let run_mesh = run_mesh & !FADED;
+            let mesh = &self.resources.meshes[self.base(run_mesh) as usize];
+            let kept = mesh.gpu_buffer.is_some_and(|(b, _)| {
+                self.resources
+                    .storage_buffers
+                    .get(b as usize)
+                    .and_then(Option::as_ref)
+                    .is_some_and(resources::StorageBuffer::keeps_past)
+            });
+            for (part, &(_, own)) in mesh.parts.iter().enumerate() {
+                let m = &self.resources.materials[self.part_material(run_mesh, part, own) as usize];
+                parts +=
+                    usize::from(!m.transparent && record::still_moves(&self.shaders.sets[m.shader as usize], kept));
+            }
+        }
+        parts
     }
 
     /// (instances, triangles) the camera draws, then the same for the shadow maps.
@@ -1910,3 +1946,6 @@ mod shader_reload_render_test;
 #[cfg(test)]
 #[path = "skin_motion_render_test.rs"]
 mod skin_motion_render_test;
+#[cfg(test)]
+#[path = "vertex_motion_render_test.rs"]
+mod vertex_motion_render_test;

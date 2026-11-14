@@ -173,6 +173,7 @@ impl Renderer3D {
             Features::BUFFER_COMPUTE.only_if(self.lists.computes.iter().any(buffer)),
             Features::TEXTURE_COMPUTE.only_if(self.lists.computes.iter().any(|c| !buffer(c))),
             Features::SCENE_BUFFER_COMPUTE.only_if(self.lists.scene_computes.iter().any(buffer)),
+            Features::BUFFER_PAST.only_if(self.screen.velocity_on && self.resources.keeps_buffer_pasts()),
             Features::SCENE_TEXTURE_COMPUTE.only_if(self.lists.scene_computes.iter().any(|c| !buffer(c))),
             Features::SKY_TEXTURE.only_if(self.atmosphere && sky),
             Features::SKY_BRDF.only_if(self.environment.needs_lookup()),

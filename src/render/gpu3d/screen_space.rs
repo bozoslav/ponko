@@ -24,6 +24,9 @@ pub(super) struct ScreenSpace {
     /// Whether moved models are drawn again for their motion vectors
     /// (temporal antialiasing or temporal ambient occlusion).
     pub(super) velocity_on: bool,
+    /// Whether the motion pass also draws the models a shader's `vertex`
+    /// moves while they hold still (see `vertex_motion.rs`).
+    pub(super) still_motion: bool,
     /// Ambient occlusion and contact shadows (made when first used), and
     /// whether this frame has them.
     pub(super) ao: Option<Ao>,
@@ -42,6 +45,7 @@ impl ScreenSpace {
             taa_supported,
             taa_on: false,
             velocity_on: false,
+            still_motion: false,
             ao: None,
             ao_enabled: false,
             ssr: None,
