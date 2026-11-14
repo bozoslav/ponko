@@ -82,8 +82,9 @@
 //!   control endpoint for tools (debug builds always do). Off, a release build
 //!   opens it only when the game calls `Game::control_endpoint(true)`.
 //! - `accessibility`: screen readers read and operate the retained UI of the
-//!   game's window (`ui::UiAccessAdapter`). macOS only (VoiceOver, through
-//!   AccessKit); on other systems it builds and does nothing. Needs `window`.
+//!   game's window (`ui::UiAccessAdapter`), through AccessKit: macOS
+//!   (VoiceOver), Windows (UI Automation: Narrator, NVDA) and Linux (AT-SPI:
+//!   Orca). On the web it builds and does nothing. Needs `window`.
 //! - `steam`: lockstep and byte messages over Steam's relays and lobbies
 //!   (`Net::steam_host`), with the `steamworks` crate re-exported as `ponko::net::steam`.
 //! - `bench-internals`: **unstable** benchmark drivers for the engine's own

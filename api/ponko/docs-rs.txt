@@ -9942,9 +9942,11 @@ impl core::marker::Sync for ponko::prelude::Ui
 pub struct ponko::ui::UiAccessAdapter
 impl ponko::ui::UiAccessAdapter
 pub const ponko::ui::UiAccessAdapter::SUPPORTED: bool
+pub fn ponko::ui::UiAccessAdapter::for_atspi(&str) -> Self
 pub fn ponko::ui::UiAccessAdapter::inert() -> Self
 pub fn ponko::ui::UiAccessAdapter::is_active(&self) -> bool
 pub fn ponko::ui::UiAccessAdapter::set_title(&mut self, &str)
+pub fn ponko::ui::UiAccessAdapter::set_window_bounds(&mut self, [f64; 4], [f64; 4])
 pub fn ponko::ui::UiAccessAdapter::set_window_focused(&mut self, bool)
 pub fn ponko::ui::UiAccessAdapter::update(&mut self, &mut ponko::prelude::Ui, f32)
 impl core::fmt::Debug for ponko::ui::UiAccessAdapter
