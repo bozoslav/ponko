@@ -245,7 +245,12 @@ export function checkMusicBeforeClick(state, audio) {
 export function musicAfterClick(state, audio) {
   if (state.audio_unlocked !== true) return `the game reports audio_unlocked ${JSON.stringify(state.audio_unlocked)}`;
   if (!audio.contexts.includes("running")) return `no running AudioContext (states: ${JSON.stringify(audio.contexts)})`;
-  if (!(audio.audible > 0)) return "no buffer with sound in it was played";
+  if (!(audio.audible > 0)) {
+    const detail = audio.started === undefined ? "" :
+      ` (${audio.started} buffers started, ${audio.ended} ended; context clock ${JSON.stringify(audio.clocks)} s at ${JSON.stringify(audio.sampleRates)} Hz, ` +
+      `${JSON.stringify(audio.maxChannels)} output channels)`;
+    return `no buffer with sound in it was played${detail}`;
+  }
   return null;
 }
 

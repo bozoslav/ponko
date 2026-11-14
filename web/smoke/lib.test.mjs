@@ -208,6 +208,10 @@ test("after the click the music is heard in a running AudioContext", () => {
   assert.match(musicAfterClick({ audio_unlocked: false }, { contexts: ["running"], audible: 3 }), /audio_unlocked false/);
   assert.match(musicAfterClick(unlocked, { contexts: ["suspended"], audible: 3 }), /no running AudioContext/);
   assert.match(musicAfterClick(unlocked, { contexts: ["running"], audible: 0 }), /no buffer with sound/);
+  assert.match(
+    musicAfterClick(unlocked, { contexts: ["running"], clocks: [0], sampleRates: [48000], maxChannels: [2], audible: 0, started: 2, ended: 0 }),
+    /no buffer with sound in it was played \(2 buffers started, 0 ended; context clock \[0\] s at \[48000\] Hz, \[2\] output channels\)/,
+  );
 });
 
 test("a browser call that never returns fails as browser-hang within its deadline", async () => {

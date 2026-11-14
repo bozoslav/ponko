@@ -241,13 +241,14 @@ async function smokeState(page) {
 }
 
 /**
- * Records the page's AudioContexts and counts the buffers it starts that
- * hold sound (the engine's audio output schedules one buffer source per
- * block), so a run can tell that music was heard. Installed before the
- * page's own scripts run.
+ * Records the page's AudioContexts and the buffers it plays: how many it
+ * starts, how many hold sound (the engine's audio output schedules one
+ * buffer source per block), and how many end, so a run can tell that music
+ * was heard, or else where the output stopped. Installed before the page's
+ * own scripts run.
  */
 function watchAudio() {
-  const seen = { contexts: [], audible: 0 };
+  const seen = { contexts: [], audible: 0, started: 0, ended: 0 };
   Object.defineProperty(window, "__smokeAudio", { value: seen });
   const Original = window.AudioContext;
   if (!Original) return;
@@ -259,17 +260,31 @@ function watchAudio() {
   };
   const start = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function (...when) {
+    seen.started++;
+    this.addEventListener("ended", () => seen.ended++);
     const buffer = this.buffer;
     if (buffer && buffer.getChannelData(0).some((sample) => Math.abs(sample) > 1e-4)) seen.audible++;
     return start.apply(this, when);
   };
 }
 
-/** What `watchAudio` saw: each AudioContext's state, and the buffers with sound played. */
+/**
+ * What `watchAudio` saw: each AudioContext's state, clock (seconds), sample
+ * rate and output channels, and the buffers started, ended and with sound
+ * in them.
+ */
 async function audioSeen(page) {
   return page.evaluate(() => {
-    const seen = window.__smokeAudio ?? { contexts: [], audible: 0 };
-    return { contexts: seen.contexts.map((c) => c.state), audible: seen.audible };
+    const seen = window.__smokeAudio ?? { contexts: [], audible: 0, started: 0, ended: 0 };
+    return {
+      contexts: seen.contexts.map((c) => c.state),
+      clocks: seen.contexts.map((c) => Math.round(c.currentTime * 1000) / 1000),
+      sampleRates: seen.contexts.map((c) => c.sampleRate),
+      maxChannels: seen.contexts.map((c) => c.destination.maxChannelCount),
+      audible: seen.audible,
+      started: seen.started,
+      ended: seen.ended,
+    };
   });
 }
 
